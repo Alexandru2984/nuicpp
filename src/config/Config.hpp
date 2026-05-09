@@ -13,6 +13,7 @@ struct Config {
     std::string authUsername = "admin";
     std::string authPasswordHash;
     std::string sessionSecret;
+    bool publicAccess = false;
     int maxNodesPerDiagram = 1000;
     int maxEdgesPerDiagram = 2000;
     int maxVersionsPerDiagram = 50;

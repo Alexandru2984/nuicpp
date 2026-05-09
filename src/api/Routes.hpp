@@ -16,6 +16,7 @@ public:
 private:
     bool ensureAuthenticated(const httplib::Request& req, httplib::Response& res, bool htmlResponse);
     bool verifyPassword(const std::string& password) const;
+    std::string makeSessionValue(const std::string& username) const;
     std::string makeSessionCookie(const std::string& username) const;
     bool verifySession(const httplib::Request& req, std::string* username) const;
     std::string csrfTokenForSession(const std::string& session) const;

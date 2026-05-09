@@ -63,7 +63,7 @@ std::string renderEditorPage(const std::string& username) {
         <span id="zoom-label">100%</span>
         <button id="zoom-in" title="Zoom in">+</button>
         <a href="/docs">Docs</a>
-        <form method="post" action="/logout"><button type="submit">Logout</button></form>
+        <a href="/login">Admin</a>
       </div>
     </header>
     <aside class="project-panel">

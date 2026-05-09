@@ -200,10 +200,14 @@ bool Routes::verifyPassword(const std::string& password) const {
 }
 
 std::string Routes::makeSessionCookie(const std::string& username) const {
+    return "ngs_session=" + makeSessionValue(username) + "; Path=/; Max-Age=28800; HttpOnly; SameSite=Strict; Secure";
+}
+
+std::string Routes::makeSessionValue(const std::string& username) const {
     auto expiry = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count() + 8 * 60 * 60;
     std::string payload = username + "." + std::to_string(expiry);
-    return "ngs_session=" + payload + "." + hmacHex(cfg_.sessionSecret, payload) + "; Path=/; Max-Age=28800; HttpOnly; SameSite=Strict; Secure";
+    return payload + "." + hmacHex(cfg_.sessionSecret, payload);
 }
 
 bool Routes::verifySession(const httplib::Request& req, std::string* username) const {
@@ -260,6 +264,9 @@ bool Routes::ensureCsrf(const httplib::Request& req, httplib::Response& res) {
 }
 
 bool Routes::ensureAuthenticated(const httplib::Request& req, httplib::Response& res, bool htmlResponse) {
+    if (cfg_.publicAccess) {
+        return true;
+    }
     if (verifySession(req, nullptr)) {
         return true;
     }
@@ -336,7 +343,7 @@ void Routes::registerRoutes(httplib::Server& server) {
 
     server.Get("/", [this](const httplib::Request& req, httplib::Response& res) {
         std::string username;
-        if (!verifySession(req, &username)) {
+        if (!cfg_.publicAccess && !verifySession(req, &username)) {
             res.status = 302;
             res.set_header("Location", "/login");
             return;
@@ -356,11 +363,18 @@ void Routes::registerRoutes(httplib::Server& server) {
     server.Get("/api/session", [this](const httplib::Request& req, httplib::Response& res) {
         std::string username;
         if (!verifySession(req, &username)) {
-            sendJson(res, 401, errorJson("authentication required"));
+            if (!cfg_.publicAccess) {
+                sendJson(res, 401, errorJson("authentication required"));
+                return;
+            }
+            username = "guest";
+            auto session = makeSessionValue(username);
+            res.set_header("Set-Cookie", "ngs_session=" + session + "; Path=/; Max-Age=28800; HttpOnly; SameSite=Strict; Secure");
+            sendJson(res, 200, {{"username", username}, {"public_access", true}, {"csrf_token", csrfTokenForSession(session)}});
             return;
         }
         auto session = cookieValue(req, "ngs_session");
-        sendJson(res, 200, {{"username", username}, {"csrf_token", csrfTokenForSession(session)}});
+        sendJson(res, 200, {{"username", username}, {"public_access", cfg_.publicAccess}, {"csrf_token", csrfTokenForSession(session)}});
     });
 
     server.Get("/api/diagrams", [this](const httplib::Request& req, httplib::Response& res) {

@@ -1,5 +1,6 @@
 #include "config/Config.hpp"
 
+#include <cctype>
 #include <cstdlib>
 #include <fstream>
 #include <stdexcept>
@@ -59,6 +60,17 @@ int getInt(const std::unordered_map<std::string, std::string>& file, const std::
     return value.empty() ? fallback : std::stoi(value);
 }
 
+bool getBool(const std::unordered_map<std::string, std::string>& file, const std::string& key, bool fallback) {
+    auto value = getValue(file, key);
+    if (value.empty()) {
+        return fallback;
+    }
+    for (auto& c : value) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return value == "1" || value == "true" || value == "yes" || value == "on";
+}
+
 } // namespace
 
 Config Config::load(const std::string& envPath) {
@@ -72,6 +84,7 @@ Config Config::load(const std::string& envPath) {
     cfg.authUsername = getValue(file, "AUTH_USERNAME", cfg.authUsername);
     cfg.authPasswordHash = getValue(file, "AUTH_PASSWORD_HASH");
     cfg.sessionSecret = getValue(file, "SESSION_SECRET");
+    cfg.publicAccess = getBool(file, "PUBLIC_ACCESS", cfg.publicAccess);
     cfg.maxNodesPerDiagram = getInt(file, "MAX_NODES_PER_DIAGRAM", cfg.maxNodesPerDiagram);
     cfg.maxEdgesPerDiagram = getInt(file, "MAX_EDGES_PER_DIAGRAM", cfg.maxEdgesPerDiagram);
     cfg.maxVersionsPerDiagram = getInt(file, "MAX_VERSIONS_PER_DIAGRAM", cfg.maxVersionsPerDiagram);

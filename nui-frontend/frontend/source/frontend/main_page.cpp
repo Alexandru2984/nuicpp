@@ -53,7 +53,7 @@ Nui::ElementRenderer MainPage::render() {
                     span{id = "zoom-label"}("100%"),
                     button{id = "zoom-in", title = "Zoom in"}("+"),
                     a{href = "/docs"}("Docs"),
-                    form{method = "post", action = "/logout"}(button{type = "submit"}("Logout"))
+                    a{href = "/login"}("Admin")
                 )
             ),
             aside{class_ = "project-panel"}(

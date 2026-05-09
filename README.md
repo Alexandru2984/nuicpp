@@ -61,6 +61,7 @@ The application binds only to `127.0.0.1:${APP_PORT}`. The selected production p
 - `DATABASE_URL`
 - `AUTH_USERNAME`
 - `AUTH_PASSWORD_HASH`
+- `PUBLIC_ACCESS`
 - `SESSION_SECRET`
 - `MAX_NODES_PER_DIAGRAM`
 - `MAX_EDGES_PER_DIAGRAM`
@@ -200,7 +201,8 @@ Each save creates a version snapshot in `diagram_versions`. Manual snapshots can
 
 - The app binds to `127.0.0.1` only.
 - Nginx terminates TLS and proxies to the local app port.
-- Editing endpoints require signed-session admin login.
+- When `PUBLIC_ACCESS=true`, visitors can use the editor without an admin login. Mutating endpoints still require a signed anonymous session and CSRF token from `/api/session`.
+- Admin login remains available at `/login`.
 - Passwords are verified using PBKDF2-SHA256 hashes.
 - Mutating API endpoints require `X-CSRF-Token` from `/api/session`.
 - Login attempts are rate-limited in the C++ app.
