@@ -95,6 +95,14 @@
     };
   }
 
+  function viewportCenterPoint() {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (rect.width / 2 - state.pan.x) / state.zoom,
+      y: (rect.height / 2 - state.pan.y) / state.zoom
+    };
+  }
+
   function nodeCenter(node) {
     return { x: node.x + node.width / 2, y: node.y + node.height / 2 };
   }
@@ -409,7 +417,12 @@
       opt.textContent = type;
       el("prop-type").appendChild(opt);
     });
-    document.querySelectorAll(".toolbox button[data-tool]").forEach((btn) => btn.onclick = () => setTool(btn.dataset.tool));
+    document.querySelectorAll(".toolbox button[data-tool]").forEach((btn) => btn.onclick = () => {
+      setTool(btn.dataset.tool);
+      if (btn.dataset.tool === "node" && state.current) {
+        createNodeAt(viewportCenterPoint());
+      }
+    });
     el("new-diagram").onclick = newDiagram;
     el("save-diagram").onclick = saveDiagram;
     el("refresh-diagrams").onclick = loadDiagrams;
