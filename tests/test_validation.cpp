@@ -1,9 +1,13 @@
 #include "config/Config.hpp"
 #include "domain/Diagram.hpp"
+#include "domain/Templates.hpp"
 #include "utils/Json.hpp"
+#include "utils/RateLimiter.hpp"
 #include "validation/DiagramValidator.hpp"
 
+#include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -124,6 +128,47 @@ void testFormUrlDecode() {
     require(formValue(body, "password") == "a+b c", "form decoding should handle percent and plus");
 }
 
+void testPublicAccessConfigLoads() {
+    const std::string path = "/tmp/nuigraph-public-access-test.env";
+    {
+        std::ofstream env(path);
+        env << "APP_HOST=127.0.0.1\n"
+            << "APP_PORT=18081\n"
+            << "DATABASE_URL=postgresql://unused\n"
+            << "AUTH_PASSWORD_HASH=unused\n"
+            << "SESSION_SECRET=unused\n"
+            << "PUBLIC_ACCESS=true\n";
+    }
+
+    auto cfg = Config::load(path);
+    require(cfg.publicAccess, "PUBLIC_ACCESS=true should enable public access");
+    std::remove(path.c_str());
+}
+
+void testTemplatesValidate() {
+    auto cfg = testConfig();
+    cfg.maxNodesPerDiagram = 100;
+    cfg.maxEdgesPerDiagram = 200;
+    DiagramValidator validator(cfg);
+    require(diagramTemplates().size() >= 3, "template gallery should include multiple examples");
+    for (const auto& item : diagramTemplates()) {
+        auto diagram = item.diagram;
+        auto result = validator.validate(diagram, false);
+        require(result.ok, "template should validate: " + item.key);
+        require(!diagram.nodes.empty(), "template should include nodes: " + item.key);
+    }
+    require(findDiagramTemplate("cloud-architecture") != nullptr, "cloud architecture template should exist");
+}
+
+void testRateLimiterWindowsRequests() {
+    RateLimiter limiter;
+    require(limiter.allow("ip", 2, 60, 1000), "first request should pass");
+    require(limiter.allow("ip", 2, 60, 1001), "second request should pass");
+    require(!limiter.allow("ip", 2, 60, 1002), "third request inside window should fail");
+    require(limiter.allow("ip", 2, 60, 1060), "request after window should pass");
+    require(limiter.allow("other-ip", 2, 60, 1002), "separate keys should not share limits");
+}
+
 } // namespace
 
 int main() {
@@ -136,6 +181,9 @@ int main() {
         testStrictKeysAndColors();
         testJsonRoundTrip();
         testFormUrlDecode();
+        testPublicAccessConfigLoads();
+        testTemplatesValidate();
+        testRateLimiterWindowsRequests();
     } catch (const std::exception& e) {
         std::cerr << "test failed: " << e.what() << '\n';
         return EXIT_FAILURE;

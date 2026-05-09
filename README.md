@@ -7,6 +7,9 @@ NuiGraph Studio is a production-oriented C++ graph and diagram editor deployed a
 - Dark visual SVG editor with grid, pan, zoom, selectable objects, node dragging, and immediate browser updates.
 - Diagram CRUD: create, list, open, rename, duplicate, delete, save, import, and JSON export.
 - Sample architecture diagram loader for demos.
+- Public share links with read-only viewing and one-click fork/duplicate behavior.
+- Template gallery with ready-to-use architecture, incident-response, and data-pipeline diagrams.
+- Browser draft autosave with restore prompt for unsaved local changes.
 - SVG and PNG export from the visual canvas.
 - Snap-to-grid toggle, simple auto-layout, minimap, copy/paste, and Shift-click multi-select basics.
 - Node types: `process`, `decision`, `database`, `service`, `api`, `note`, `external`.
@@ -15,7 +18,9 @@ NuiGraph Studio is a production-oriented C++ graph and diagram editor deployed a
 - PostgreSQL persistence for diagrams, nodes, edges, and bounded version snapshots.
 - Version history with manual snapshots and restore.
 - Admin login with PBKDF2-SHA256 password hash in `.env`.
+- Public guest sessions when `PUBLIC_ACCESS=true`; owners and admins can edit, other visitors can view and fork.
 - CSRF protection for mutating JSON endpoints and login rate limiting.
+- In-process API write/create rate limiting for public-access abuse control.
 - Public `/health` endpoint with non-sensitive JSON.
 
 ## Stack
@@ -147,8 +152,11 @@ https://nuicpp.micutu.com
 - `GET /`
 - `GET /docs`
 - `GET /api/diagrams`
+- `GET /api/templates`
+- `POST /api/templates/{key}/create`
 - `POST /api/diagrams`
 - `GET /api/diagrams/{id}`
+- `GET /api/diagrams/slug/{slug}`
 - `PUT /api/diagrams/{id}`
 - `DELETE /api/diagrams/{id}`
 - `POST /api/diagrams/{id}/duplicate`
@@ -158,7 +166,9 @@ https://nuicpp.micutu.com
 - `GET /api/diagrams/{id}/export.json`
 - `POST /api/diagrams/import`
 
-All editing endpoints require admin authentication. `/health` is public.
+When `PUBLIC_ACCESS=true`, visitors receive a signed guest session from `/api/session`. Diagram owners and admins can edit; non-owners can open share links read-only and duplicate/fork diagrams into their own session. `/health` is public.
+
+Built-in template keys include `cloud-architecture`, `incident-response`, and `data-pipeline`.
 
 ## Diagram JSON Format
 
@@ -202,10 +212,12 @@ Each save creates a version snapshot in `diagram_versions`. Manual snapshots can
 - The app binds to `127.0.0.1` only.
 - Nginx terminates TLS and proxies to the local app port.
 - When `PUBLIC_ACCESS=true`, visitors can use the editor without an admin login. Mutating endpoints still require a signed anonymous session and CSRF token from `/api/session`.
+- New diagrams are tied to the creating guest session by a hashed owner token. Share URLs use `/d/{slug}`; other visitors get a read-only view and can duplicate the diagram to edit their own copy.
 - Admin login remains available at `/login`.
 - Passwords are verified using PBKDF2-SHA256 hashes.
 - Mutating API endpoints require `X-CSRF-Token` from `/api/session`.
 - Login attempts are rate-limited in the C++ app.
+- Mutating API requests are rate-limited by client IP, with stricter limits for create/import/fork/template creation actions.
 - Nginx sends HSTS, CSP, frame, content-type, referrer, and permissions policy headers.
 - Input validation limits title lengths, description lengths, node count, edge count, import size, colors, keys, coordinates, and node sizes.
 - Import rejects invalid JSON and edges pointing to missing nodes.
@@ -246,5 +258,7 @@ psql "$DATABASE_URL" -c "\\dt"
 - The editor shell/canvas root and toolbar are Nui C++/WASM; detailed canvas gestures still use a small JavaScript bridge.
 - The initial admin password file should be removed after the password is stored in a password manager and/or rotated.
 - Collaboration/WebSocket editing is not implemented in v1.
+- Guest ownership is browser/session based, not full multi-account identity. Clearing cookies can lose owner edit access unless the admin account is used.
 - Undo/redo is browser-local and basic; persisted granular command history is a future improvement.
+- Draft autosave is browser-local and is not a replacement for the PostgreSQL Save action/version snapshot.
 - Mobile and tablet layouts are functional but the polished target is desktop.

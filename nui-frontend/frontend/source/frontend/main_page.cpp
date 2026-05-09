@@ -38,6 +38,7 @@ Nui::ElementRenderer MainPage::render() {
                 div{class_ = "top-actions"}(
                     button{id = "new-diagram", title = "New diagram"}("New"),
                     button{id = "load-sample", title = "Load sample architecture"}("Sample"),
+                    button{id = "share-diagram", title = "Copy share link"}("Share"),
                     button{id = "save-diagram", title = "Save"}("Save"),
                     button{id = "undo", title = "Undo"}("Undo"),
                     button{id = "redo", title = "Redo"}("Redo"),
@@ -52,6 +53,7 @@ Nui::ElementRenderer MainPage::render() {
                     button{id = "zoom-out", title = "Zoom out"}("-"),
                     span{id = "zoom-label"}("100%"),
                     button{id = "zoom-in", title = "Zoom in"}("+"),
+                    span{id = "draft-status", class_ = "draft-status"}("Saved"),
                     a{href = "/docs"}("Docs"),
                     a{href = "/login"}("Admin")
                 )
@@ -61,7 +63,13 @@ Nui::ElementRenderer MainPage::render() {
                     h2{}("Diagrams"),
                     button{id = "refresh-diagrams", title = "Refresh"}("Refresh")
                 ),
-                div{id = "diagram-list", class_ = "diagram-list"}()
+                div{id = "diagram-list", class_ = "diagram-list"}(),
+                section{class_ = "template-section"}(
+                    div{class_ = "panel-head"}(
+                        h2{}("Templates")
+                    ),
+                    div{id = "template-list", class_ = "diagram-list"}()
+                )
             ),
             nav{class_ = "toolbox"}(
                 button{AttributeFactory("data-tool") = "select", class_ = "active"}("Select"),

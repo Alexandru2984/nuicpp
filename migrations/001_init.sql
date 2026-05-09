@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS diagrams (
     title VARCHAR(120) NOT NULL,
     slug VARCHAR(140) NOT NULL UNIQUE,
     description VARCHAR(1000) NOT NULL DEFAULT '',
+    owner_token_hash VARCHAR(128),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

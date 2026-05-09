@@ -20,8 +20,10 @@
 
   const state = {
     diagrams: [],
+    templates: [],
     current: null,
     selected: null,
+    readOnly: false,
     tool: "select",
     snap: true,
     zoom: 1,
@@ -32,7 +34,9 @@
     future: [],
     dragging: null,
     panning: null,
-    clipboard: null
+    clipboard: null,
+    dirty: false,
+    draftTimer: null
   };
 
   const el = (id) => document.getElementById(id);
@@ -80,10 +84,89 @@
   }
 
   function pushHistory() {
-    if (!state.current) return;
+    if (!state.current || state.readOnly) return;
     state.history.push(cloneDiagram());
     if (state.history.length > 80) state.history.shift();
     state.future = [];
+    markDirty();
+  }
+
+  function draftKey(id) {
+    return `nuigraph:draft:${id}`;
+  }
+
+  function setDraftStatus(text, dirty = state.dirty) {
+    state.dirty = dirty;
+    const status = el("draft-status");
+    if (status) status.textContent = text;
+    document.body.classList.toggle("dirty", dirty);
+  }
+
+  function markDirty() {
+    if (!state.current || state.readOnly) return;
+    state.dirty = true;
+    setDraftStatus("Drafting", true);
+    queueDraftSave();
+  }
+
+  function queueDraftSave() {
+    window.clearTimeout(state.draftTimer);
+    state.draftTimer = window.setTimeout(saveDraftNow, 700);
+  }
+
+  function saveDraftNow() {
+    if (!state.current || state.readOnly || !state.current.id) return;
+    try {
+      const payload = JSON.stringify({ saved_at: new Date().toISOString(), diagram: state.current });
+      if (payload.length > 900000) {
+        setDraftStatus("Draft too large", true);
+        return;
+      }
+      localStorage.setItem(draftKey(state.current.id), payload);
+      setDraftStatus("Draft saved", true);
+    } catch {
+      setDraftStatus("Draft blocked", true);
+    }
+  }
+
+  function clearDraft(id) {
+    if (id) localStorage.removeItem(draftKey(id));
+    state.dirty = false;
+    setDraftStatus("Saved", false);
+  }
+
+  function maybeRestoreDraft() {
+    if (!state.current || state.readOnly || !state.current.id) {
+      setDraftStatus(state.readOnly ? "Read-only" : "Saved", false);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(draftKey(state.current.id));
+      if (!raw) {
+        clearDraft(null);
+        return;
+      }
+      const draft = JSON.parse(raw);
+      const draftTime = Date.parse(draft.saved_at || "");
+      const serverTime = Date.parse(state.current.updated_at || state.current.created_at || "");
+      if (draft.diagram && draftTime && (!serverTime || draftTime > serverTime + 1000) && confirm("Restore unsaved browser draft for this diagram?")) {
+        const serverMeta = {
+          id: state.current.id,
+          slug: state.current.slug,
+          created_at: state.current.created_at,
+          updated_at: state.current.updated_at,
+          can_edit: state.current.can_edit,
+          share_url: state.current.share_url
+        };
+        state.current = { ...draft.diagram, ...serverMeta };
+        state.dirty = true;
+        setDraftStatus("Draft restored", true);
+        return;
+      }
+      setDraftStatus("Saved", false);
+    } catch {
+      setDraftStatus("Saved", false);
+    }
   }
 
   function restoreSnapshot(snapshot) {
@@ -99,12 +182,28 @@
     if (!state.history.length || !state.current) return;
     state.future.push(cloneDiagram());
     restoreSnapshot(state.history.pop());
+    markDirty();
   }
 
   function redo() {
     if (!state.future.length || !state.current) return;
     state.history.push(cloneDiagram());
     restoreSnapshot(state.future.pop());
+    markDirty();
+  }
+
+  function sharedSlugFromPath() {
+    const match = location.pathname.match(/^\/d\/([A-Za-z0-9-]+)$/);
+    return match ? match[1] : null;
+  }
+
+  function setReadOnly(readOnly) {
+    state.readOnly = readOnly;
+    document.body.classList.toggle("read-only", readOnly);
+    ["save-diagram", "delete-selected", "make-version", "import-json", "auto-layout", "paste-selected"].forEach((id) => {
+      const node = el(id);
+      if (node) node.disabled = readOnly;
+    });
   }
 
   function worldPoint(evt) {
@@ -244,6 +343,17 @@
       }, "image/png");
     };
     img.src = url;
+  }
+
+  async function shareDiagram() {
+    if (!state.current) return;
+    const url = state.current.share_url || `${location.origin}/d/${state.current.slug}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      alert("Share link copied.");
+    } catch {
+      prompt("Share link", url);
+    }
   }
 
   function renderEdges() {
@@ -395,7 +505,7 @@
     viewport.setAttribute("transform", `translate(${state.pan.x} ${state.pan.y}) scale(${state.zoom})`);
     el("zoom-label").textContent = `${Math.round(state.zoom * 100)}%`;
     if (state.current) {
-      el("diagram-title").value = state.current.title;
+      el("diagram-title").value = state.readOnly ? `${state.current.title} (read-only)` : state.current.title;
     }
     renderEdges();
     renderNodes();
@@ -463,17 +573,67 @@
     }
   }
 
+  function renderTemplateList() {
+    const list = el("template-list");
+    if (!list) return;
+    list.replaceChildren();
+    if (!state.templates.length) {
+      const empty = document.createElement("div");
+      empty.className = "muted";
+      empty.textContent = "Templates unavailable.";
+      list.appendChild(empty);
+      return;
+    }
+    for (const template of state.templates) {
+      const item = document.createElement("div");
+      item.className = "diagram-item";
+      item.innerHTML = `
+        <div class="diagram-row">
+          <div class="diagram-name"></div>
+          <div class="small-actions"><button data-act="use">Use</button></div>
+        </div>
+        <div class="meta"></div>
+        <div class="meta"></div>`;
+      item.querySelector(".diagram-name").textContent = template.title;
+      item.querySelectorAll(".meta")[0].textContent = `${template.category || "Template"} - ${template.node_count || 0} nodes, ${template.edge_count || 0} edges`;
+      item.querySelectorAll(".meta")[1].textContent = template.description || "";
+      item.querySelector('[data-act="use"]').onclick = () => createFromTemplate(template.key);
+      list.appendChild(item);
+    }
+  }
+
   async function loadDiagrams() {
     const data = await api("/api/diagrams");
     state.diagrams = data.diagrams || [];
     renderDiagramList();
-    if (!state.current && state.diagrams[0]) {
+    if (!state.current && !sharedSlugFromPath() && state.diagrams[0]) {
       await openDiagram(state.diagrams[0].id);
     }
   }
 
+  async function loadTemplates() {
+    const data = await api("/api/templates");
+    state.templates = data.templates || [];
+    renderTemplateList();
+  }
+
   async function openDiagram(id) {
     state.current = await api(`/api/diagrams/${id}`);
+    setReadOnly(state.current.can_edit === false);
+    maybeRestoreDraft();
+    state.history = [];
+    state.future = [];
+    state.selected = null;
+    state.edgeSource = null;
+    render();
+    await loadVersions();
+    renderDiagramList();
+  }
+
+  async function openDiagramBySlug(slug) {
+    state.current = await api(`/api/diagrams/slug/${slug}`);
+    setReadOnly(state.current.can_edit === false);
+    maybeRestoreDraft();
     state.history = [];
     state.future = [];
     state.selected = null;
@@ -490,15 +650,21 @@
   }
 
   async function loadSample() {
-    const created = await api("/api/diagrams", { method: "POST", body: JSON.stringify(sampleDiagram()) });
+    await createFromTemplate("cloud-architecture");
+  }
+
+  async function createFromTemplate(key) {
+    const created = await api(`/api/templates/${key}/create`, { method: "POST", body: "{}" });
     await loadDiagrams();
     await openDiagram(created.id);
   }
 
   async function saveDiagram() {
-    if (!state.current) return;
+    if (!state.current || state.readOnly) return;
+    const draftId = state.current.id;
     state.current.title = el("diagram-title").value.trim() || "Untitled diagram";
     state.current = await api(`/api/diagrams/${state.current.id}`, { method: "PUT", body: JSON.stringify(state.current) });
+    clearDraft(draftId);
     state.history = [];
     state.future = [];
     await loadDiagrams();
@@ -513,6 +679,7 @@
   }
 
   async function deleteDiagram(id) {
+    if (state.readOnly && state.current?.id === id) return;
     if (!confirm("Delete this diagram?")) return;
     await api(`/api/diagrams/${id}`, { method: "DELETE" });
     if (state.current?.id === id) state.current = null;
@@ -532,6 +699,7 @@
       item.querySelectorAll(".meta")[1].textContent = v.note || "";
       item.querySelector("button").onclick = async () => {
         if (!confirm(`Restore version ${v.version_number}?`)) return;
+        if (state.readOnly) return;
         state.current = await api(`/api/diagrams/${state.current.id}/restore/${v.id}`, { method: "POST", body: "{}" });
         await loadVersions();
         render();
@@ -541,7 +709,7 @@
   }
 
   function createNodeAt(point) {
-    if (!state.current) return;
+    if (!state.current || state.readOnly) return;
     pushHistory();
     const type = el("node-type").value;
     const size = type === "decision" ? { width: 150, height: 96 } : { width: 170, height: 82 };
@@ -561,7 +729,7 @@
   }
 
   function deleteSelected() {
-    if (!state.current || !state.selected) return;
+    if (!state.current || !state.selected || state.readOnly) return;
     pushHistory();
     if (state.selected.type === "node" || state.selected.type === "nodes") {
       const keys = selectedNodeKeys();
@@ -593,7 +761,7 @@
   }
 
   function pasteSelected() {
-    if (!state.current || !state.clipboard?.nodes?.length) return;
+    if (!state.current || state.readOnly || !state.clipboard?.nodes?.length) return;
     pushHistory();
     const suffix = Date.now();
     const keyMap = new Map();
@@ -613,7 +781,7 @@
   }
 
   function autoLayout() {
-    if (!state.current) return;
+    if (!state.current || state.readOnly) return;
     pushHistory();
     const nodes = state.current.nodes;
     const incoming = new Map(nodes.map((n) => [n.key, 0]));
@@ -658,7 +826,7 @@
 
   function bindProperty(id, apply) {
     el(id).addEventListener("change", () => {
-      if (!state.current || !state.selected) return;
+      if (!state.current || !state.selected || state.readOnly) return;
       pushHistory();
       apply();
       render();
@@ -680,6 +848,7 @@
     });
     el("new-diagram").onclick = newDiagram;
     el("load-sample").onclick = loadSample;
+    el("share-diagram").onclick = shareDiagram;
     el("save-diagram").onclick = saveDiagram;
     el("refresh-diagrams").onclick = loadDiagrams;
     el("delete-selected").onclick = deleteSelected;
@@ -699,6 +868,7 @@
     el("export-png").onclick = exportPng;
     el("make-version").onclick = async () => {
       if (!state.current) return;
+      if (state.readOnly) return;
       await api(`/api/diagrams/${state.current.id}/versions`, { method: "POST", body: JSON.stringify({ note: "manual snapshot" }) });
       await loadVersions();
     };
@@ -718,9 +888,10 @@
     };
 
     el("diagram-title").addEventListener("change", () => {
-      if (!state.current) return;
+      if (!state.current || state.readOnly) return;
       pushHistory();
       state.current.title = el("diagram-title").value.trim() || "Untitled diagram";
+      markDirty();
       renderDiagramList();
     });
 
@@ -753,6 +924,7 @@
 
     window.addEventListener("mousemove", (evt) => {
       if (state.dragging && state.current) {
+        if (state.readOnly) return;
         const node = state.current.nodes.find((n) => n.key === state.dragging.key);
         if (node) {
           const p = worldPoint(evt);
@@ -778,6 +950,7 @@
     });
 
     window.addEventListener("mouseup", () => {
+      if (state.dragging && state.current && !state.readOnly) markDirty();
       state.dragging = null;
       state.panning = null;
     });
@@ -802,9 +975,20 @@
       if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "z") { evt.preventDefault(); evt.shiftKey ? redo() : undo(); }
       if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "y") { evt.preventDefault(); redo(); }
     });
+
+    window.addEventListener("beforeunload", (evt) => {
+      if (!state.dirty) return;
+      evt.preventDefault();
+      evt.returnValue = "";
+    });
   }
 
   initBindings();
-  loadDiagrams().catch((err) => alert(err.message));
+  Promise.all([loadTemplates(), loadDiagrams()])
+    .then(() => {
+      const slug = sharedSlugFromPath();
+      if (slug) return openDiagramBySlug(slug);
+    })
+    .catch((err) => alert(err.message));
   render();
 })();

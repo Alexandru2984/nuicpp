@@ -48,6 +48,7 @@ std::string renderEditorPage(const std::string& username) {
       <div class="top-actions">
         <button id="new-diagram" title="New diagram">New</button>
         <button id="load-sample" title="Load sample architecture">Sample</button>
+        <button id="share-diagram" title="Copy share link">Share</button>
         <button id="save-diagram" title="Save">Save</button>
         <button id="undo" title="Undo">Undo</button>
         <button id="redo" title="Redo">Redo</button>
@@ -62,6 +63,7 @@ std::string renderEditorPage(const std::string& username) {
         <button id="zoom-out" title="Zoom out">-</button>
         <span id="zoom-label">100%</span>
         <button id="zoom-in" title="Zoom in">+</button>
+        <span id="draft-status" class="draft-status">Saved</span>
         <a href="/docs">Docs</a>
         <a href="/login">Admin</a>
       </div>
@@ -72,6 +74,10 @@ std::string renderEditorPage(const std::string& username) {
         <button id="refresh-diagrams" title="Refresh">Refresh</button>
       </div>
       <div id="diagram-list" class="diagram-list"></div>
+      <section class="template-section">
+        <div class="panel-head"><h2>Templates</h2></div>
+        <div id="template-list" class="diagram-list"></div>
+      </section>
     </aside>
     <nav class="toolbox">
       <button data-tool="select" class="active">Select</button>
@@ -147,9 +153,9 @@ std::string renderDocsPage() {
   <main class="docs">
     <a href="/">Back to editor</a>
     <h1>NuiGraph Studio</h1>
-    <p>NuiGraph Studio is a C++ powered graph and diagram editor for flowcharts, architecture maps, service graphs, and node-link diagrams.</p>
+    <p>NuiGraph Studio is a C++ powered graph and diagram editor for flowcharts, architecture maps, service graphs, and node-link diagrams. Public share links open read-only views for other visitors, who can fork a diagram into their own session.</p>
     <h2>Canvas Controls</h2>
-    <p>Select nodes and edges with the Select tool. Shift-click nodes for basic multi-select. Drag nodes to move them. Use the Node tool to create nodes, Edge to connect two nodes, and Pan or middle mouse drag to move the canvas. Delete removes the selected object. Ctrl+S saves, Ctrl+C/Ctrl+V copy and paste selected nodes, Ctrl+Z/Ctrl+Y undo and redo, Esc clears selection. Snap, Layout, SVG, PNG, and Sample are available in the top toolbar.</p>
+    <p>Select nodes and edges with the Select tool. Shift-click nodes for basic multi-select. Drag nodes to move them. Use the Node tool to create nodes, Edge to connect two nodes, and Pan or middle mouse drag to move the canvas. Delete removes the selected object. Ctrl+S saves, Ctrl+C/Ctrl+V copy and paste selected nodes, Ctrl+Z/Ctrl+Y undo and redo, Esc clears selection. Snap, Layout, SVG, PNG, and Sample are available in the top toolbar. Unsaved browser drafts are stored locally and can be restored when reopening the same diagram.</p>
     <h2>Node Types</h2>
     <p>Supported types: process, decision, database, service, api, note, external. Unknown imported types are mapped to note.</p>
     <h2>Edges</h2>
@@ -163,9 +169,12 @@ std::string renderDocsPage() {
 }</pre>
     <h2>API</h2>
     <pre>GET /health
+GET /api/templates
+POST /api/templates/{key}/create
 GET /api/diagrams
 POST /api/diagrams
 GET /api/diagrams/{id}
+GET /api/diagrams/slug/{slug}
 PUT /api/diagrams/{id}
 DELETE /api/diagrams/{id}
 POST /api/diagrams/{id}/duplicate
@@ -176,8 +185,12 @@ GET /api/diagrams/{id}/export.json
 POST /api/diagrams/import</pre>
     <h2>Storage And Versioning</h2>
     <p>PostgreSQL stores diagrams, nodes, edges, and bounded version snapshots. Each save creates a snapshot and old versions are pruned by MAX_VERSIONS_PER_DIAGRAM.</p>
+    <h2>Security</h2>
+    <p>Public editing uses signed guest sessions, CSRF tokens, owner checks, input validation, and IP-based write/create rate limits. Admin login remains available for full access.</p>
+    <h2>Templates</h2>
+    <p>The app includes built-in cloud architecture, incident-response, and data-pipeline templates. Creating from a template stores a normal versioned diagram owned by the current guest session or admin.</p>
     <h2>Limitations</h2>
-    <p>v1 is single-user at a time with immediate browser updates, not WebSocket collaboration. The authenticated editor shell and toolbar are rendered by Nui C++ compiled with Emscripten/WASM; detailed canvas gestures use a small JavaScript bridge. Mutating API calls require CSRF tokens.</p>
+    <p>v1 is single-user at a time with immediate browser updates, not WebSocket collaboration. Guest ownership is session based rather than full account identity. The authenticated editor shell and toolbar are rendered by Nui C++ compiled with Emscripten/WASM; detailed canvas gestures use a small JavaScript bridge. Mutating API calls require CSRF tokens.</p>
   </main>
 </body>
 </html>)HTML";

@@ -16,12 +16,14 @@ add_executable(nuigraph-studio
     src/main.cpp
     src/App.cpp
     src/domain/Diagram.cpp
+    src/domain/Templates.cpp
     src/config/Config.cpp
     src/validation/DiagramValidator.cpp
     src/storage/PostgresStorage.cpp
     src/api/Routes.cpp
     src/ui/NuiApp.cpp
     src/utils/Json.cpp
+    src/utils/RateLimiter.cpp
 )
 
 target_include_directories(nuigraph-studio PRIVATE src)
@@ -39,9 +41,11 @@ enable_testing()
 add_executable(nuigraph-tests
     tests/test_validation.cpp
     src/domain/Diagram.cpp
+    src/domain/Templates.cpp
     src/config/Config.cpp
     src/validation/DiagramValidator.cpp
     src/utils/Json.cpp
+    src/utils/RateLimiter.cpp
 )
 
 target_include_directories(nuigraph-tests PRIVATE src)
@@ -49,3 +53,5 @@ target_link_libraries(nuigraph-tests PRIVATE nlohmann_json::nlohmann_json)
 target_compile_options(nuigraph-tests PRIVATE -Wall -Wextra -Wpedantic)
 
 add_test(NAME nuigraph-validation COMMAND nuigraph-tests)
+add_test(NAME nuigraph-frontend COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_frontend.sh)
+set_tests_properties(nuigraph-frontend PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})

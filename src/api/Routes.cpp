@@ -1,13 +1,17 @@
 #include "api/Routes.hpp"
 
 #include "domain/Diagram.hpp"
+#include "domain/Templates.hpp"
 #include "ui/NuiApp.hpp"
 #include "utils/Json.hpp"
+#include "utils/RateLimiter.hpp"
 
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
+#include <openssl/rand.h>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <filesystem>
 #include <iomanip>
@@ -50,6 +54,14 @@ std::string hmacHex(const std::string& secret, const std::string& payload) {
     HMAC(EVP_sha256(), secret.data(), static_cast<int>(secret.size()),
          reinterpret_cast<const unsigned char*>(payload.data()), payload.size(), digest, &len);
     return bytesToHex(digest, len);
+}
+
+std::string randomHex(std::size_t bytes) {
+    std::vector<unsigned char> data(bytes);
+    if (RAND_bytes(data.data(), static_cast<int>(data.size())) != 1) {
+        throw std::runtime_error("random generator failed");
+    }
+    return bytesToHex(data.data(), data.size());
 }
 
 bool constantTimeEquals(const std::vector<unsigned char>& a, const std::vector<unsigned char>& b) {
@@ -113,9 +125,23 @@ std::mutex& loginFailuresMutex() {
     return mutex;
 }
 
-bool loginBlocked(const std::string& ip) {
-    auto now = std::chrono::duration_cast<std::chrono::seconds>(
+long long epochSeconds() {
+    return std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
+RateLimiter& writeRateLimiter() {
+    static RateLimiter limiter;
+    return limiter;
+}
+
+RateLimiter& createRateLimiter() {
+    static RateLimiter limiter;
+    return limiter;
+}
+
+bool loginBlocked(const std::string& ip) {
+    auto now = epochSeconds();
     std::lock_guard<std::mutex> lock(loginFailuresMutex());
     auto& items = loginFailures()[ip];
     items.erase(std::remove_if(items.begin(), items.end(), [now](long long t) {
@@ -125,8 +151,7 @@ bool loginBlocked(const std::string& ip) {
 }
 
 void recordLoginFailure(const std::string& ip) {
-    auto now = std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count();
+    auto now = epochSeconds();
     std::lock_guard<std::mutex> lock(loginFailuresMutex());
     auto& items = loginFailures()[ip];
     items.erase(std::remove_if(items.begin(), items.end(), [now](long long t) {
@@ -148,6 +173,12 @@ std::string contentTypeFor(const std::string& path) {
     if (path.ends_with(".json")) return "application/json";
     if (path.ends_with(".map")) return "application/json";
     return "application/octet-stream";
+}
+
+bool safeSlug(const std::string& slug) {
+    return !slug.empty() && slug.size() <= 140 && std::all_of(slug.begin(), slug.end(), [](char c) {
+        return std::isalnum(static_cast<unsigned char>(c)) || c == '-';
+    });
 }
 
 long idParam(const httplib::Request& req, int index) {
@@ -200,12 +231,16 @@ bool Routes::verifyPassword(const std::string& password) const {
 }
 
 std::string Routes::makeSessionCookie(const std::string& username) const {
-    return "ngs_session=" + makeSessionValue(username) + "; Path=/; Max-Age=28800; HttpOnly; SameSite=Strict; Secure";
+    return makeCookie(username, 28800);
 }
 
-std::string Routes::makeSessionValue(const std::string& username) const {
+std::string Routes::makeCookie(const std::string& username, int maxAgeSeconds) const {
+    return "ngs_session=" + makeSessionValue(username, maxAgeSeconds) + "; Path=/; Max-Age=" + std::to_string(maxAgeSeconds) + "; HttpOnly; SameSite=Strict; Secure";
+}
+
+std::string Routes::makeSessionValue(const std::string& username, int maxAgeSeconds) const {
     auto expiry = std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count() + 8 * 60 * 60;
+        std::chrono::system_clock::now().time_since_epoch()).count() + maxAgeSeconds;
     std::string payload = username + "." + std::to_string(expiry);
     return payload + "." + hmacHex(cfg_.sessionSecret, payload);
 }
@@ -261,6 +296,51 @@ bool Routes::ensureCsrf(const httplib::Request& req, httplib::Response& res) {
     }
     sendJson(res, 403, errorJson("invalid csrf token"));
     return false;
+}
+
+bool Routes::ensureWriteRateLimit(const httplib::Request& req, httplib::Response& res, bool creation) {
+    const auto ip = clientIp(req);
+    const auto now = epochSeconds();
+    if (!writeRateLimiter().allow("write:" + ip, 240, 10 * 60, now)) {
+        sendJson(res, 429, errorJson("too many write requests"));
+        return false;
+    }
+    if (creation && !createRateLimiter().allow("create:" + ip, 40, 10 * 60, now)) {
+        sendJson(res, 429, errorJson("too many create requests"));
+        return false;
+    }
+    return true;
+}
+
+bool Routes::isAdmin(const httplib::Request& req) const {
+    std::string username;
+    return verifySession(req, &username) && username == cfg_.authUsername;
+}
+
+std::string Routes::ownerHashForRequest(const httplib::Request& req) const {
+    std::string username;
+    if (!verifySession(req, &username) || username == cfg_.authUsername) {
+        return {};
+    }
+    return hmacHex(cfg_.sessionSecret, "owner:" + username);
+}
+
+bool Routes::canEditDiagram(const httplib::Request& req, long diagramId) {
+    if (isAdmin(req)) {
+        return true;
+    }
+    auto owner = storage_.ownerHashForDiagram(diagramId);
+    if (owner.empty()) {
+        return true;
+    }
+    return owner == ownerHashForRequest(req);
+}
+
+nlohmann::json Routes::diagramResponse(const httplib::Request& req, const Diagram& diagram) {
+    auto body = diagramToJson(diagram);
+    body["can_edit"] = canEditDiagram(req, diagram.id);
+    body["share_url"] = cfg_.baseUrl + "/d/" + diagram.slug;
+    return body;
 }
 
 bool Routes::ensureAuthenticated(const httplib::Request& req, httplib::Response& res, bool htmlResponse) {
@@ -355,6 +435,14 @@ void Routes::registerRoutes(httplib::Server& server) {
         }
         res.set_content(renderEditorPage(username), "text/html; charset=utf-8");
     });
+    server.Get(R"(/d/([A-Za-z0-9-]+))", [this](const httplib::Request&, httplib::Response& res) {
+        auto nuiIndex = cfg_.projectRoot + "/public/nui/index.html";
+        if (std::filesystem::exists(nuiIndex)) {
+            res.set_content(readTextFile(nuiIndex), "text/html; charset=utf-8");
+            return;
+        }
+        res.set_content(renderEditorPage("guest"), "text/html; charset=utf-8");
+    });
     server.Get("/docs", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, true)) return;
         res.set_content(renderDocsPage(), "text/html; charset=utf-8");
@@ -367,9 +455,10 @@ void Routes::registerRoutes(httplib::Server& server) {
                 sendJson(res, 401, errorJson("authentication required"));
                 return;
             }
-            username = "guest";
-            auto session = makeSessionValue(username);
-            res.set_header("Set-Cookie", "ngs_session=" + session + "; Path=/; Max-Age=28800; HttpOnly; SameSite=Strict; Secure");
+            username = "guest_" + randomHex(12);
+            auto maxAge = 180 * 24 * 60 * 60;
+            auto session = makeSessionValue(username, maxAge);
+            res.set_header("Set-Cookie", "ngs_session=" + session + "; Path=/; Max-Age=" + std::to_string(maxAge) + "; HttpOnly; SameSite=Strict; Secure");
             sendJson(res, 200, {{"username", username}, {"public_access", true}, {"csrf_token", csrfTokenForSession(session)}});
             return;
         }
@@ -382,13 +471,47 @@ void Routes::registerRoutes(httplib::Server& server) {
         sendJson(res, 200, {{"diagrams", storage_.listDiagrams()}});
     });
 
+    server.Get("/api/templates", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!ensureAuthenticated(req, res, false)) return;
+        nlohmann::json items = nlohmann::json::array();
+        for (const auto& item : diagramTemplates()) {
+            items.push_back({
+                {"key", item.key},
+                {"title", item.title},
+                {"description", item.description},
+                {"category", item.category},
+                {"node_count", item.diagram.nodes.size()},
+                {"edge_count", item.diagram.edges.size()}
+            });
+        }
+        sendJson(res, 200, {{"templates", items}});
+    });
+
+    server.Post(R"(/api/templates/([A-Za-z0-9-]+)/create)", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureWriteRateLimit(req, res, true)) return;
+        if (!ensureCsrf(req, res)) return;
+        const auto* item = findDiagramTemplate(req.matches[1].str());
+        if (!item) {
+            sendJson(res, 404, errorJson("template not found"));
+            return;
+        }
+        try {
+            auto created = storage_.createDiagram(item->diagram, true, ownerHashForRequest(req));
+            sendJson(res, 201, diagramResponse(req, created));
+        } catch (const std::exception& e) {
+            sendJson(res, 400, errorJson(e.what()));
+        }
+    });
+
     server.Post("/api/diagrams", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureWriteRateLimit(req, res, true)) return;
         if (!ensureCsrf(req, res)) return;
         try {
             Diagram d = req.body.empty() ? defaultDiagram() : diagramFromJson(nlohmann::json::parse(req.body));
-            auto created = storage_.createDiagram(d, false);
-            sendJson(res, 201, diagramToJson(created));
+            auto created = storage_.createDiagram(d, false, ownerHashForRequest(req));
+            sendJson(res, 201, diagramResponse(req, created));
         } catch (const std::exception& e) {
             sendJson(res, 400, errorJson(e.what()));
         }
@@ -397,7 +520,23 @@ void Routes::registerRoutes(httplib::Server& server) {
     server.Get(R"(/api/diagrams/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
         try {
-            sendJson(res, 200, diagramToJson(storage_.getDiagram(idParam(req, 1))));
+            auto diagram = storage_.getDiagram(idParam(req, 1));
+            sendJson(res, 200, diagramResponse(req, diagram));
+        } catch (const std::exception& e) {
+            sendJson(res, 404, errorJson(e.what()));
+        }
+    });
+
+    server.Get(R"(/api/diagrams/slug/([A-Za-z0-9-]+))", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!ensureAuthenticated(req, res, false)) return;
+        auto slug = req.matches[1].str();
+        if (!safeSlug(slug)) {
+            sendJson(res, 400, errorJson("invalid slug"));
+            return;
+        }
+        try {
+            auto diagram = storage_.getDiagramBySlug(slug);
+            sendJson(res, 200, diagramResponse(req, diagram));
         } catch (const std::exception& e) {
             sendJson(res, 404, errorJson(e.what()));
         }
@@ -405,12 +544,17 @@ void Routes::registerRoutes(httplib::Server& server) {
 
     server.Put(R"(/api/diagrams/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureWriteRateLimit(req, res, false)) return;
         if (!ensureCsrf(req, res)) return;
+        if (!canEditDiagram(req, idParam(req, 1))) {
+            sendJson(res, 403, errorJson("diagram is read-only for this visitor"));
+            return;
+        }
         try {
             auto body = nlohmann::json::parse(req.body);
             auto d = diagramFromJson(body);
             auto note = body.value("note", "saved snapshot");
-            sendJson(res, 200, diagramToJson(storage_.updateDiagram(idParam(req, 1), d, note, false)));
+            sendJson(res, 200, diagramResponse(req, storage_.updateDiagram(idParam(req, 1), d, note, false)));
         } catch (const std::exception& e) {
             sendJson(res, 400, errorJson(e.what()));
         }
@@ -418,16 +562,23 @@ void Routes::registerRoutes(httplib::Server& server) {
 
     server.Delete(R"(/api/diagrams/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureWriteRateLimit(req, res, false)) return;
         if (!ensureCsrf(req, res)) return;
+        if (!canEditDiagram(req, idParam(req, 1))) {
+            sendJson(res, 403, errorJson("diagram is read-only for this visitor"));
+            return;
+        }
         storage_.deleteDiagram(idParam(req, 1));
         sendJson(res, 200, {{"ok", true}});
     });
 
     server.Post(R"(/api/diagrams/(\d+)/duplicate)", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureWriteRateLimit(req, res, true)) return;
         if (!ensureCsrf(req, res)) return;
         try {
-            sendJson(res, 201, diagramToJson(storage_.duplicateDiagram(idParam(req, 1))));
+            auto copy = storage_.duplicateDiagram(idParam(req, 1), ownerHashForRequest(req));
+            sendJson(res, 201, diagramResponse(req, copy));
         } catch (const std::exception& e) {
             sendJson(res, 404, errorJson(e.what()));
         }
@@ -444,7 +595,12 @@ void Routes::registerRoutes(httplib::Server& server) {
 
     server.Post(R"(/api/diagrams/(\d+)/versions)", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureWriteRateLimit(req, res, false)) return;
         if (!ensureCsrf(req, res)) return;
+        if (!canEditDiagram(req, idParam(req, 1))) {
+            sendJson(res, 403, errorJson("diagram is read-only for this visitor"));
+            return;
+        }
         auto note = std::string("manual snapshot");
         if (!req.body.empty()) {
             try { note = nlohmann::json::parse(req.body).value("note", note); } catch (...) {}
@@ -455,9 +611,14 @@ void Routes::registerRoutes(httplib::Server& server) {
 
     server.Post(R"(/api/diagrams/(\d+)/restore/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureWriteRateLimit(req, res, false)) return;
         if (!ensureCsrf(req, res)) return;
+        if (!canEditDiagram(req, idParam(req, 1))) {
+            sendJson(res, 403, errorJson("diagram is read-only for this visitor"));
+            return;
+        }
         try {
-            sendJson(res, 200, diagramToJson(storage_.restoreVersion(idParam(req, 1), idParam(req, 2))));
+            sendJson(res, 200, diagramResponse(req, storage_.restoreVersion(idParam(req, 1), idParam(req, 2))));
         } catch (const std::exception& e) {
             sendJson(res, 404, errorJson(e.what()));
         }
@@ -475,14 +636,15 @@ void Routes::registerRoutes(httplib::Server& server) {
 
     server.Post("/api/diagrams/import", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureWriteRateLimit(req, res, true)) return;
         if (!ensureCsrf(req, res)) return;
         if (req.body.size() > cfg_.maxImportBytes) {
             sendJson(res, 413, errorJson("import body too large"));
             return;
         }
         try {
-            auto imported = storage_.createDiagram(diagramFromJson(nlohmann::json::parse(req.body)), true);
-            sendJson(res, 201, diagramToJson(imported));
+            auto imported = storage_.createDiagram(diagramFromJson(nlohmann::json::parse(req.body)), true, ownerHashForRequest(req));
+            sendJson(res, 201, diagramResponse(req, imported));
         } catch (const std::exception& e) {
             sendJson(res, 400, errorJson(e.what()));
         }

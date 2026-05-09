@@ -6,4 +6,6 @@ set -a
 source "$ROOT_DIR/.env"
 set +a
 
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$ROOT_DIR/migrations/001_init.sql"
+for migration in "$ROOT_DIR"/migrations/*.sql; do
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+done

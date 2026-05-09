@@ -18,10 +18,12 @@ public:
     bool ping();
     std::vector<nlohmann::json> listDiagrams();
     Diagram getDiagram(long id);
-    Diagram createDiagram(const Diagram& input, bool importMode);
+    Diagram getDiagramBySlug(const std::string& slug);
+    std::string ownerHashForDiagram(long id);
+    Diagram createDiagram(const Diagram& input, bool importMode, const std::string& ownerTokenHash = "");
     Diagram updateDiagram(long id, const Diagram& input, const std::string& note, bool importMode);
     void deleteDiagram(long id);
-    Diagram duplicateDiagram(long id);
+    Diagram duplicateDiagram(long id, const std::string& ownerTokenHash = "");
     std::vector<VersionInfo> listVersions(long diagramId);
     VersionInfo createVersion(long diagramId, const std::string& note);
     Diagram restoreVersion(long diagramId, long versionId);

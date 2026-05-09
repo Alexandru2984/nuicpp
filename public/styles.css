@@ -121,6 +121,17 @@ label {
   font-variant-numeric: tabular-nums;
 }
 
+.draft-status {
+  min-width: 76px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+body.dirty .draft-status {
+  color: #fde68a;
+}
+
 .project-panel, .properties, .toolbox {
   background: var(--panel);
   border-right: 1px solid var(--line);
@@ -215,6 +226,12 @@ h2 {
 .diagram-list, .version-list {
   display: grid;
   gap: 8px;
+}
+
+.template-section {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
 }
 
 .diagram-item {

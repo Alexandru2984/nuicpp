@@ -100,6 +100,30 @@ Diagram PostgresStorage::getDiagram(long id) {
     return diagram;
 }
 
+Diagram PostgresStorage::getDiagramBySlug(const std::string& slug) {
+    auto conn = connect();
+    pqxx::work tx(conn);
+    auto rows = tx.exec_params("SELECT id FROM diagrams WHERE slug=$1", slug);
+    if (rows.empty()) {
+        throw std::runtime_error("diagram not found");
+    }
+    auto diagram = getDiagram(tx, rows[0]["id"].as<long>());
+    tx.commit();
+    return diagram;
+}
+
+std::string PostgresStorage::ownerHashForDiagram(long id) {
+    auto conn = connect();
+    pqxx::work tx(conn);
+    auto rows = tx.exec_params("SELECT owner_token_hash FROM diagrams WHERE id=$1", id);
+    if (rows.empty()) {
+        throw std::runtime_error("diagram not found");
+    }
+    auto owner = rows[0]["owner_token_hash"].is_null() ? "" : rows[0]["owner_token_hash"].as<std::string>();
+    tx.commit();
+    return owner;
+}
+
 Diagram PostgresStorage::getDiagram(pqxx::work& tx, long id) {
     auto rows = tx.exec_params(R"SQL(
         SELECT id, title, slug, description,
@@ -172,7 +196,7 @@ void PostgresStorage::replaceNodesAndEdges(pqxx::work& tx, long diagramId, const
     }
 }
 
-Diagram PostgresStorage::createDiagram(const Diagram& input, bool importMode) {
+Diagram PostgresStorage::createDiagram(const Diagram& input, bool importMode, const std::string& ownerTokenHash) {
     Diagram diagram = input;
     auto validation = validator_.validate(diagram, importMode);
     if (!validation.ok) {
@@ -182,10 +206,10 @@ Diagram PostgresStorage::createDiagram(const Diagram& input, bool importMode) {
     pqxx::work tx(conn);
     auto slug = uniqueSlug(tx, diagram.title);
     auto rows = tx.exec_params(R"SQL(
-        INSERT INTO diagrams (title, slug, description)
-        VALUES ($1,$2,$3)
+        INSERT INTO diagrams (title, slug, description, owner_token_hash)
+        VALUES ($1,$2,$3,$4)
         RETURNING id
-    )SQL", diagram.title, slug, diagram.description);
+    )SQL", diagram.title, slug, diagram.description, ownerTokenHash);
     long id = rows[0]["id"].as<long>();
     replaceNodesAndEdges(tx, id, diagram);
     createVersion(tx, id, "initial snapshot");
@@ -220,12 +244,12 @@ void PostgresStorage::deleteDiagram(long id) {
     tx.commit();
 }
 
-Diagram PostgresStorage::duplicateDiagram(long id) {
+Diagram PostgresStorage::duplicateDiagram(long id, const std::string& ownerTokenHash) {
     auto source = getDiagram(id);
     source.id = 0;
     source.title += " Copy";
     source.slug.clear();
-    return createDiagram(source, false);
+    return createDiagram(source, false, ownerTokenHash);
 }
 
 std::vector<VersionInfo> PostgresStorage::listVersions(long diagramId) {
