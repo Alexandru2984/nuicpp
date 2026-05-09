@@ -6,12 +6,16 @@ NuiGraph Studio is a production-oriented C++ graph and diagram editor deployed a
 
 - Dark visual SVG editor with grid, pan, zoom, selectable objects, node dragging, and immediate browser updates.
 - Diagram CRUD: create, list, open, rename, duplicate, delete, save, import, and JSON export.
+- Sample architecture diagram loader for demos.
+- SVG and PNG export from the visual canvas.
+- Snap-to-grid toggle, simple auto-layout, minimap, copy/paste, and Shift-click multi-select basics.
 - Node types: `process`, `decision`, `database`, `service`, `api`, `note`, `external`.
 - Directed and undirected labeled edges with colors and arrowheads.
 - Basic undo/redo in the browser for common editing operations.
 - PostgreSQL persistence for diagrams, nodes, edges, and bounded version snapshots.
 - Version history with manual snapshots and restore.
 - Admin login with PBKDF2-SHA256 password hash in `.env`.
+- CSRF protection for mutating JSON endpoints and login rate limiting.
 - Public `/health` endpoint with non-sensitive JSON.
 
 ## Stack
@@ -198,6 +202,9 @@ Each save creates a version snapshot in `diagram_versions`. Manual snapshots can
 - Nginx terminates TLS and proxies to the local app port.
 - Editing endpoints require signed-session admin login.
 - Passwords are verified using PBKDF2-SHA256 hashes.
+- Mutating API endpoints require `X-CSRF-Token` from `/api/session`.
+- Login attempts are rate-limited in the C++ app.
+- Nginx sends HSTS, CSP, frame, content-type, referrer, and permissions policy headers.
 - Input validation limits title lengths, description lengths, node count, edge count, import size, colors, keys, coordinates, and node sizes.
 - Import rejects invalid JSON and edges pointing to missing nodes.
 - The web app does not execute shell commands and does not expose filesystem path access.
@@ -224,6 +231,7 @@ Git commits and pushes are manual and were not done by the agent.
 
 ```bash
 scripts/deploy_check.sh
+ctest --test-dir build --output-on-failure
 curl -fsS http://127.0.0.1:${APP_PORT}/health
 sudo journalctl -u nuigraph-studio.service -n 100 --no-pager
 sudo nginx -t
@@ -233,7 +241,8 @@ psql "$DATABASE_URL" -c "\\dt"
 
 ## Limitations And TODOs
 
-- The editor shell/canvas root is Nui C++/WASM; detailed canvas gestures still use a small JavaScript bridge.
+- The editor shell/canvas root and toolbar are Nui C++/WASM; detailed canvas gestures still use a small JavaScript bridge.
+- The initial admin password file should be removed after the password is stored in a password manager and/or rotated.
 - Collaboration/WebSocket editing is not implemented in v1.
 - Undo/redo is browser-local and basic; persisted granular command history is a future improvement.
 - Mobile and tablet layouts are functional but the polished target is desktop.

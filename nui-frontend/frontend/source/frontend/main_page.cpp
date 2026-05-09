@@ -37,10 +37,17 @@ Nui::ElementRenderer MainPage::render() {
                 ),
                 div{class_ = "top-actions"}(
                     button{id = "new-diagram", title = "New diagram"}("New"),
+                    button{id = "load-sample", title = "Load sample architecture"}("Sample"),
                     button{id = "save-diagram", title = "Save"}("Save"),
                     button{id = "undo", title = "Undo"}("Undo"),
                     button{id = "redo", title = "Redo"}("Redo"),
+                    button{id = "copy-selected", title = "Copy selected"}("Copy"),
+                    button{id = "paste-selected", title = "Paste copied"}("Paste"),
+                    button{id = "auto-layout", title = "Auto layout"}("Layout"),
+                    button{id = "snap-toggle", title = "Toggle snap to grid", class_ = "active"}("Snap"),
                     button{id = "export-json", title = "Export JSON"}("Export"),
+                    button{id = "export-svg", title = "Export SVG"}("SVG"),
+                    button{id = "export-png", title = "Export PNG"}("PNG"),
                     button{id = "import-json", title = "Import JSON"}("Import"),
                     button{id = "zoom-out", title = "Zoom out"}("-"),
                     span{id = "zoom-label"}("100%"),
@@ -87,7 +94,8 @@ Nui::ElementRenderer MainPage::render() {
                         se::g{id = "edges"}(),
                         se::g{id = "nodes"}()
                     )
-                )
+                ),
+                div{id = "minimap", class_ = "minimap"}()
             ),
             aside{class_ = "properties"}(
                 h2{}("Properties"),

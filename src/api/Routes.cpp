@@ -7,9 +7,12 @@
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <iomanip>
+#include <mutex>
+#include <unordered_map>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
@@ -39,6 +42,14 @@ std::string bytesToHex(const unsigned char* data, std::size_t len) {
         out << std::setw(2) << static_cast<int>(data[i]);
     }
     return out.str();
+}
+
+std::string hmacHex(const std::string& secret, const std::string& payload) {
+    unsigned int len = 0;
+    unsigned char digest[EVP_MAX_MD_SIZE];
+    HMAC(EVP_sha256(), secret.data(), static_cast<int>(secret.size()),
+         reinterpret_cast<const unsigned char*>(payload.data()), payload.size(), digest, &len);
+    return bytesToHex(digest, len);
 }
 
 bool constantTimeEquals(const std::vector<unsigned char>& a, const std::vector<unsigned char>& b) {
@@ -77,6 +88,56 @@ std::string cookieValue(const httplib::Request& req, const std::string& name) {
         pos = end + 1;
     }
     return {};
+}
+
+std::string clientIp(const httplib::Request& req) {
+    auto forwarded = req.get_header_value("X-Forwarded-For");
+    if (!forwarded.empty()) {
+        auto comma = forwarded.find(',');
+        return forwarded.substr(0, comma == std::string::npos ? std::string::npos : comma);
+    }
+    auto real = req.get_header_value("X-Real-IP");
+    if (!real.empty()) {
+        return real;
+    }
+    return req.remote_addr;
+}
+
+std::unordered_map<std::string, std::vector<long long>>& loginFailures() {
+    static std::unordered_map<std::string, std::vector<long long>> failures;
+    return failures;
+}
+
+std::mutex& loginFailuresMutex() {
+    static std::mutex mutex;
+    return mutex;
+}
+
+bool loginBlocked(const std::string& ip) {
+    auto now = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    std::lock_guard<std::mutex> lock(loginFailuresMutex());
+    auto& items = loginFailures()[ip];
+    items.erase(std::remove_if(items.begin(), items.end(), [now](long long t) {
+        return now - t > 10 * 60;
+    }), items.end());
+    return items.size() >= 8;
+}
+
+void recordLoginFailure(const std::string& ip) {
+    auto now = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    std::lock_guard<std::mutex> lock(loginFailuresMutex());
+    auto& items = loginFailures()[ip];
+    items.erase(std::remove_if(items.begin(), items.end(), [now](long long t) {
+        return now - t > 10 * 60;
+    }), items.end());
+    items.push_back(now);
+}
+
+void clearLoginFailures(const std::string& ip) {
+    std::lock_guard<std::mutex> lock(loginFailuresMutex());
+    loginFailures().erase(ip);
 }
 
 std::string contentTypeFor(const std::string& path) {
@@ -142,11 +203,7 @@ std::string Routes::makeSessionCookie(const std::string& username) const {
     auto expiry = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count() + 8 * 60 * 60;
     std::string payload = username + "." + std::to_string(expiry);
-    unsigned int len = 0;
-    unsigned char digest[EVP_MAX_MD_SIZE];
-    HMAC(EVP_sha256(), cfg_.sessionSecret.data(), static_cast<int>(cfg_.sessionSecret.size()),
-         reinterpret_cast<const unsigned char*>(payload.data()), payload.size(), digest, &len);
-    return "ngs_session=" + payload + "." + bytesToHex(digest, len) + "; Path=/; Max-Age=28800; HttpOnly; SameSite=Strict; Secure";
+    return "ngs_session=" + payload + "." + hmacHex(cfg_.sessionSecret, payload) + "; Path=/; Max-Age=28800; HttpOnly; SameSite=Strict; Secure";
 }
 
 bool Routes::verifySession(const httplib::Request& req, std::string* username) const {
@@ -167,17 +224,39 @@ bool Routes::verifySession(const httplib::Request& req, std::string* username) c
         return false;
     }
     std::string payload = parts[0] + "." + parts[1];
-    unsigned int len = 0;
-    unsigned char digest[EVP_MAX_MD_SIZE];
-    HMAC(EVP_sha256(), cfg_.sessionSecret.data(), static_cast<int>(cfg_.sessionSecret.size()),
-         reinterpret_cast<const unsigned char*>(payload.data()), payload.size(), digest, &len);
-    auto expected = hexToBytes(bytesToHex(digest, len));
+    auto expected = hexToBytes(hmacHex(cfg_.sessionSecret, payload));
     auto actual = hexToBytes(parts[2]);
     if (!constantTimeEquals(actual, expected)) {
         return false;
     }
     if (username) *username = parts[0];
     return true;
+}
+
+std::string Routes::csrfTokenForSession(const std::string& session) const {
+    return hmacHex(cfg_.sessionSecret, session + ".csrf");
+}
+
+bool Routes::verifyCsrf(const httplib::Request& req) const {
+    auto session = cookieValue(req, "ngs_session");
+    if (session.empty() || !verifySession(req, nullptr)) {
+        return false;
+    }
+    auto supplied = req.get_header_value("X-CSRF-Token");
+    if (supplied.empty()) {
+        return false;
+    }
+    auto expected = hexToBytes(csrfTokenForSession(session));
+    auto actual = hexToBytes(supplied);
+    return constantTimeEquals(actual, expected);
+}
+
+bool Routes::ensureCsrf(const httplib::Request& req, httplib::Response& res) {
+    if (verifyCsrf(req)) {
+        return true;
+    }
+    sendJson(res, 403, errorJson("invalid csrf token"));
+    return false;
 }
 
 bool Routes::ensureAuthenticated(const httplib::Request& req, httplib::Response& res, bool htmlResponse) {
@@ -230,13 +309,21 @@ void Routes::registerRoutes(httplib::Server& server) {
         res.set_content(renderLoginPage(""), "text/html; charset=utf-8");
     });
     server.Post("/login", [this](const httplib::Request& req, httplib::Response& res) {
+        auto ip = clientIp(req);
+        if (loginBlocked(ip)) {
+            res.status = 429;
+            res.set_content(renderLoginPage("Too many login attempts. Try again later."), "text/html; charset=utf-8");
+            return;
+        }
         auto username = formValue(req.body, "username");
         auto password = formValue(req.body, "password");
         if (username == cfg_.authUsername && verifyPassword(password)) {
+            clearLoginFailures(ip);
             res.status = 302;
             res.set_header("Set-Cookie", makeSessionCookie(username));
             res.set_header("Location", "/");
         } else {
+            recordLoginFailure(ip);
             res.status = 401;
             res.set_content(renderLoginPage("Invalid credentials"), "text/html; charset=utf-8");
         }
@@ -266,6 +353,16 @@ void Routes::registerRoutes(httplib::Server& server) {
         res.set_content(renderDocsPage(), "text/html; charset=utf-8");
     });
 
+    server.Get("/api/session", [this](const httplib::Request& req, httplib::Response& res) {
+        std::string username;
+        if (!verifySession(req, &username)) {
+            sendJson(res, 401, errorJson("authentication required"));
+            return;
+        }
+        auto session = cookieValue(req, "ngs_session");
+        sendJson(res, 200, {{"username", username}, {"csrf_token", csrfTokenForSession(session)}});
+    });
+
     server.Get("/api/diagrams", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
         sendJson(res, 200, {{"diagrams", storage_.listDiagrams()}});
@@ -273,6 +370,7 @@ void Routes::registerRoutes(httplib::Server& server) {
 
     server.Post("/api/diagrams", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureCsrf(req, res)) return;
         try {
             Diagram d = req.body.empty() ? defaultDiagram() : diagramFromJson(nlohmann::json::parse(req.body));
             auto created = storage_.createDiagram(d, false);
@@ -293,6 +391,7 @@ void Routes::registerRoutes(httplib::Server& server) {
 
     server.Put(R"(/api/diagrams/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureCsrf(req, res)) return;
         try {
             auto body = nlohmann::json::parse(req.body);
             auto d = diagramFromJson(body);
@@ -305,12 +404,14 @@ void Routes::registerRoutes(httplib::Server& server) {
 
     server.Delete(R"(/api/diagrams/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureCsrf(req, res)) return;
         storage_.deleteDiagram(idParam(req, 1));
         sendJson(res, 200, {{"ok", true}});
     });
 
     server.Post(R"(/api/diagrams/(\d+)/duplicate)", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureCsrf(req, res)) return;
         try {
             sendJson(res, 201, diagramToJson(storage_.duplicateDiagram(idParam(req, 1))));
         } catch (const std::exception& e) {
@@ -329,6 +430,7 @@ void Routes::registerRoutes(httplib::Server& server) {
 
     server.Post(R"(/api/diagrams/(\d+)/versions)", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureCsrf(req, res)) return;
         auto note = std::string("manual snapshot");
         if (!req.body.empty()) {
             try { note = nlohmann::json::parse(req.body).value("note", note); } catch (...) {}
@@ -339,6 +441,7 @@ void Routes::registerRoutes(httplib::Server& server) {
 
     server.Post(R"(/api/diagrams/(\d+)/restore/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureCsrf(req, res)) return;
         try {
             sendJson(res, 200, diagramToJson(storage_.restoreVersion(idParam(req, 1), idParam(req, 2))));
         } catch (const std::exception& e) {
@@ -358,6 +461,7 @@ void Routes::registerRoutes(httplib::Server& server) {
 
     server.Post("/api/diagrams/import", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureCsrf(req, res)) return;
         if (req.body.size() > cfg_.maxImportBytes) {
             sendJson(res, 413, errorJson("import body too large"));
             return;

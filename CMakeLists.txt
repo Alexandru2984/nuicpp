@@ -33,3 +33,19 @@ target_link_libraries(nuigraph-studio PRIVATE
 )
 
 target_compile_options(nuigraph-studio PRIVATE -Wall -Wextra -Wpedantic)
+
+enable_testing()
+
+add_executable(nuigraph-tests
+    tests/test_validation.cpp
+    src/domain/Diagram.cpp
+    src/config/Config.cpp
+    src/validation/DiagramValidator.cpp
+    src/utils/Json.cpp
+)
+
+target_include_directories(nuigraph-tests PRIVATE src)
+target_link_libraries(nuigraph-tests PRIVATE nlohmann_json::nlohmann_json)
+target_compile_options(nuigraph-tests PRIVATE -Wall -Wextra -Wpedantic)
+
+add_test(NAME nuigraph-validation COMMAND nuigraph-tests)

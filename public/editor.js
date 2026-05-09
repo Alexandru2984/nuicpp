@@ -23,13 +23,16 @@
     current: null,
     selected: null,
     tool: "select",
+    snap: true,
     zoom: 1,
     pan: { x: 80, y: 70 },
     edgeSource: null,
+    csrfToken: null,
     history: [],
     future: [],
     dragging: null,
-    panning: null
+    panning: null,
+    clipboard: null
   };
 
   const el = (id) => document.getElementById(id);
@@ -38,10 +41,27 @@
   const nodesLayer = el("nodes");
   const edgesLayer = el("edges");
 
-  function api(path, options = {}) {
+  async function ensureCsrfToken() {
+    if (state.csrfToken) return state.csrfToken;
+    const res = await fetch("/api/session", { credentials: "same-origin" });
+    if (res.status === 401) {
+      location.href = "/login";
+      throw new Error("authentication required");
+    }
+    const data = await res.json();
+    state.csrfToken = data.csrf_token;
+    return state.csrfToken;
+  }
+
+  async function api(path, options = {}) {
+    const method = (options.method || "GET").toUpperCase();
+    const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+    if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+      headers["X-CSRF-Token"] = await ensureCsrfToken();
+    }
     return fetch(path, {
       credentials: "same-origin",
-      headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+      headers,
       ...options
     }).then(async (res) => {
       if (res.status === 401) {
@@ -107,6 +127,32 @@
     return { x: node.x + node.width / 2, y: node.y + node.height / 2 };
   }
 
+  function snapValue(value, grid = 8) {
+    return state.snap ? Math.round(value / grid) * grid : value;
+  }
+
+  function selectedNodeKeys() {
+    if (!state.selected) return [];
+    if (state.selected.type === "node") return [state.selected.key];
+    if (state.selected.type === "nodes") return state.selected.keys;
+    return [];
+  }
+
+  function isNodeSelected(key) {
+    return selectedNodeKeys().includes(key);
+  }
+
+  function toggleNodeSelection(key) {
+    const keys = new Set(selectedNodeKeys());
+    if (keys.has(key)) {
+      keys.delete(key);
+    } else {
+      keys.add(key);
+    }
+    const next = [...keys];
+    state.selected = next.length === 0 ? null : next.length === 1 ? { type: "node", key: next[0] } : { type: "nodes", keys: next };
+  }
+
   function svg(tag, attrs = {}, parent) {
     const node = document.createElementNS(svgNS, tag);
     for (const [key, value] of Object.entries(attrs)) {
@@ -119,6 +165,85 @@
   function shortText(text, max = 22) {
     text = text || "";
     return text.length > max ? `${text.slice(0, max - 1)}...` : text;
+  }
+
+  function sampleDiagram() {
+    return {
+      title: "Sample Cloud Architecture",
+      description: "Demo service graph for NuiGraph Studio.",
+      nodes: [
+        { key: "client", type: "external", title: "Client Apps", x: 40, y: 130, width: 170, height: 80, color: "#fb7185", metadata: {} },
+        { key: "gateway", type: "api", title: "API Gateway", x: 300, y: 130, width: 180, height: 80, color: "#60a5fa", metadata: {} },
+        { key: "auth", type: "service", title: "Auth Service", x: 570, y: 40, width: 180, height: 80, color: "#22c55e", metadata: {} },
+        { key: "orders", type: "service", title: "Orders Service", x: 570, y: 170, width: 180, height: 80, color: "#22c55e", metadata: {} },
+        { key: "queue", type: "process", title: "Event Queue", x: 830, y: 170, width: 170, height: 80, color: "#38bdf8", metadata: {} },
+        { key: "db", type: "database", title: "PostgreSQL", x: 830, y: 40, width: 170, height: 90, color: "#a78bfa", metadata: {} },
+        { key: "decision", type: "decision", title: "Fraud Check", x: 1090, y: 150, width: 160, height: 110, color: "#f59e0b", metadata: {} },
+        { key: "note", type: "note", title: "Versioned diagrams stored in PostgreSQL", x: 1030, y: 20, width: 260, height: 90, color: "#fde047", metadata: {} }
+      ],
+      edges: [
+        { key: "e_client_gateway", source: "client", target: "gateway", label: "HTTPS", directed: true, color: "#94a3b8", metadata: {} },
+        { key: "e_gateway_auth", source: "gateway", target: "auth", label: "OIDC", directed: true, color: "#94a3b8", metadata: {} },
+        { key: "e_gateway_orders", source: "gateway", target: "orders", label: "REST", directed: true, color: "#94a3b8", metadata: {} },
+        { key: "e_auth_db", source: "auth", target: "db", label: "sessions", directed: true, color: "#a78bfa", metadata: {} },
+        { key: "e_orders_db", source: "orders", target: "db", label: "writes", directed: true, color: "#a78bfa", metadata: {} },
+        { key: "e_orders_queue", source: "orders", target: "queue", label: "events", directed: true, color: "#38bdf8", metadata: {} },
+        { key: "e_queue_decision", source: "queue", target: "decision", label: "async", directed: true, color: "#f59e0b", metadata: {} }
+      ]
+    };
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportSvg() {
+    if (!state.current) return;
+    const clone = canvas.cloneNode(true);
+    clone.setAttribute("xmlns", svgNS);
+    clone.setAttribute("width", canvas.clientWidth || 1200);
+    clone.setAttribute("height", canvas.clientHeight || 800);
+    const css = `text{font-family:Inter,Arial,sans-serif}.node-title{fill:#071018;font-weight:700;font-size:14px;text-anchor:middle;dominant-baseline:middle}.node-subtitle{fill:rgba(7,16,24,.72);font-size:10px;text-anchor:middle;dominant-baseline:middle;text-transform:uppercase}.edge-label{fill:#dbeafe;paint-order:stroke;stroke:#0b0f14;stroke-width:4;font-size:12px;text-anchor:middle;dominant-baseline:middle}.edge-path{stroke-width:2.4;fill:none}`;
+    const style = document.createElementNS(svgNS, "style");
+    style.textContent = css;
+    clone.insertBefore(style, clone.firstChild);
+    const text = new XMLSerializer().serializeToString(clone);
+    downloadBlob(new Blob([text], { type: "image/svg+xml" }), `${state.current.slug || state.current.title || "diagram"}.svg`);
+  }
+
+  function exportPng() {
+    if (!state.current) return;
+    const clone = canvas.cloneNode(true);
+    clone.setAttribute("xmlns", svgNS);
+    const width = canvas.clientWidth || 1200;
+    const height = canvas.clientHeight || 800;
+    clone.setAttribute("width", width);
+    clone.setAttribute("height", height);
+    const text = new XMLSerializer().serializeToString(clone);
+    const img = new Image();
+    const url = URL.createObjectURL(new Blob([text], { type: "image/svg+xml" }));
+    img.onload = () => {
+      const out = document.createElement("canvas");
+      out.width = width * 2;
+      out.height = height * 2;
+      const ctx = out.getContext("2d");
+      ctx.fillStyle = "#090d12";
+      ctx.fillRect(0, 0, out.width, out.height);
+      ctx.scale(2, 2);
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      out.toBlob((blob) => {
+        if (blob) downloadBlob(blob, `${state.current.slug || state.current.title || "diagram"}.png`);
+      }, "image/png");
+    };
+    img.src = url;
   }
 
   function renderEdges() {
@@ -157,7 +282,7 @@
   }
 
   function renderNodeShape(group, node) {
-    const selected = state.selected?.type === "node" && state.selected.key === node.key;
+    const selected = isNodeSelected(node.key);
     group.setAttribute("class", selected ? "selected" : "");
     const fill = node.color || colors[node.type] || colors.process;
     if (node.type === "decision") {
@@ -207,11 +332,27 @@
           render();
           return;
         }
-        state.selected = { type: "node", key: node.key };
+        if (evt.shiftKey && state.tool === "select") {
+          toggleNodeSelection(node.key);
+          render();
+          return;
+        }
         if (state.tool === "select") {
           pushHistory();
           const p = worldPoint(evt);
-          state.dragging = { key: node.key, dx: p.x - node.x, dy: p.y - node.y };
+          const keys = selectedNodeKeys().includes(node.key) ? selectedNodeKeys() : [node.key];
+          if (!selectedNodeKeys().includes(node.key)) {
+            state.selected = { type: "node", key: node.key };
+          }
+          state.dragging = {
+            key: node.key,
+            keys,
+            dx: p.x - node.x,
+            dy: p.y - node.y,
+            originals: Object.fromEntries(state.current.nodes.filter((n) => keys.includes(n.key)).map((n) => [n.key, { x: n.x, y: n.y }]))
+          };
+        } else {
+          state.selected = { type: "node", key: node.key };
         }
         render();
       });
@@ -225,6 +366,7 @@
     nodeProps.classList.add("hidden");
     edgeProps.classList.add("hidden");
     empty.classList.remove("hidden");
+    empty.textContent = "No selection";
     if (!state.current || !state.selected) return;
     if (state.selected.type === "node") {
       const node = state.current.nodes.find((n) => n.key === state.selected.key);
@@ -236,6 +378,8 @@
       el("prop-color").value = node.color;
       el("prop-width").value = Math.round(node.width);
       el("prop-height").value = Math.round(node.height);
+    } else if (state.selected.type === "nodes") {
+      empty.textContent = `${state.selected.keys.length} nodes selected`;
     } else if (state.selected.type === "edge") {
       const edge = state.current.edges.find((e) => e.key === state.selected.key);
       if (!edge) return;
@@ -256,6 +400,35 @@
     renderEdges();
     renderNodes();
     renderProperties();
+    renderMinimap();
+  }
+
+  function renderMinimap() {
+    const minimap = el("minimap");
+    if (!minimap) return;
+    minimap.replaceChildren();
+    if (!state.current || !state.current.nodes.length) return;
+    const xs = state.current.nodes.flatMap((n) => [n.x, n.x + n.width]);
+    const ys = state.current.nodes.flatMap((n) => [n.y, n.y + n.height]);
+    const minX = Math.min(...xs) - 80;
+    const minY = Math.min(...ys) - 80;
+    const maxX = Math.max(...xs) + 80;
+    const maxY = Math.max(...ys) + 80;
+    const w = Math.max(1, maxX - minX);
+    const h = Math.max(1, maxY - minY);
+    const mini = svg("svg", { viewBox: `${minX} ${minY} ${w} ${h}` }, minimap);
+    const byKey = new Map(state.current.nodes.map((n) => [n.key, n]));
+    for (const edge of state.current.edges) {
+      const a = byKey.get(edge.source);
+      const b = byKey.get(edge.target);
+      if (!a || !b) continue;
+      const ca = nodeCenter(a);
+      const cb = nodeCenter(b);
+      svg("line", { x1: ca.x, y1: ca.y, x2: cb.x, y2: cb.y, stroke: "#64748b", "stroke-width": 6, "stroke-linecap": "round" }, mini);
+    }
+    for (const node of state.current.nodes) {
+      svg("rect", { x: node.x, y: node.y, width: node.width, height: node.height, rx: 12, fill: node.color || "#38bdf8", stroke: isNodeSelected(node.key) ? "#ffffff" : "rgba(0,0,0,.35)", "stroke-width": isNodeSelected(node.key) ? 8 : 3 }, mini);
+    }
   }
 
   function renderDiagramList() {
@@ -316,6 +489,12 @@
     await openDiagram(created.id);
   }
 
+  async function loadSample() {
+    const created = await api("/api/diagrams", { method: "POST", body: JSON.stringify(sampleDiagram()) });
+    await loadDiagrams();
+    await openDiagram(created.id);
+  }
+
   async function saveDiagram() {
     if (!state.current) return;
     state.current.title = el("diagram-title").value.trim() || "Untitled diagram";
@@ -370,8 +549,8 @@
       key: `node_${Date.now()}`,
       type,
       title: type.charAt(0).toUpperCase() + type.slice(1),
-      x: Math.round(point.x / 16) * 16,
-      y: Math.round(point.y / 16) * 16,
+      x: snapValue(point.x, 16),
+      y: snapValue(point.y, 16),
       width: size.width,
       height: size.height,
       color: colors[type] || colors.process,
@@ -384,10 +563,10 @@
   function deleteSelected() {
     if (!state.current || !state.selected) return;
     pushHistory();
-    if (state.selected.type === "node") {
-      const key = state.selected.key;
-      state.current.nodes = state.current.nodes.filter((n) => n.key !== key);
-      state.current.edges = state.current.edges.filter((e) => e.source !== key && e.target !== key);
+    if (state.selected.type === "node" || state.selected.type === "nodes") {
+      const keys = selectedNodeKeys();
+      state.current.nodes = state.current.nodes.filter((n) => !keys.includes(n.key));
+      state.current.edges = state.current.edges.filter((e) => !keys.includes(e.source) && !keys.includes(e.target));
     } else {
       state.current.edges = state.current.edges.filter((e) => e.key !== state.selected.key);
     }
@@ -399,6 +578,82 @@
     state.tool = tool;
     state.edgeSource = null;
     document.querySelectorAll(".toolbox button[data-tool]").forEach((btn) => btn.classList.toggle("active", btn.dataset.tool === tool));
+  }
+
+  function copySelected() {
+    if (!state.current || !state.selected) return;
+    const keys = selectedNodeKeys();
+    if (keys.length) {
+      const keySet = new Set(keys);
+      state.clipboard = {
+        nodes: state.current.nodes.filter((n) => keySet.has(n.key)).map((n) => ({ ...n, metadata: { ...(n.metadata || {}) } })),
+        edges: state.current.edges.filter((e) => keySet.has(e.source) && keySet.has(e.target)).map((e) => ({ ...e, metadata: { ...(e.metadata || {}) } }))
+      };
+    }
+  }
+
+  function pasteSelected() {
+    if (!state.current || !state.clipboard?.nodes?.length) return;
+    pushHistory();
+    const suffix = Date.now();
+    const keyMap = new Map();
+    const pastedKeys = [];
+    for (const node of state.clipboard.nodes) {
+      const key = `${node.key}_${suffix}`.slice(0, 64);
+      keyMap.set(node.key, key);
+      pastedKeys.push(key);
+      state.current.nodes.push({ ...node, key, title: `${node.title} Copy`, x: node.x + 48, y: node.y + 48, metadata: { ...(node.metadata || {}) } });
+    }
+    for (const edge of state.clipboard.edges || []) {
+      if (!keyMap.has(edge.source) || !keyMap.has(edge.target)) continue;
+      state.current.edges.push({ ...edge, key: `${edge.key}_${suffix}`.slice(0, 64), source: keyMap.get(edge.source), target: keyMap.get(edge.target), metadata: { ...(edge.metadata || {}) } });
+    }
+    state.selected = pastedKeys.length === 1 ? { type: "node", key: pastedKeys[0] } : { type: "nodes", keys: pastedKeys };
+    render();
+  }
+
+  function autoLayout() {
+    if (!state.current) return;
+    pushHistory();
+    const nodes = state.current.nodes;
+    const incoming = new Map(nodes.map((n) => [n.key, 0]));
+    const outgoing = new Map(nodes.map((n) => [n.key, []]));
+    for (const edge of state.current.edges) {
+      if (incoming.has(edge.target) && outgoing.has(edge.source)) {
+        incoming.set(edge.target, incoming.get(edge.target) + 1);
+        outgoing.get(edge.source).push(edge.target);
+      }
+    }
+    const level = new Map();
+    const queue = nodes.filter((n) => incoming.get(n.key) === 0).map((n) => n.key);
+    if (!queue.length && nodes[0]) queue.push(nodes[0].key);
+    for (const key of queue) level.set(key, 0);
+    while (queue.length) {
+      const key = queue.shift();
+      for (const next of outgoing.get(key) || []) {
+        const nextLevel = Math.max(level.get(next) ?? 0, (level.get(key) ?? 0) + 1);
+        if (!level.has(next) || nextLevel > level.get(next)) {
+          level.set(next, nextLevel);
+          queue.push(next);
+        }
+      }
+    }
+    for (const node of nodes) {
+      if (!level.has(node.key)) level.set(node.key, 0);
+    }
+    const groups = new Map();
+    for (const node of nodes) {
+      const l = level.get(node.key);
+      if (!groups.has(l)) groups.set(l, []);
+      groups.get(l).push(node);
+    }
+    [...groups.keys()].sort((a, b) => a - b).forEach((l) => {
+      groups.get(l).forEach((node, i) => {
+        node.x = 80 + l * 260;
+        node.y = 80 + i * 140;
+      });
+    });
+    render();
   }
 
   function bindProperty(id, apply) {
@@ -424,14 +679,24 @@
       }
     });
     el("new-diagram").onclick = newDiagram;
+    el("load-sample").onclick = loadSample;
     el("save-diagram").onclick = saveDiagram;
     el("refresh-diagrams").onclick = loadDiagrams;
     el("delete-selected").onclick = deleteSelected;
     el("undo").onclick = undo;
     el("redo").onclick = redo;
+    el("copy-selected").onclick = copySelected;
+    el("paste-selected").onclick = pasteSelected;
+    el("auto-layout").onclick = autoLayout;
+    el("snap-toggle").onclick = () => {
+      state.snap = !state.snap;
+      el("snap-toggle").classList.toggle("active", state.snap);
+    };
     el("zoom-in").onclick = () => { state.zoom = Math.min(2.5, state.zoom * 1.15); render(); };
     el("zoom-out").onclick = () => { state.zoom = Math.max(0.25, state.zoom / 1.15); render(); };
     el("export-json").onclick = () => { if (state.current) window.open(`/api/diagrams/${state.current.id}/export.json`, "_blank"); };
+    el("export-svg").onclick = exportSvg;
+    el("export-png").onclick = exportPng;
     el("make-version").onclick = async () => {
       if (!state.current) return;
       await api(`/api/diagrams/${state.current.id}/versions`, { method: "POST", body: JSON.stringify({ note: "manual snapshot" }) });
@@ -491,8 +756,18 @@
         const node = state.current.nodes.find((n) => n.key === state.dragging.key);
         if (node) {
           const p = worldPoint(evt);
-          node.x = Math.round((p.x - state.dragging.dx) / 8) * 8;
-          node.y = Math.round((p.y - state.dragging.dy) / 8) * 8;
+          const nextX = snapValue(p.x - state.dragging.dx);
+          const nextY = snapValue(p.y - state.dragging.dy);
+          const deltaX = nextX - state.dragging.originals[state.dragging.key].x;
+          const deltaY = nextY - state.dragging.originals[state.dragging.key].y;
+          for (const key of state.dragging.keys || [state.dragging.key]) {
+            const moving = state.current.nodes.find((n) => n.key === key);
+            const original = state.dragging.originals[key];
+            if (moving && original) {
+              moving.x = original.x + deltaX;
+              moving.y = original.y + deltaY;
+            }
+          }
           render();
         }
       } else if (state.panning) {
@@ -522,6 +797,8 @@
       if (evt.key === "Delete" || evt.key === "Backspace") deleteSelected();
       if (evt.key === "Escape") { state.selected = null; state.edgeSource = null; render(); }
       if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "s") { evt.preventDefault(); saveDiagram(); }
+      if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "c") { evt.preventDefault(); copySelected(); }
+      if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "v") { evt.preventDefault(); pasteSelected(); }
       if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "z") { evt.preventDefault(); evt.shiftKey ? redo() : undo(); }
       if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "y") { evt.preventDefault(); redo(); }
     });

@@ -47,10 +47,17 @@ std::string renderEditorPage(const std::string& username) {
       </div>
       <div class="top-actions">
         <button id="new-diagram" title="New diagram">New</button>
+        <button id="load-sample" title="Load sample architecture">Sample</button>
         <button id="save-diagram" title="Save">Save</button>
         <button id="undo" title="Undo">Undo</button>
         <button id="redo" title="Redo">Redo</button>
+        <button id="copy-selected" title="Copy selected">Copy</button>
+        <button id="paste-selected" title="Paste copied">Paste</button>
+        <button id="auto-layout" title="Auto layout">Layout</button>
+        <button id="snap-toggle" title="Toggle snap to grid" class="active">Snap</button>
         <button id="export-json" title="Export JSON">Export</button>
+        <button id="export-svg" title="Export SVG">SVG</button>
+        <button id="export-png" title="Export PNG">PNG</button>
         <button id="import-json" title="Import JSON">Import</button>
         <button id="zoom-out" title="Zoom out">-</button>
         <span id="zoom-label">100%</span>
@@ -95,6 +102,7 @@ std::string renderEditorPage(const std::string& username) {
         <rect id="grid-bg" x="-50000" y="-50000" width="100000" height="100000" fill="url(#grid)"></rect>
         <g id="viewport"><g id="edges"></g><g id="nodes"></g></g>
       </svg>
+      <div id="minimap" class="minimap"></div>
     </main>
     <aside class="properties">
       <h2>Properties</h2>
@@ -141,7 +149,7 @@ std::string renderDocsPage() {
     <h1>NuiGraph Studio</h1>
     <p>NuiGraph Studio is a C++ powered graph and diagram editor for flowcharts, architecture maps, service graphs, and node-link diagrams.</p>
     <h2>Canvas Controls</h2>
-    <p>Select nodes and edges with the Select tool. Drag nodes to move them. Use the Node tool to create nodes, Edge to connect two nodes, and Pan or middle mouse drag to move the canvas. Delete removes the selected object. Ctrl+S saves, Ctrl+Z/Ctrl+Y undo and redo, Esc clears selection.</p>
+    <p>Select nodes and edges with the Select tool. Shift-click nodes for basic multi-select. Drag nodes to move them. Use the Node tool to create nodes, Edge to connect two nodes, and Pan or middle mouse drag to move the canvas. Delete removes the selected object. Ctrl+S saves, Ctrl+C/Ctrl+V copy and paste selected nodes, Ctrl+Z/Ctrl+Y undo and redo, Esc clears selection. Snap, Layout, SVG, PNG, and Sample are available in the top toolbar.</p>
     <h2>Node Types</h2>
     <p>Supported types: process, decision, database, service, api, note, external. Unknown imported types are mapped to note.</p>
     <h2>Edges</h2>
@@ -169,7 +177,7 @@ POST /api/diagrams/import</pre>
     <h2>Storage And Versioning</h2>
     <p>PostgreSQL stores diagrams, nodes, edges, and bounded version snapshots. Each save creates a snapshot and old versions are pruned by MAX_VERSIONS_PER_DIAGRAM.</p>
     <h2>Limitations</h2>
-    <p>v1 is single-user at a time with immediate browser updates, not WebSocket collaboration. The authenticated editor shell is rendered by Nui C++ compiled with Emscripten/WASM; detailed canvas gestures use a small JavaScript bridge.</p>
+    <p>v1 is single-user at a time with immediate browser updates, not WebSocket collaboration. The authenticated editor shell and toolbar are rendered by Nui C++ compiled with Emscripten/WASM; detailed canvas gestures use a small JavaScript bridge. Mutating API calls require CSRF tokens.</p>
   </main>
 </body>
 </html>)HTML";
