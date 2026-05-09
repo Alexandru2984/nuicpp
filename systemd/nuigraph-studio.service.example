@@ -1,0 +1,19 @@
+[Unit]
+Description=NuiGraph Studio C++ service
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=micu
+WorkingDirectory=/home/micu/nuicpp
+EnvironmentFile=/home/micu/nuicpp/.env
+ExecStart=/home/micu/nuicpp/build/nuigraph-studio /home/micu/nuicpp/.env
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+
+[Install]
+WantedBy=multi-user.target

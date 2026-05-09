@@ -1,0 +1,10 @@
+/build/
+/cmake-build-*/
+/.env
+/.initial_admin_password
+*.log
+*.tmp
+*.swp
+*.o
+nuigraph-studio
+.DS_Store
