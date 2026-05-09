@@ -169,7 +169,7 @@ POST /api/diagrams/import</pre>
     <h2>Storage And Versioning</h2>
     <p>PostgreSQL stores diagrams, nodes, edges, and bounded version snapshots. Each save creates a snapshot and old versions are pruned by MAX_VERSIONS_PER_DIAGRAM.</p>
     <h2>Limitations</h2>
-    <p>v1 is single-user at a time with immediate browser updates, not WebSocket collaboration. Nui WebView is documented as a deployment limitation for public VPS hosting; this build uses C++ for the backend/model/persistence and a browser SVG frontend.</p>
+    <p>v1 is single-user at a time with immediate browser updates, not WebSocket collaboration. The authenticated editor shell is rendered by Nui C++ compiled with Emscripten/WASM; detailed canvas gestures use a small JavaScript bridge.</p>
   </main>
 </body>
 </html>)HTML";

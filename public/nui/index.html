@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base href="/nui/">
+  <title>NuiGraph Studio</title>
+  <script defer src="/nui/index.js"></script>
+  <script>
+    window.addEventListener("load", () => {
+      const attachEditor = () => {
+        if (!document.getElementById("app")) {
+          window.setTimeout(attachEditor, 30);
+          return;
+        }
+        const script = document.createElement("script");
+        script.src = "/editor.js";
+        document.body.appendChild(script);
+      };
+      attachEditor();
+    });
+  </script>
+</head>
+<body></body>
+</html>

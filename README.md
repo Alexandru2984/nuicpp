@@ -18,6 +18,7 @@ NuiGraph Studio is a production-oriented C++ graph and diagram editor deployed a
 
 - C++20
 - CMake
+- Nui C++ frontend compiled with Emscripten/WASM
 - cpp-httplib for HTTP serving
 - libpqxx/libpq for PostgreSQL
 - nlohmann/json for JSON parsing/serialization
@@ -27,13 +28,14 @@ NuiGraph Studio is a production-oriented C++ graph and diagram editor deployed a
 
 ## Nui Usage Notes
 
-Nui C++ is a WebView/WASM-oriented UI library and is useful for C++ UI structure in desktop/WebView builds. For this VPS public browser deployment, the production build uses a C++ HTTP backend plus a browser SVG frontend. C++ remains the primary implementation for model validation, persistence, routing, authentication, and API behavior. Direct Nui WebView runtime was not used because it is not a server deployment target by itself.
+The authenticated editor shell is rendered by a Nui C++ frontend compiled with Emscripten to `/public/nui/index.js`. The backend serves `/public/nui/index.html` for `/` after login, so the top bar, panels, toolbar, and SVG canvas root are created from C++/Nui in the browser. A small JavaScript bridge in `/public/editor.js` attaches canvas interaction handlers and calls the C++ backend JSON API.
 
 ## Build
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release -j "$(nproc)"
+scripts/build_nui_frontend.sh
 ```
 
 ## Run On The VPS
@@ -208,6 +210,7 @@ Deployment uses:
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release -j "$(nproc)"
+scripts/build_nui_frontend.sh
 scripts/migrate.sh
 sudo systemctl enable --now nuigraph-studio.service
 sudo nginx -t
@@ -230,7 +233,7 @@ psql "$DATABASE_URL" -c "\\dt"
 
 ## Limitations And TODOs
 
-- Direct Nui WebView runtime is not used in this public server deployment; the frontend is browser SVG served by the C++ app.
+- The editor shell/canvas root is Nui C++/WASM; detailed canvas gestures still use a small JavaScript bridge.
 - Collaboration/WebSocket editing is not implemented in v1.
 - Undo/redo is browser-local and basic; persisted granular command history is a future improvement.
 - Mobile and tablet layouts are functional but the polished target is desktop.

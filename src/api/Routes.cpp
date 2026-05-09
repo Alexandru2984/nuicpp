@@ -8,6 +8,7 @@
 #include <openssl/hmac.h>
 
 #include <chrono>
+#include <filesystem>
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
@@ -76,6 +77,16 @@ std::string cookieValue(const httplib::Request& req, const std::string& name) {
         pos = end + 1;
     }
     return {};
+}
+
+std::string contentTypeFor(const std::string& path) {
+    if (path.ends_with(".html")) return "text/html; charset=utf-8";
+    if (path.ends_with(".js")) return "application/javascript";
+    if (path.ends_with(".wasm")) return "application/wasm";
+    if (path.ends_with(".css")) return "text/css";
+    if (path.ends_with(".json")) return "application/json";
+    if (path.ends_with(".map")) return "application/json";
+    return "application/octet-stream";
 }
 
 long idParam(const httplib::Request& req, int index) {
@@ -193,6 +204,27 @@ void Routes::registerRoutes(httplib::Server& server) {
     server.Get("/app.js", [this](const httplib::Request&, httplib::Response& res) {
         res.set_content(readTextFile(cfg_.projectRoot + "/public/app.js"), "application/javascript");
     });
+    server.Get("/editor.js", [this](const httplib::Request&, httplib::Response& res) {
+        res.set_content(readTextFile(cfg_.projectRoot + "/public/editor.js"), "application/javascript");
+    });
+    server.Get(R"(/nui/(.+))", [this](const httplib::Request& req, httplib::Response& res) {
+        auto rel = req.matches[1].str();
+        if (rel.find("..") != std::string::npos || rel.starts_with('/')) {
+            res.status = 400;
+            res.set_content("bad asset path", "text/plain");
+            return;
+        }
+        auto path = cfg_.projectRoot + "/public/nui/" + rel;
+        if (!std::filesystem::exists(path) || !std::filesystem::is_regular_file(path)) {
+            res.status = 404;
+            res.set_content("not found", "text/plain");
+            return;
+        }
+        if (path.ends_with(".wasm")) {
+            res.set_header("Cache-Control", "public, max-age=31536000, immutable");
+        }
+        res.set_content(readTextFile(path), contentTypeFor(path));
+    });
 
     server.Get("/login", [](const httplib::Request&, httplib::Response& res) {
         res.set_content(renderLoginPage(""), "text/html; charset=utf-8");
@@ -220,6 +252,11 @@ void Routes::registerRoutes(httplib::Server& server) {
         if (!verifySession(req, &username)) {
             res.status = 302;
             res.set_header("Location", "/login");
+            return;
+        }
+        auto nuiIndex = cfg_.projectRoot + "/public/nui/index.html";
+        if (std::filesystem::exists(nuiIndex)) {
+            res.set_content(readTextFile(nuiIndex), "text/html; charset=utf-8");
             return;
         }
         res.set_content(renderEditorPage(username), "text/html; charset=utf-8");
