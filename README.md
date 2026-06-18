@@ -127,6 +127,12 @@ Nginx reverse proxy config path:
 /etc/nginx/sites-available/nuicpp.micutu.com
 ```
 
+Versioned hardened template:
+
+```text
+deploy/nginx/nuicpp.micutu.com.conf
+```
+
 The enabled symlink is expected at:
 
 ```text

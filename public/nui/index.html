@@ -6,21 +6,7 @@
   <base href="/nui/">
   <title>NuiGraph Studio</title>
   <script defer src="/nui/index.js"></script>
-  <script>
-    window.addEventListener("load", () => {
-      fetch("/api/session", { credentials: "same-origin" }).catch(() => {});
-      const attachEditor = () => {
-        if (!document.getElementById("app")) {
-          window.setTimeout(attachEditor, 30);
-          return;
-        }
-        const script = document.createElement("script");
-        script.src = "/editor.js";
-        document.body.appendChild(script);
-      };
-      attachEditor();
-    });
-  </script>
+  <script defer src="/nui/bootstrap.js"></script>
 </head>
 <body></body>
 </html>
