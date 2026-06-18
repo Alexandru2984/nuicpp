@@ -33,6 +33,19 @@ std::string rowString(const pqxx::row& row, const char* key) {
     return row[key].is_null() ? "" : row[key].as<std::string>();
 }
 
+nlohmann::json diagramSummaryJson(const pqxx::row& row) {
+    return {
+        {"id", row["id"].as<long>()},
+        {"title", rowString(row, "title")},
+        {"slug", rowString(row, "slug")},
+        {"description", rowString(row, "description")},
+        {"created_at", rowString(row, "created_at")},
+        {"updated_at", rowString(row, "updated_at")},
+        {"node_count", row["node_count"].as<int>()},
+        {"edge_count", row["edge_count"].as<int>()}
+    };
+}
+
 } // namespace
 
 PostgresStorage::PostgresStorage(const Config& cfg, const DiagramValidator& validator)
@@ -77,16 +90,31 @@ std::vector<nlohmann::json> PostgresStorage::listDiagrams() {
     )SQL");
     std::vector<nlohmann::json> out;
     for (const auto& row : rows) {
-        out.push_back({
-            {"id", row["id"].as<long>()},
-            {"title", rowString(row, "title")},
-            {"slug", rowString(row, "slug")},
-            {"description", rowString(row, "description")},
-            {"created_at", rowString(row, "created_at")},
-            {"updated_at", rowString(row, "updated_at")},
-            {"node_count", row["node_count"].as<int>()},
-            {"edge_count", row["edge_count"].as<int>()}
-        });
+        out.push_back(diagramSummaryJson(row));
+    }
+    tx.commit();
+    return out;
+}
+
+std::vector<nlohmann::json> PostgresStorage::listDiagramsForOwner(const std::string& ownerTokenHash) {
+    if (ownerTokenHash.empty()) {
+        return {};
+    }
+    auto conn = connect();
+    pqxx::work tx(conn);
+    auto rows = tx.exec_params(R"SQL(
+        SELECT d.id, d.title, d.slug, d.description,
+               to_char(d.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
+               to_char(d.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS updated_at,
+               (SELECT count(*) FROM nodes n WHERE n.diagram_id=d.id) AS node_count,
+               (SELECT count(*) FROM edges e WHERE e.diagram_id=d.id) AS edge_count
+        FROM diagrams d
+        WHERE d.owner_token_hash=$1
+        ORDER BY d.updated_at DESC, d.id DESC
+    )SQL", ownerTokenHash);
+    std::vector<nlohmann::json> out;
+    for (const auto& row : rows) {
+        out.push_back(diagramSummaryJson(row));
     }
     tx.commit();
     return out;

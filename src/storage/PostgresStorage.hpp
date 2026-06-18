@@ -17,6 +17,7 @@ public:
 
     bool ping();
     std::vector<nlohmann::json> listDiagrams();
+    std::vector<nlohmann::json> listDiagramsForOwner(const std::string& ownerTokenHash);
     Diagram getDiagram(long id);
     Diagram getDiagramBySlug(const std::string& slug);
     std::string ownerHashForDiagram(long id);

@@ -329,11 +329,29 @@ bool Routes::canEditDiagram(const httplib::Request& req, long diagramId) {
     if (isAdmin(req)) {
         return true;
     }
-    auto owner = storage_.ownerHashForDiagram(diagramId);
+    std::string owner;
+    try {
+        owner = storage_.ownerHashForDiagram(diagramId);
+    } catch (...) {
+        return false;
+    }
     if (owner.empty()) {
-        return true;
+        return false;
     }
     return owner == ownerHashForRequest(req);
+}
+
+bool Routes::canReadDiagramById(const httplib::Request& req, long diagramId) {
+    if (isAdmin(req)) {
+        return true;
+    }
+    std::string owner;
+    try {
+        owner = storage_.ownerHashForDiagram(diagramId);
+    } catch (...) {
+        return false;
+    }
+    return !owner.empty() && owner == ownerHashForRequest(req);
 }
 
 nlohmann::json Routes::diagramResponse(const httplib::Request& req, const Diagram& diagram) {
@@ -468,7 +486,8 @@ void Routes::registerRoutes(httplib::Server& server) {
 
     server.Get("/api/diagrams", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
-        sendJson(res, 200, {{"diagrams", storage_.listDiagrams()}});
+        auto diagrams = isAdmin(req) ? storage_.listDiagrams() : storage_.listDiagramsForOwner(ownerHashForRequest(req));
+        sendJson(res, 200, {{"diagrams", diagrams}});
     });
 
     server.Get("/api/templates", [this](const httplib::Request& req, httplib::Response& res) {
@@ -519,6 +538,10 @@ void Routes::registerRoutes(httplib::Server& server) {
 
     server.Get(R"(/api/diagrams/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
+        if (!canReadDiagramById(req, idParam(req, 1))) {
+            sendJson(res, 403, errorJson("diagram is not available by id for this visitor"));
+            return;
+        }
         try {
             auto diagram = storage_.getDiagram(idParam(req, 1));
             sendJson(res, 200, diagramResponse(req, diagram));
@@ -586,6 +609,10 @@ void Routes::registerRoutes(httplib::Server& server) {
 
     server.Get(R"(/api/diagrams/(\d+)/versions)", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
+        if (!canReadDiagramById(req, idParam(req, 1))) {
+            sendJson(res, 403, errorJson("diagram versions are not available for this visitor"));
+            return;
+        }
         nlohmann::json items = nlohmann::json::array();
         for (const auto& v : storage_.listVersions(idParam(req, 1))) {
             items.push_back({{"id", v.id}, {"diagram_id", v.diagramId}, {"version_number", v.versionNumber}, {"created_at", v.createdAt}, {"note", v.note}});
@@ -626,6 +653,10 @@ void Routes::registerRoutes(httplib::Server& server) {
 
     server.Get(R"(/api/diagrams/(\d+)/export\.json)", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
+        if (!canReadDiagramById(req, idParam(req, 1))) {
+            sendJson(res, 403, errorJson("diagram export is not available for this visitor"));
+            return;
+        }
         try {
             res.set_header("Content-Disposition", "attachment; filename=\"diagram-" + req.matches[1].str() + ".json\"");
             sendJson(res, 200, diagramToJson(storage_.getDiagram(idParam(req, 1))));

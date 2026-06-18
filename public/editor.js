@@ -200,7 +200,7 @@
   function setReadOnly(readOnly) {
     state.readOnly = readOnly;
     document.body.classList.toggle("read-only", readOnly);
-    ["save-diagram", "delete-selected", "make-version", "import-json", "auto-layout", "paste-selected"].forEach((id) => {
+    ["save-diagram", "delete-selected", "make-version", "import-json", "auto-layout", "paste-selected", "export-json"].forEach((id) => {
       const node = el(id);
       if (node) node.disabled = readOnly;
     });
@@ -691,6 +691,13 @@
     const list = el("version-list");
     list.replaceChildren();
     if (!state.current) return;
+    if (state.readOnly) {
+      const empty = document.createElement("div");
+      empty.className = "muted";
+      empty.textContent = "Version history is only available to the owner.";
+      list.appendChild(empty);
+      return;
+    }
     const data = await api(`/api/diagrams/${state.current.id}/versions`);
     for (const v of data.versions || []) {
       const item = document.createElement("div");
