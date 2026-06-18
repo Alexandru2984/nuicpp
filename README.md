@@ -91,6 +91,13 @@ scripts/migrate.sh
 
 Schema files live in `migrations/`.
 
+After migrations, apply least-privilege runtime grants from a database owner
+or PostgreSQL superuser:
+
+```bash
+psql -d nuigraph_studio -f deploy/postgres/runtime_privileges.sql
+```
+
 ## Systemd
 
 Service name:
