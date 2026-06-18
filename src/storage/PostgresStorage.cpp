@@ -1,9 +1,13 @@
 #include "storage/PostgresStorage.hpp"
 
+#include <openssl/rand.h>
+
 #include <algorithm>
 #include <cctype>
-#include <chrono>
+#include <iomanip>
+#include <sstream>
 #include <stdexcept>
+#include <vector>
 
 namespace nuigraph {
 namespace {
@@ -31,6 +35,19 @@ std::string slugBase(const std::string& title) {
 
 std::string rowString(const pqxx::row& row, const char* key) {
     return row[key].is_null() ? "" : row[key].as<std::string>();
+}
+
+std::string randomHex(std::size_t bytes) {
+    std::vector<unsigned char> data(bytes);
+    if (RAND_bytes(data.data(), static_cast<int>(data.size())) != 1) {
+        throw std::runtime_error("random generator failed");
+    }
+    std::ostringstream out;
+    out << std::hex << std::setfill('0');
+    for (auto byte : data) {
+        out << std::setw(2) << static_cast<int>(byte);
+    }
+    return out.str();
 }
 
 nlohmann::json diagramSummaryJson(const pqxx::row& row) {
@@ -66,12 +83,10 @@ bool PostgresStorage::ping() {
 
 std::string PostgresStorage::uniqueSlug(pqxx::work& tx, const std::string& title) {
     auto base = slugBase(title);
-    auto stamp = std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count();
-    std::string slug = base + "-" + std::to_string(stamp);
+    std::string slug = base + "-" + randomHex(8);
     int i = 2;
     while (!tx.exec_params("SELECT 1 FROM diagrams WHERE slug=$1", slug).empty()) {
-        slug = base + "-" + std::to_string(stamp) + "-" + std::to_string(i++);
+        slug = base + "-" + randomHex(8) + "-" + std::to_string(i++);
     }
     return slug;
 }
