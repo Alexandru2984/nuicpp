@@ -102,15 +102,25 @@ std::string cookieValue(const httplib::Request& req, const std::string& name) {
     return {};
 }
 
+std::string trimHeaderValue(std::string value) {
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) {
+        value.erase(value.begin());
+    }
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back()))) {
+        value.pop_back();
+    }
+    return value;
+}
+
 std::string clientIp(const httplib::Request& req) {
+    auto real = req.get_header_value("X-Real-IP");
+    if (!real.empty()) {
+        return trimHeaderValue(real);
+    }
     auto forwarded = req.get_header_value("X-Forwarded-For");
     if (!forwarded.empty()) {
         auto comma = forwarded.find(',');
-        return forwarded.substr(0, comma == std::string::npos ? std::string::npos : comma);
-    }
-    auto real = req.get_header_value("X-Real-IP");
-    if (!real.empty()) {
-        return real;
+        return trimHeaderValue(forwarded.substr(0, comma == std::string::npos ? std::string::npos : comma));
     }
     return req.remote_addr;
 }
