@@ -96,7 +96,13 @@ if [[ -n "$existing_id" ]]; then
   fi
 fi
 
-status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" -X POST "http://127.0.0.1:${PORT}/api/diagrams")"
+# Content-Type matters: cpp-httplib rejects a bodyless POST that carries no
+# content type with a 400 before routing, which would pass this check for the
+# wrong reason. Send a well-formed request so the CSRF gate is what answers.
+status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" \
+  -H 'Content-Type: application/json' \
+  -X POST -d '{"title":"csrf probe","description":"","nodes":[],"edges":[]}' \
+  "http://127.0.0.1:${PORT}/api/diagrams")"
 if [[ "$status" != "403" ]]; then
   echo "expected mutating request without CSRF to return 403, got $status" >&2
   exit 1

@@ -131,9 +131,11 @@ GET_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" "${BASE}/api/diagrams/$DIAGR
 python3 -c "import sys,json;assert json.loads(sys.argv[1])['title']=='Updated Title'" "$GET_RESP"
 
 # Create version snapshot
-curl --noproxy '*' -sS -b "$COOKIE_JAR" \
+curl --noproxy '*' -fsS -b "$COOKIE_JAR" \
   -H "X-CSRF-Token: $CSRF_TOKEN" \
-  -X POST "${BASE}/api/diagrams/$DIAGRAM_ID/versions" >/dev/null
+  -H "Content-Type: application/json" \
+  -X POST -d '{"note":"integration snapshot"}' \
+  "${BASE}/api/diagrams/$DIAGRAM_ID/versions" >/dev/null
 
 # List versions
 VER_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" "${BASE}/api/diagrams/$DIAGRAM_ID/versions")"
@@ -142,7 +144,8 @@ python3 -c "import sys,json;assert len(json.loads(sys.argv[1])['versions'])>0" "
 # Duplicate diagram
 DUP_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" \
   -H "X-CSRF-Token: $CSRF_TOKEN" \
-  -X POST "${BASE}/api/diagrams/$DIAGRAM_ID/duplicate")"
+  -H "Content-Type: application/json" \
+  -X POST -d '{}' "${BASE}/api/diagrams/$DIAGRAM_ID/duplicate")"
 DUP_ID="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['id'])" "$DUP_RESP")"
 python3 -c "import sys,json;assert json.loads(sys.argv[1])['title']=='Updated Title Copy'" "$DUP_RESP"
 

@@ -139,6 +139,27 @@ std::string clientIp(const httplib::Request& req) {
     return req.remote_addr;
 }
 
+// A cookie marked Secure is never sent back over plain HTTP, so hard-coding it
+// made the session unusable for anything not speaking TLS: local runs and the
+// integration tests got a fresh anonymous session on every request.
+//
+// nginx sets X-Forwarded-Proto on both vhost blocks and the service binds
+// loopback, so in production this is always "https" and the attribute is kept.
+// A direct plain-HTTP caller is either a developer or the test harness.
+bool requestIsSecure(const httplib::Request& req) {
+    auto proto = trimHeaderValue(req.get_header_value("X-Forwarded-Proto"));
+    return proto == "https";
+}
+
+std::string sessionCookie(const httplib::Request& req, const std::string& value, int maxAgeSeconds) {
+    std::string cookie = "ngs_session=" + value + "; Path=/; Max-Age=" + std::to_string(maxAgeSeconds) +
+                         "; HttpOnly; SameSite=Strict";
+    if (requestIsSecure(req)) {
+        cookie += "; Secure";
+    }
+    return cookie;
+}
+
 std::unordered_map<std::string, std::vector<long long>>& loginFailures() {
     static std::unordered_map<std::string, std::vector<long long>> failures;
     return failures;
@@ -310,12 +331,12 @@ bool Routes::verifyPassword(const std::string& password) const {
     return constantTimeEquals(actual, expected);
 }
 
-std::string Routes::makeSessionCookie(const std::string& username) const {
-    return makeCookie(username, 28800);
+std::string Routes::makeSessionCookie(const httplib::Request& req, const std::string& username) const {
+    return makeCookie(req, username, 28800);
 }
 
-std::string Routes::makeCookie(const std::string& username, int maxAgeSeconds) const {
-    return "ngs_session=" + makeSessionValue(username, maxAgeSeconds) + "; Path=/; Max-Age=" + std::to_string(maxAgeSeconds) + "; HttpOnly; SameSite=Strict; Secure";
+std::string Routes::makeCookie(const httplib::Request& req, const std::string& username, int maxAgeSeconds) const {
+    return sessionCookie(req, makeSessionValue(username, maxAgeSeconds), maxAgeSeconds);
 }
 
 std::string Routes::makeSessionValue(const std::string& username, int maxAgeSeconds) const {
@@ -569,7 +590,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         if (username == cfg_.authUsername && verifyPassword(password)) {
             clearLoginFailures(ip);
             res.status = 302;
-            res.set_header("Set-Cookie", makeSessionCookie(username));
+            res.set_header("Set-Cookie", makeSessionCookie(req, username));
             res.set_header("Location", "/");
         } else {
             recordLoginFailure(ip);
@@ -577,9 +598,9 @@ void Routes::registerRoutes(httplib::Server& server) {
             res.set_content(renderLoginPage("Invalid credentials"), "text/html; charset=utf-8");
         }
     });
-    server.Post("/logout", [](const httplib::Request&, httplib::Response& res) {
+    server.Post("/logout", [](const httplib::Request& req, httplib::Response& res) {
         res.status = 302;
-        res.set_header("Set-Cookie", "ngs_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict; Secure");
+        res.set_header("Set-Cookie", sessionCookie(req, "", 0));
         res.set_header("Location", "/login");
     });
 
@@ -623,7 +644,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             // short rather than the six months this used to issue.
             auto maxAge = kGuestSessionSeconds;
             auto session = makeSessionValue(username, maxAge);
-            res.set_header("Set-Cookie", "ngs_session=" + session + "; Path=/; Max-Age=" + std::to_string(maxAge) + "; HttpOnly; SameSite=Strict; Secure");
+            res.set_header("Set-Cookie", sessionCookie(req, session, maxAge));
             sendJson(res, 200, {{"username", username}, {"public_access", true}, {"csrf_token", csrfTokenForSession(session)}});
             return;
         }

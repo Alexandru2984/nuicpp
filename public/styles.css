@@ -1,59 +1,167 @@
+/* NuiGraph Studio
+   Layout is driven by #app, a CSS grid that reflows at two breakpoints:
+   desktop (four columns), tablet (stacked panels), and phone (full-bleed
+   canvas with the side panels turned into slide-up sheets). */
+
 :root {
   color-scheme: dark;
+
   --bg: #0b0f14;
+  --bg-canvas: #090d12;
   --panel: #121820;
   --panel-2: #18212b;
+  --panel-3: #1c2733;
   --line: #253241;
   --text: #e5eef7;
+  --text-strong: #f8fbff;
   --muted: #91a4b7;
   --accent: #38bdf8;
+  --accent-ink: #04141d;
   --good: #22c55e;
   --warn: #f59e0b;
   --danger: #ef4444;
+  --danger-line: #7f1d1d;
+  --danger-text: #fecaca;
+  --grid-line: rgba(148, 163, 184, .18);
+  --scrim: rgba(4, 8, 12, .6);
+
+  --radius: 10px;
+  --radius-lg: 14px;
+  --shadow-panel: 0 12px 32px rgba(0, 0, 0, .35);
+  --shadow-lift: 0 20px 50px rgba(0, 0, 0, .45);
+
+  /* Comfortable pointer target. Anything interactive should meet this on
+     touch, which is why controls use min-height rather than fixed padding. */
+  --tap: 44px;
+  --tap-sm: 34px;
+
+  --topbar-h: 58px;
+  --ease: cubic-bezier(.4, 0, .2, 1);
+}
+
+/* The editor is a dark tool by default. Light mode follows the OS unless the
+   viewer picks a theme explicitly, in which case data-theme wins both ways. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #eef2f7;
+    --bg-canvas: #f6f8fb;
+    --panel: #ffffff;
+    --panel-2: #f4f7fa;
+    --panel-3: #e8eef5;
+    --line: #d3dde8;
+    --text: #16202b;
+    --text-strong: #0a1119;
+    --muted: #5a6b7d;
+    --accent: #0284c7;
+    --accent-ink: #ffffff;
+    --danger-line: #fca5a5;
+    --danger-text: #991b1b;
+    --grid-line: rgba(71, 85, 105, .16);
+    --scrim: rgba(15, 23, 42, .38);
+    --shadow-panel: 0 10px 26px rgba(15, 23, 42, .12);
+    --shadow-lift: 0 20px 44px rgba(15, 23, 42, .2);
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #eef2f7;
+  --bg-canvas: #f6f8fb;
+  --panel: #ffffff;
+  --panel-2: #f4f7fa;
+  --panel-3: #e8eef5;
+  --line: #d3dde8;
+  --text: #16202b;
+  --text-strong: #0a1119;
+  --muted: #5a6b7d;
+  --accent: #0284c7;
+  --accent-ink: #ffffff;
+  --danger-line: #fca5a5;
+  --danger-text: #991b1b;
+  --grid-line: rgba(71, 85, 105, .16);
+  --scrim: rgba(15, 23, 42, .38);
+  --shadow-panel: 0 10px 26px rgba(15, 23, 42, .12);
+  --shadow-lift: 0 20px 44px rgba(15, 23, 42, .2);
 }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
+
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  letter-spacing: 0;
+  /* Stop iOS from bumping font sizes when the device is rotated. */
+  -webkit-text-size-adjust: 100%;
 }
 
-button, input, select, textarea {
-  font: inherit;
-}
+button, input, select, textarea { font: inherit; }
 
 button, a.button {
-  background: #1c2733;
-  border: 1px solid #324254;
+  background: var(--panel-3);
+  border: 1px solid var(--line);
   color: var(--text);
-  border-radius: 7px;
-  min-height: 34px;
+  border-radius: var(--radius);
+  min-height: var(--tap-sm);
   padding: 0 12px;
   cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s var(--ease), border-color .15s var(--ease), transform .1s var(--ease);
 }
 
 button:hover, button.active {
   border-color: var(--accent);
-  background: #223446;
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel-3));
+}
+
+button.active { color: var(--text-strong); }
+button:active { transform: translateY(1px); }
+
+button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+  transform: none;
 }
 
 button.danger {
-  border-color: #7f1d1d;
-  color: #fecaca;
+  border-color: var(--danger-line);
+  color: var(--danger-text);
+}
+
+button.danger:hover {
+  background: color-mix(in srgb, var(--danger) 18%, var(--panel-3));
+  border-color: var(--danger);
+}
+
+/* One visible focus treatment everywhere, keyboard-only so pointer users do
+   not get a ring on every click. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius);
 }
 
 input, select, textarea {
   width: 100%;
-  min-height: 34px;
-  border: 1px solid #314153;
-  border-radius: 7px;
-  background: #0d131a;
+  min-height: var(--tap-sm);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-canvas);
   color: var(--text);
   padding: 7px 9px;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+input[type="color"] {
+  padding: 3px;
+  min-height: var(--tap-sm);
+  cursor: pointer;
 }
 
 label {
@@ -63,11 +171,19 @@ label {
   font-size: 12px;
 }
 
+.hidden { display: none !important; }
+.meta, .muted { color: var(--muted); font-size: 12px; }
+
+h1, h2 { margin: 0; }
+h2 { font-size: 14px; color: var(--text-strong); }
+
+/* ---------------------------------------------------------------- shell -- */
+
 #app {
-  height: 100vh;
+  height: 100dvh;
   display: grid;
-  grid-template-columns: 260px 72px minmax(0, 1fr) 300px;
-  grid-template-rows: 58px minmax(0, 1fr);
+  grid-template-columns: 264px 76px minmax(0, 1fr) 300px;
+  grid-template-rows: var(--topbar-h) minmax(0, 1fr);
   grid-template-areas:
     "top top top top"
     "projects tools canvas props";
@@ -80,9 +196,10 @@ label {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 10px 14px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--line);
-  background: #0d131a;
+  background: var(--panel);
+  min-width: 0;
 }
 
 .app-title {
@@ -92,28 +209,35 @@ label {
   min-width: 0;
 }
 
-.app-title strong { white-space: nowrap; }
+.app-title strong {
+  white-space: nowrap;
+  color: var(--text-strong);
+}
+
 #diagram-title {
-  width: min(420px, 42vw);
+  width: min(420px, 40vw);
   font-weight: 650;
-  background: #111923;
+  background: var(--panel-2);
 }
 
 .top-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  min-width: 0;
 }
 
 .top-actions a {
   color: var(--accent);
   text-decoration: none;
-  padding: 7px 4px;
+  padding: 7px 6px;
+  border-radius: var(--radius);
 }
 
-.top-actions form { margin: 0; }
+.top-actions a:hover { text-decoration: underline; }
+
 #zoom-label {
   min-width: 48px;
   text-align: center;
@@ -128,9 +252,7 @@ label {
   text-align: center;
 }
 
-body.dirty .draft-status {
-  color: #fde68a;
-}
+body.dirty .draft-status { color: var(--warn); }
 
 .project-panel, .properties, .toolbox {
   background: var(--panel);
@@ -150,17 +272,11 @@ body.dirty .draft-status {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow: auto;
 }
 
-.toolbox button {
-  min-width: 0;
-  padding: 0 6px;
-}
-
-.toolbox select {
-  min-width: 0;
-  padding: 4px;
-}
+.toolbox button { min-width: 0; padding: 0 6px; }
+.toolbox select { min-width: 0; padding: 4px; }
 
 .properties {
   grid-area: props;
@@ -175,7 +291,7 @@ body.dirty .draft-status {
   min-width: 0;
   min-height: 0;
   position: relative;
-  background: #090d12;
+  background: var(--bg-canvas);
 }
 
 #canvas {
@@ -183,7 +299,13 @@ body.dirty .draft-status {
   height: 100%;
   display: block;
   cursor: crosshair;
+  /* Hand every gesture to the pointer handlers. Without this the browser
+     claims drags for scrolling and two-finger gestures for page zoom, which
+     is what made the editor unusable on a phone. */
+  touch-action: none;
 }
+
+#grid-bg { fill: url(#grid); }
 
 .minimap {
   position: absolute;
@@ -191,19 +313,15 @@ body.dirty .draft-status {
   bottom: 14px;
   width: 180px;
   height: 120px;
-  border: 1px solid rgba(148,163,184,.35);
-  border-radius: 8px;
-  background: rgba(13,19,26,.86);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--panel) 86%, transparent);
   overflow: hidden;
   pointer-events: none;
-  box-shadow: 0 12px 32px rgba(0,0,0,.35);
+  box-shadow: var(--shadow-panel);
 }
 
-.minimap svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
+.minimap svg { width: 100%; height: 100%; display: block; }
 
 .panel-head {
   display: flex;
@@ -213,20 +331,7 @@ body.dirty .draft-status {
   margin-bottom: 10px;
 }
 
-h1, h2 {
-  margin: 0;
-  letter-spacing: 0;
-}
-
-h2 {
-  font-size: 14px;
-  color: #c8d6e5;
-}
-
-.diagram-list, .version-list {
-  display: grid;
-  gap: 8px;
-}
+.diagram-list, .version-list { display: grid; gap: 8px; }
 
 .template-section {
   margin-top: 18px;
@@ -236,15 +341,16 @@ h2 {
 
 .diagram-item {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--panel-2);
-  padding: 9px;
+  padding: 10px;
   display: grid;
   gap: 7px;
 }
 
 .diagram-item.active {
   border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel-2));
 }
 
 .diagram-row {
@@ -257,25 +363,16 @@ h2 {
 .diagram-name {
   font-weight: 650;
   overflow-wrap: anywhere;
+  color: var(--text-strong);
 }
 
-.small-actions {
-  display: flex;
-  gap: 5px;
-}
+.small-actions { display: flex; gap: 5px; }
 
 .small-actions button {
-  min-height: 28px;
-  padding: 0 8px;
+  min-height: var(--tap-sm);
+  padding: 0 9px;
   font-size: 12px;
 }
-
-.meta, .muted {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.hidden { display: none !important; }
 
 .prop-block {
   display: grid;
@@ -290,28 +387,24 @@ h2 {
   gap: 8px;
 }
 
-.check-row input {
-  width: auto;
-  min-height: 0;
-}
+.check-row input { width: auto; min-height: 0; }
 
-.versions {
-  margin-top: 16px;
-}
+.versions { margin-top: 16px; }
 
 .version-item {
   display: grid;
   gap: 6px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px;
-  background: #101720;
+  border-radius: var(--radius);
+  padding: 9px;
+  background: var(--panel-2);
 }
 
-.node-shape {
-  filter: drop-shadow(0 14px 18px rgba(0,0,0,.28));
-}
+/* ---------------------------------------------------------------- canvas -- */
 
+.node-shape { filter: drop-shadow(0 12px 16px rgba(0, 0, 0, .26)); }
+
+/* Node fills are saturated in both themes, so their labels stay dark. */
 .node-title {
   fill: #071018;
   font-weight: 700;
@@ -322,7 +415,7 @@ h2 {
 }
 
 .node-subtitle {
-  fill: rgba(7,16,24,.72);
+  fill: rgba(7, 16, 24, .72);
   font-size: 10px;
   text-anchor: middle;
   dominant-baseline: middle;
@@ -331,27 +424,24 @@ h2 {
 }
 
 .selected .node-outline {
-  stroke: white;
+  stroke: var(--accent);
   stroke-width: 3;
 }
 
-.edge-path {
-  stroke-width: 2.4;
-  fill: none;
-  cursor: pointer;
-}
+.edge-path { stroke-width: 2.4; fill: none; cursor: pointer; }
 
+/* Invisible fat stroke so edges can be tapped with a fingertip. */
 .edge-hit {
   stroke: transparent;
-  stroke-width: 18;
+  stroke-width: 22;
   fill: none;
   cursor: pointer;
 }
 
 .edge-label {
-  fill: #dbeafe;
+  fill: var(--text);
   paint-order: stroke;
-  stroke: #0b0f14;
+  stroke: var(--bg-canvas);
   stroke-width: 4;
   font-size: 12px;
   text-anchor: middle;
@@ -361,111 +451,310 @@ h2 {
 
 .edge-selected .edge-path {
   stroke-width: 4;
-  filter: drop-shadow(0 0 8px rgba(56,189,248,.65));
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 65%, transparent));
 }
 
+/* ----------------------------------------------------------------- login -- */
+
 .login-body {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
+  padding: 20px;
   background:
-    linear-gradient(135deg, rgba(56,189,248,.12), transparent 34%),
-    linear-gradient(315deg, rgba(34,197,94,.11), transparent 38%),
+    radial-gradient(1100px 520px at 12% -10%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 60%),
+    radial-gradient(900px 500px at 110% 110%, color-mix(in srgb, var(--good) 14%, transparent), transparent 62%),
     var(--bg);
 }
 
-.login-shell {
-  width: min(430px, calc(100vw - 32px));
-}
+.login-shell { width: min(430px, 100%); }
 
 .login-panel {
   border: 1px solid var(--line);
-  background: rgba(18,24,32,.96);
-  border-radius: 8px;
+  background: var(--panel);
+  border-radius: var(--radius-lg);
   padding: 26px;
   display: grid;
   gap: 14px;
-  box-shadow: 0 28px 80px rgba(0,0,0,.4);
+  box-shadow: var(--shadow-lift);
 }
+
+.login-panel button {
+  min-height: var(--tap);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 650;
+}
+
+.login-panel button:hover { filter: brightness(1.07); }
+.login-panel input { min-height: var(--tap); }
+.login-panel p { margin: 0; color: var(--muted); }
+.login-panel a { color: var(--accent); justify-self: center; }
 
 .brand-mark {
   width: 46px;
   height: 46px;
   display: grid;
   place-items: center;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: linear-gradient(135deg, var(--accent), var(--good));
   color: #061018;
   font-weight: 800;
 }
 
-.login-panel p {
-  margin: 0;
-  color: var(--muted);
-}
-
 .login-error {
-  border: 1px solid #7f1d1d;
-  color: #fecaca;
-  background: rgba(127,29,29,.2);
-  border-radius: 7px;
-  padding: 8px 10px;
+  border: 1px solid var(--danger-line);
+  color: var(--danger-text);
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  border-radius: var(--radius);
+  padding: 9px 11px;
 }
 
-.docs-body {
-  background: #0d131a;
-}
+/* ------------------------------------------------------------------ docs -- */
+
+.docs-body { background: var(--bg); }
 
 .docs {
   max-width: 920px;
   margin: 0 auto;
   padding: 40px 18px 80px;
-  line-height: 1.6;
+  line-height: 1.65;
 }
 
 .docs a { color: var(--accent); }
 .docs h1 { margin: 16px 0; }
-.docs h2 { margin-top: 26px; font-size: 18px; }
+.docs h2 { margin-top: 28px; font-size: 18px; }
+
 .docs pre {
-  overflow: auto;
+  overflow-x: auto;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 14px;
-  background: #080c11;
+  background: var(--panel);
+  font-size: 13px;
 }
 
-@media (max-width: 1050px) {
+/* ---------------------------------------------------------------- toasts -- */
+
+.toast-stack {
+  position: fixed;
+  z-index: 60;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  display: grid;
+  gap: 8px;
+  width: min(420px, calc(100vw - 24px));
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 11px 13px;
+  box-shadow: var(--shadow-lift);
+  font-size: 14px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  animation: toast-in .18s var(--ease);
+}
+
+.toast.error { border-color: var(--danger-line); color: var(--danger-text); }
+.toast.success { border-color: var(--good); }
+.toast strong { color: var(--text-strong); }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Mobile-only chrome: hidden until the phone breakpoint turns it on. */
+.sheet-toggles { display: none; }
+.sheet-close { display: none; }
+
+/* --------------------------------------------------------------- tablet --- */
+
+@media (max-width: 1080px) {
   #app {
-    grid-template-columns: 220px minmax(0, 1fr);
-    grid-template-rows: auto 54px minmax(420px, 1fr) auto;
+    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-rows: auto var(--tap) minmax(360px, 1fr) auto;
     grid-template-areas:
       "top top"
       "tools tools"
       "canvas canvas"
       "projects props";
   }
+
   .toolbox {
     flex-direction: row;
+    align-items: center;
     border-bottom: 1px solid var(--line);
+    border-right: 0;
+    padding: 6px 10px;
   }
+
+  .toolbox button { min-height: var(--tap-sm); }
+  .toolbox select { width: auto; }
+
   .properties {
-    max-height: 320px;
+    max-height: 340px;
+    border-left: 0;
+    border-top: 1px solid var(--line);
   }
+
+  .project-panel { border-top: 1px solid var(--line); }
+  #diagram-title { width: min(320px, 46vw); }
 }
 
-@media (max-width: 720px) {
+/* ---------------------------------------------------------------- phone --- */
+
+@media (max-width: 760px) {
+  /* The canvas fills the screen and the two side panels become sheets that
+     slide up over it, so the drawing surface is never squeezed into a strip. */
   #app {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto minmax(420px, 1fr) auto auto;
-    grid-template-areas: "top" "tools" "canvas" "projects" "props";
-    overflow: auto;
-    height: auto;
-    min-height: 100vh;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas:
+      "top"
+      "tools"
+      "canvas";
+    height: 100dvh;
+    overflow: hidden;
   }
+
   .topbar {
-    align-items: stretch;
     flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px 10px calc(8px + env(safe-area-inset-top));
   }
-  .top-actions { justify-content: flex-start; }
-  #diagram-title { width: 100%; }
+
+  .app-title { gap: 8px; }
+  .app-title strong { font-size: 15px; }
+  #diagram-title { width: 100%; min-height: var(--tap); }
+
+  /* Toolbar buttons scroll horizontally instead of wrapping into a wall of
+     controls that eats half the viewport. */
+  .top-actions {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+    gap: 6px;
+  }
+
+  .top-actions::-webkit-scrollbar { display: none; }
+  .top-actions button, .top-actions a { min-height: var(--tap); flex: 0 0 auto; }
+
+  .toolbox {
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+    gap: 6px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .toolbox::-webkit-scrollbar { display: none; }
+  .toolbox button, .toolbox select { min-height: var(--tap); flex: 0 0 auto; }
+
+  .canvas-wrap { grid-area: canvas; }
+
+  /* Minimap costs too much of a small screen to be worth it. */
+  .minimap { display: none; }
+
+  .sheet-toggles {
+    display: flex;
+    gap: 8px;
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    z-index: 30;
+  }
+
+  .sheet-toggles button {
+    min-height: var(--tap);
+    padding: 0 16px;
+    border-radius: 999px;
+    background: var(--panel);
+    box-shadow: var(--shadow-lift);
+    font-weight: 600;
+  }
+
+  .project-panel, .properties {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 45;
+    max-height: min(76dvh, 640px);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    box-shadow: var(--shadow-lift);
+    padding: 8px 16px calc(20px + env(safe-area-inset-bottom));
+    overflow: auto;
+    transform: translateY(101%);
+    transition: transform .24s var(--ease);
+    visibility: hidden;
+  }
+
+  .project-panel.sheet-open, .properties.sheet-open {
+    transform: none;
+    visibility: visible;
+  }
+
+  /* Grab handle, so the sheet reads as draggable furniture rather than a
+     panel that appeared from nowhere. */
+  .project-panel::before, .properties::before {
+    content: "";
+    display: block;
+    width: 40px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--line);
+    margin: 4px auto 12px;
+  }
+
+  .sheet-close {
+    display: block;
+    position: sticky;
+    top: 0;
+    margin-left: auto;
+    min-height: var(--tap-sm);
+  }
+
+  .sheet-scrim {
+    position: fixed;
+    inset: 0;
+    background: var(--scrim);
+    z-index: 40;
+    border: 0;
+    padding: 0;
+    width: 100%;
+  }
+
+  .small-actions button { min-height: var(--tap-sm); padding: 0 12px; }
+  .diagram-item { padding: 12px; }
+  .toast-stack { bottom: calc(76px + env(safe-area-inset-bottom)); }
+}
+
+@media (max-width: 380px) {
+  .app-title strong { display: none; }
+}
+
+/* Respect a reduced-motion preference: keep the state changes, drop the
+   movement. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
 }

@@ -36,7 +36,14 @@
     panning: null,
     clipboard: null,
     dirty: false,
-    draftTimer: null
+    draftTimer: null,
+    // Pointer Events unify mouse, touch and pen. Tracking every active pointer
+    // by id is what makes two-finger pinch zoom possible; a single-pointer
+    // gesture keeps behaving exactly like the old mouse handlers.
+    pointers: new Map(),
+    pinch: null,
+    multiSelectArmed: false,
+    longPressTimer: null
   };
 
   const el = (id) => document.getElementById(id);
@@ -77,6 +84,117 @@
       if (!res.ok) throw new Error(data.error || res.statusText);
       return data;
     });
+  }
+
+
+  // ------------------------------------------------------------- toasts --
+  // alert() blocks the page and looks like a browser error; these are
+  // non-blocking and stack.
+  function toastStack() {
+    let stack = document.querySelector(".toast-stack");
+    if (!stack) {
+      stack = document.createElement("div");
+      stack.className = "toast-stack";
+      stack.setAttribute("role", "status");
+      stack.setAttribute("aria-live", "polite");
+      document.body.appendChild(stack);
+    }
+    return stack;
+  }
+
+  function toast(message, kind = "") {
+    const node = document.createElement("div");
+    node.className = `toast ${kind}`.trim();
+    node.textContent = message;
+    toastStack().appendChild(node);
+    window.setTimeout(() => node.remove(), kind === "error" ? 6000 : 3200);
+  }
+
+  // ------------------------------------------------------- mobile sheets --
+  // Below the phone breakpoint the diagram list and properties panel are
+  // off-canvas sheets. The buttons and scrim are built here so the server
+  // rendered markup stays the same for every viewport.
+  function initSheets() {
+    const panels = {
+      diagrams: document.querySelector(".project-panel"),
+      properties: document.querySelector(".properties")
+    };
+
+    const scrim = document.createElement("button");
+    scrim.className = "sheet-scrim hidden";
+    scrim.setAttribute("aria-label", "Close panel");
+    document.body.appendChild(scrim);
+
+    const toggles = document.createElement("div");
+    toggles.className = "sheet-toggles";
+    document.body.appendChild(toggles);
+
+    const closeAll = () => {
+      Object.values(panels).forEach((panel) => panel?.classList.remove("sheet-open"));
+      scrim.classList.add("hidden");
+    };
+
+    const open = (name) => {
+      const panel = panels[name];
+      if (!panel) return;
+      const alreadyOpen = panel.classList.contains("sheet-open");
+      closeAll();
+      if (alreadyOpen) return;
+      panel.classList.add("sheet-open");
+      scrim.classList.remove("hidden");
+    };
+
+    for (const [name, panel] of Object.entries(panels)) {
+      if (!panel) continue;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = name === "diagrams" ? "Diagrams" : "Properties";
+      button.onclick = () => open(name);
+      toggles.appendChild(button);
+
+      const close = document.createElement("button");
+      close.type = "button";
+      close.className = "sheet-close";
+      close.textContent = "Close";
+      close.onclick = closeAll;
+      panel.prepend(close);
+    }
+
+    scrim.onclick = closeAll;
+    window.addEventListener("keydown", (evt) => {
+      if (evt.key === "Escape") closeAll();
+    });
+  }
+
+  // -------------------------------------------------------------- theme --
+  function initTheme() {
+    const stored = localStorage.getItem("nuigraph:theme");
+    if (stored === "light" || stored === "dark") {
+      document.documentElement.dataset.theme = stored;
+    }
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.id = "theme-toggle";
+    button.title = "Toggle light and dark theme";
+    const paint = () => {
+      const dark = document.documentElement.dataset.theme
+        ? document.documentElement.dataset.theme === "dark"
+        : !window.matchMedia("(prefers-color-scheme: light)").matches;
+      button.textContent = dark ? "Light" : "Dark";
+      button.setAttribute("aria-label", dark ? "Switch to light theme" : "Switch to dark theme");
+    };
+    button.onclick = () => {
+      const dark = document.documentElement.dataset.theme
+        ? document.documentElement.dataset.theme === "dark"
+        : !window.matchMedia("(prefers-color-scheme: light)").matches;
+      const next = dark ? "light" : "dark";
+      document.documentElement.dataset.theme = next;
+      localStorage.setItem("nuigraph:theme", next);
+      paint();
+    };
+    paint();
+    document.querySelector(".top-actions")?.prepend(button);
   }
 
   function cloneDiagram() {
@@ -212,6 +330,75 @@
       x: (evt.clientX - rect.left - state.pan.x) / state.zoom,
       y: (evt.clientY - rect.top - state.pan.y) / state.zoom
     };
+  }
+
+  const MIN_ZOOM = 0.25;
+  const MAX_ZOOM = 2.5;
+
+  function clampZoom(value) {
+    return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value));
+  }
+
+  // Zoom about a fixed screen point so the content under the fingers (or the
+  // cursor) stays put instead of sliding toward the origin.
+  function zoomAround(clientX, clientY, nextZoom) {
+    const rect = canvas.getBoundingClientRect();
+    const zoom = clampZoom(nextZoom);
+    const worldX = (clientX - rect.left - state.pan.x) / state.zoom;
+    const worldY = (clientY - rect.top - state.pan.y) / state.zoom;
+    state.zoom = zoom;
+    state.pan.x = clientX - rect.left - worldX * zoom;
+    state.pan.y = clientY - rect.top - worldY * zoom;
+  }
+
+  const LONG_PRESS_MS = 450;
+
+  function cancelLongPress() {
+    window.clearTimeout(state.longPressTimer);
+    state.longPressTimer = null;
+  }
+
+  // Touch has no modifier keys, so holding a node for a moment arms additive
+  // selection and a short buzz (where supported) confirms it.
+  function armLongPress(onFire) {
+    cancelLongPress();
+    state.longPressTimer = window.setTimeout(() => {
+      state.multiSelectArmed = true;
+      if (navigator.vibrate) navigator.vibrate(15);
+      onFire();
+    }, LONG_PRESS_MS);
+  }
+
+  function pointerDistance(a, b) {
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+
+  function activePointerPair() {
+    const points = [...state.pointers.values()];
+    return points.length === 2 ? points : null;
+  }
+
+  // A second finger always wins: abandon any in-progress drag or pan so the
+  // gesture cannot both move a node and scale the canvas.
+  function beginPinch() {
+    const pair = activePointerPair();
+    if (!pair) return;
+    state.dragging = null;
+    state.panning = null;
+    state.pinch = {
+      distance: pointerDistance(pair[0], pair[1]),
+      zoom: state.zoom
+    };
+  }
+
+  function updatePinch() {
+    const pair = activePointerPair();
+    if (!pair || !state.pinch || state.pinch.distance <= 0) return;
+    const distance = pointerDistance(pair[0], pair[1]);
+    const centerX = (pair[0].x + pair[1].x) / 2;
+    const centerY = (pair[0].y + pair[1].y) / 2;
+    zoomAround(centerX, centerY, state.pinch.zoom * (distance / state.pinch.distance));
+    render();
   }
 
   function viewportCenterPoint() {
@@ -350,7 +537,7 @@
     const url = state.current.share_url || `${location.origin}/d/${state.current.slug}`;
     try {
       await navigator.clipboard.writeText(url);
-      alert("Share link copied.");
+      toast("Share link copied.", "success");
     } catch {
       prompt("Share link", url);
     }
@@ -369,7 +556,7 @@
       const selected = state.selected?.type === "edge" && state.selected.key === edge.key;
       const group = svg("g", { class: selected ? "edge-selected" : "" }, edgesLayer);
       const d = `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
-      svg("path", { d, class: "edge-hit" }, group).addEventListener("mousedown", (evt) => {
+      svg("path", { d, class: "edge-hit" }, group).addEventListener("pointerdown", (evt) => {
         evt.stopPropagation();
         state.selected = { type: "edge", key: edge.key };
         render();
@@ -380,7 +567,7 @@
         stroke: edge.color || "#94a3b8",
         "marker-end": edge.directed ? "url(#arrow)" : ""
       }, group);
-      path.addEventListener("mousedown", (evt) => {
+      path.addEventListener("pointerdown", (evt) => {
         evt.stopPropagation();
         state.selected = { type: "edge", key: edge.key };
         render();
@@ -420,8 +607,16 @@
     for (const node of state.current.nodes) {
       const group = svg("g", { "data-key": node.key }, nodesLayer);
       renderNodeShape(group, node);
-      group.addEventListener("mousedown", (evt) => {
+      group.addEventListener("pointerdown", (evt) => {
         evt.stopPropagation();
+        state.pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
+        if (state.pointers.size === 2) {
+          cancelLongPress();
+          beginPinch();
+          return;
+        }
+        // A second finger means the user is pinching, not dragging a node.
+        if (state.pointers.size > 1) return;
         if (state.tool === "edge") {
           if (!state.edgeSource) {
             state.edgeSource = node.key;
@@ -442,13 +637,22 @@
           render();
           return;
         }
-        if (evt.shiftKey && state.tool === "select") {
+        // Shift-click on desktop, long-press on touch: both add to the
+        // selection rather than replacing it.
+        if ((evt.shiftKey || state.multiSelectArmed) && state.tool === "select") {
           toggleNodeSelection(node.key);
           render();
           return;
         }
         if (state.tool === "select") {
           pushHistory();
+          if (evt.pointerType !== "mouse") {
+            armLongPress(() => {
+              toggleNodeSelection(node.key);
+              state.dragging = null;
+              render();
+            });
+          }
           const p = worldPoint(evt);
           const keys = selectedNodeKeys().includes(node.key) ? selectedNodeKeys() : [node.key];
           if (!selectedNodeKeys().includes(node.key)) {
@@ -884,7 +1088,8 @@
       const file = evt.target.files[0];
       if (!file) return;
       if (file.size > 1048576) {
-        alert("Import file is too large.");
+        toast("Import file is too large.", "error");
+        evt.target.value = "";
         return;
       }
       const text = await file.text();
@@ -915,9 +1120,26 @@
     bindProperty("edge-color", () => state.current.edges.find((e) => e.key === state.selected.key).color = el("edge-color").value);
     bindProperty("edge-directed", () => state.current.edges.find((e) => e.key === state.selected.key).directed = el("edge-directed").checked);
 
-    canvas.addEventListener("mousedown", (evt) => {
-      if (evt.button === 1 || state.tool === "pan") {
-        state.panning = { x: evt.clientX - state.pan.x, y: evt.clientY - state.pan.y };
+    // Pointer events replace the mouse-only handlers so touch and pen work the
+    // same way. canvas CSS sets touch-action:none, so the browser hands us the
+    // raw gestures instead of scrolling or zooming the page itself.
+    canvas.addEventListener("pointerdown", (evt) => {
+      state.pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
+      if (state.pointers.size === 2) {
+        cancelLongPress();
+        beginPinch();
+        return;
+      }
+      if (state.pointers.size > 2) return;
+
+      // Middle mouse, the pan tool, or a touch drag on empty canvas all pan.
+      // On touch the select tool has nothing to rubber-band over, so panning
+      // is the more useful default than clearing the selection.
+      const panGesture = evt.button === 1 || state.tool === "pan" ||
+        (evt.pointerType !== "mouse" && state.tool === "select");
+      if (panGesture) {
+        state.panning = { x: evt.clientX - state.pan.x, y: evt.clientY - state.pan.y, moved: false };
+        canvas.setPointerCapture(evt.pointerId);
         return;
       }
       if (state.tool === "node") {
@@ -929,9 +1151,23 @@
       }
     });
 
-    window.addEventListener("mousemove", (evt) => {
+    canvas.addEventListener("pointermove", (evt) => {
+      if (!state.pointers.has(evt.pointerId)) return;
+      state.pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
+      if (state.pinch) updatePinch();
+    });
+
+    // Node drags start on the node group and can travel outside it, so the move
+    // and release handlers stay on the window.
+    window.addEventListener("pointermove", (evt) => {
+      if (state.pointers.has(evt.pointerId)) {
+        state.pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
+      }
+      if (state.pinch) return;
+
       if (state.dragging && state.current) {
         if (state.readOnly) return;
+        cancelLongPress();
         const node = state.current.nodes.find((n) => n.key === state.dragging.key);
         if (node) {
           const p = worldPoint(evt);
@@ -950,25 +1186,28 @@
           render();
         }
       } else if (state.panning) {
+        state.panning.moved = true;
         state.pan.x = evt.clientX - state.panning.x;
         state.pan.y = evt.clientY - state.panning.y;
         render();
       }
     });
 
-    window.addEventListener("mouseup", () => {
+    const endPointer = (evt) => {
+      state.pointers.delete(evt.pointerId);
+      cancelLongPress();
+      if (state.pointers.size < 2) state.pinch = null;
+      if (state.pointers.size === 0) state.multiSelectArmed = false;
       if (state.dragging && state.current && !state.readOnly) markDirty();
       state.dragging = null;
       state.panning = null;
-    });
+    };
+    window.addEventListener("pointerup", endPointer);
+    window.addEventListener("pointercancel", endPointer);
 
     canvas.addEventListener("wheel", (evt) => {
       evt.preventDefault();
-      const before = worldPoint(evt);
-      state.zoom = Math.max(0.25, Math.min(2.5, state.zoom * (evt.deltaY < 0 ? 1.08 : 0.92)));
-      const rect = canvas.getBoundingClientRect();
-      state.pan.x = evt.clientX - rect.left - before.x * state.zoom;
-      state.pan.y = evt.clientY - rect.top - before.y * state.zoom;
+      zoomAround(evt.clientX, evt.clientY, state.zoom * (evt.deltaY < 0 ? 1.08 : 0.92));
       render();
     }, { passive: false });
 
@@ -991,11 +1230,13 @@
   }
 
   initBindings();
+  initSheets();
+  initTheme();
   Promise.all([loadTemplates(), loadDiagrams()])
     .then(() => {
       const slug = sharedSlugFromPath();
       if (slug) return openDiagramBySlug(slug);
     })
-    .catch((err) => alert(err.message));
+    .catch((err) => toast(err.message, "error"));
   render();
 })();

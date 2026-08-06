@@ -17,8 +17,8 @@ private:
     bool ensureAuthenticated(const httplib::Request& req, httplib::Response& res, bool htmlResponse);
     bool verifyPassword(const std::string& password) const;
     std::string makeSessionValue(const std::string& username, int maxAgeSeconds = 28800) const;
-    std::string makeSessionCookie(const std::string& username) const;
-    std::string makeCookie(const std::string& username, int maxAgeSeconds) const;
+    std::string makeSessionCookie(const httplib::Request& req, const std::string& username) const;
+    std::string makeCookie(const httplib::Request& req, const std::string& username, int maxAgeSeconds) const;
     bool verifySession(const httplib::Request& req, std::string* username) const;
     std::string csrfTokenForSession(const std::string& session) const;
     bool verifyCsrf(const httplib::Request& req) const;
