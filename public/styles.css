@@ -378,14 +378,25 @@ body.dirty .draft-status { color: var(--warn); }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 8px 10px;
+  /* Open/Copy/Del leave too little room for a title beside them in a 264px
+     panel, so the name takes its own line and the actions sit under it. */
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .diagram-name {
   font-weight: 650;
-  overflow-wrap: anywhere;
+  /* anywhere let a normal title break mid-word ("Archi/tectu/re") once the
+     action buttons claimed their space; break-word only splits words that
+     genuinely cannot fit. */
+  overflow-wrap: break-word;
   color: var(--text-strong);
+  flex: 1 1 100%;
+  min-width: 0;
 }
+
+.small-actions { flex: 0 0 auto; }
 
 .small-actions { display: flex; gap: 5px; }
 
