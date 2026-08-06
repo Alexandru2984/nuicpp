@@ -155,7 +155,9 @@
       const close = document.createElement("button");
       close.type = "button";
       close.className = "sheet-close";
-      close.textContent = "Close";
+      close.textContent = "\u00d7";
+      close.setAttribute("aria-label", "Close panel");
+      close.title = "Close";
       close.onclick = closeAll;
       panel.prepend(close);
     }

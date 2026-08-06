@@ -40,11 +40,18 @@ TMP_ENV="$TMP_DIR/.env"
 COOKIE_JAR="$TMP_DIR/cookies.txt"
 LOG_FILE="$TMP_DIR/server.log"
 PID=""
+TEST_TITLE_PREFIX="ngs-integration-"
 
 cleanup() {
   if [[ -n "$PID" ]] && kill -0 "$PID" >/dev/null 2>&1; then
     kill "$PID" >/dev/null 2>&1 || true
     wait "$PID" >/dev/null 2>&1 || true
+  fi
+  # These tests run against DATABASE_URL from .env, which is a real database.
+  # Remove the rows this run created so repeated runs do not accumulate.
+  if [[ -n "${TEST_TITLE_PREFIX:-}" ]]; then
+    psql "$DATABASE_URL" -qtAc \
+      "DELETE FROM diagrams WHERE title LIKE '${TEST_TITLE_PREFIX}%'" >/dev/null 2>&1 || true
   fi
   rm -rf "$TMP_DIR"
 }
@@ -100,7 +107,7 @@ fi
 CREATE_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" \
   -H "X-CSRF-Token: $CSRF_TOKEN" \
   -H "Content-Type: application/json" \
-  -X POST -d '{"title":"Integration Test","description":"auto","nodes":[{"key":"n1","type":"process","title":"Node 1","x":10,"y":10,"width":160,"height":80,"color":"#38bdf8","metadata":{}}],"edges":[]}' \
+  -X POST -d '{"title":"ngs-integration-create","description":"auto","nodes":[{"key":"n1","type":"process","title":"Node 1","x":10,"y":10,"width":160,"height":80,"color":"#38bdf8","metadata":{}}],"edges":[]}' \
   "${BASE}/api/diagrams")"
 
 DIAGRAM_ID="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['id'])" "$CREATE_RESP")"
@@ -117,18 +124,18 @@ assert int(sys.argv[2]) in ids, f'diagram {sys.argv[2]} not in list: {ids}'
 
 # Verify GET by id
 GET_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" "${BASE}/api/diagrams/$DIAGRAM_ID")"
-python3 -c "import sys,json;assert json.loads(sys.argv[1])['title']=='Integration Test'" "$GET_RESP"
+python3 -c "import sys,json;assert json.loads(sys.argv[1])['title']=='ngs-integration-create'" "$GET_RESP"
 
 # Update diagram
 curl --noproxy '*' -sS -b "$COOKIE_JAR" \
   -H "X-CSRF-Token: $CSRF_TOKEN" \
   -H "Content-Type: application/json" \
-  -X PUT -d '{"title":"Updated Title","description":"updated","nodes":[{"key":"n1","type":"process","title":"Node 1","x":10,"y":10,"width":160,"height":80,"color":"#38bdf8","metadata":{}}],"edges":[]}' \
+  -X PUT -d '{"title":"ngs-integration-updated","description":"updated","nodes":[{"key":"n1","type":"process","title":"Node 1","x":10,"y":10,"width":160,"height":80,"color":"#38bdf8","metadata":{}}],"edges":[]}' \
   "${BASE}/api/diagrams/$DIAGRAM_ID" >/dev/null
 
 # Verify update
 GET_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" "${BASE}/api/diagrams/$DIAGRAM_ID")"
-python3 -c "import sys,json;assert json.loads(sys.argv[1])['title']=='Updated Title'" "$GET_RESP"
+python3 -c "import sys,json;assert json.loads(sys.argv[1])['title']=='ngs-integration-updated'" "$GET_RESP"
 
 # Create version snapshot
 curl --noproxy '*' -fsS -b "$COOKIE_JAR" \
@@ -147,23 +154,23 @@ DUP_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" \
   -H "Content-Type: application/json" \
   -X POST -d '{}' "${BASE}/api/diagrams/$DIAGRAM_ID/duplicate")"
 DUP_ID="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['id'])" "$DUP_RESP")"
-python3 -c "import sys,json;assert json.loads(sys.argv[1])['title']=='Updated Title Copy'" "$DUP_RESP"
+python3 -c "import sys,json;assert json.loads(sys.argv[1])['title']=='ngs-integration-updated Copy'" "$DUP_RESP"
 
 # Export JSON
 EXP_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" "${BASE}/api/diagrams/$DIAGRAM_ID/export.json")"
-python3 -c "import sys,json;assert json.loads(sys.argv[1])['title']=='Updated Title'" "$EXP_RESP"
+python3 -c "import sys,json;assert json.loads(sys.argv[1])['title']=='ngs-integration-updated'" "$EXP_RESP"
 
 # Import diagram
 IMP_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" \
   -H "X-CSRF-Token: $CSRF_TOKEN" \
   -H "Content-Type: application/json" \
-  -X POST -d '{"title":"Imported","description":"","nodes":[],"edges":[]}' \
+  -X POST -d '{"title":"ngs-integration-imported","description":"","nodes":[],"edges":[]}' \
   "${BASE}/api/diagrams/import")"
 IMP_ID="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['id'])" "$IMP_RESP")"
 
 # Slug-based lookup
 SLUG_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" "${BASE}/api/diagrams/slug/$SLUG")"
-python3 -c "import sys,json;assert json.loads(sys.argv[1])['title']=='Updated Title'" "$SLUG_RESP"
+python3 -c "import sys,json;assert json.loads(sys.argv[1])['title']=='ngs-integration-updated'" "$SLUG_RESP"
 
 # Delete all created diagrams
 for did in "$DIAGRAM_ID" "$DUP_ID" "$IMP_ID"; do

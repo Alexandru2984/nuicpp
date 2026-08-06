@@ -182,8 +182,8 @@ h2 { font-size: 14px; color: var(--text-strong); }
 #app {
   height: 100dvh;
   display: grid;
-  grid-template-columns: 264px 76px minmax(0, 1fr) 300px;
-  grid-template-rows: var(--topbar-h) minmax(0, 1fr);
+  grid-template-columns: 264px 96px minmax(0, 1fr) 300px;
+  grid-template-rows: minmax(var(--topbar-h), auto) minmax(0, 1fr);
   grid-template-areas:
     "top top top top"
     "projects tools canvas props";
@@ -195,7 +195,8 @@ h2 { font-size: 14px; color: var(--text-strong); }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 10px 16px;
+  flex-wrap: wrap;
   padding: 8px 14px;
   border-bottom: 1px solid var(--line);
   background: var(--panel);
@@ -216,6 +217,8 @@ h2 { font-size: 14px; color: var(--text-strong); }
 
 #diagram-title {
   width: min(420px, 40vw);
+  min-width: 0;
+  flex: 1 1 auto;
   font-weight: 650;
   background: var(--panel-2);
 }
@@ -229,11 +232,23 @@ h2 { font-size: 14px; color: var(--text-strong); }
   min-width: 0;
 }
 
+.top-actions button {
+  min-height: 32px;
+  padding: 0 9px;
+  font-size: 13px;
+}
+
 .top-actions a {
   color: var(--accent);
   text-decoration: none;
   padding: 7px 6px;
   border-radius: var(--radius);
+  font-size: 13px;
+}
+
+/* Anything with a coarse pointer gets full-size targets regardless of width. */
+@media (pointer: coarse) {
+  .top-actions button, .top-actions a { min-height: var(--tap); }
 }
 
 .top-actions a:hover { text-decoration: underline; }
@@ -275,8 +290,13 @@ body.dirty .draft-status { color: var(--warn); }
   overflow: auto;
 }
 
-.toolbox button { min-width: 0; padding: 0 6px; }
-.toolbox select { min-width: 0; padding: 4px; }
+.toolbox button { min-width: 0; padding: 0 6px; font-size: 13px; }
+.toolbox select { min-width: 0; padding: 4px; font-size: 13px; }
+
+/* Only the vertical desktop rail stretches its controls to the full width. */
+@media (min-width: 1081px) {
+  .toolbox button, .toolbox select { width: 100%; }
+}
 
 .properties {
   grid-area: props;
@@ -322,6 +342,7 @@ body.dirty .draft-status { color: var(--warn); }
 }
 
 .minimap svg { width: 100%; height: 100%; display: block; }
+.minimap:empty { display: none; }
 
 .panel-head {
   display: flex;
@@ -634,9 +655,9 @@ body.dirty .draft-status { color: var(--warn); }
     padding: 8px 10px calc(8px + env(safe-area-inset-top));
   }
 
-  .app-title { gap: 8px; }
-  .app-title strong { font-size: 15px; }
-  #diagram-title { width: 100%; min-height: var(--tap); }
+  .app-title { gap: 8px; width: 100%; }
+  .app-title strong { font-size: 15px; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  #diagram-title { width: auto; min-height: var(--tap); }
 
   /* Toolbar buttons scroll horizontally instead of wrapping into a wall of
      controls that eats half the viewport. */
@@ -722,13 +743,29 @@ body.dirty .draft-status { color: var(--warn); }
     margin: 4px auto 12px;
   }
 
-  .sheet-close {
-    display: block;
-    position: sticky;
-    top: 0;
-    margin-left: auto;
-    min-height: var(--tap-sm);
+  /* Floated out of the flow so it cannot collide with whatever heading or
+     action row the panel already has. */
+  /* Keep the panel's own action row clear of the close button. */
+  .project-panel > .panel-head,
+  .properties > h2:first-of-type {
+    padding-right: calc(var(--tap-sm) + 12px);
   }
+
+  .sheet-close {
+    display: grid;
+    place-items: center;
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    width: var(--tap-sm);
+    height: var(--tap-sm);
+    min-height: 0;
+    padding: 0;
+    border-radius: 999px;
+    font-size: 18px;
+    line-height: 1;
+  }
+
 
   .sheet-scrim {
     position: fixed;

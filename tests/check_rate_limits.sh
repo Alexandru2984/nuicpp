@@ -40,11 +40,18 @@ TMP_ENV="$TMP_DIR/.env"
 COOKIE_JAR="$TMP_DIR/cookies.txt"
 LOG_FILE="$TMP_DIR/server.log"
 PID=""
+TEST_TITLE_PREFIX="ngs-ratetest-"
 
 cleanup() {
   if [[ -n "$PID" ]] && kill -0 "$PID" >/dev/null 2>&1; then
     kill "$PID" >/dev/null 2>&1 || true
     wait "$PID" >/dev/null 2>&1 || true
+  fi
+  # These tests run against DATABASE_URL from .env, which is a real database.
+  # Remove the rows this run created so repeated runs do not accumulate.
+  if [[ -n "${TEST_TITLE_PREFIX:-}" ]]; then
+    psql "$DATABASE_URL" -qtAc \
+      "DELETE FROM diagrams WHERE title LIKE '${TEST_TITLE_PREFIX}%'" >/dev/null 2>&1 || true
   fi
   rm -rf "$TMP_DIR"
 }
@@ -90,7 +97,7 @@ fi
 SESSION_RESP="$(curl --noproxy '*' -sS -c "$COOKIE_JAR" "${BASE}/api/session")"
 CSRF_TOKEN="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['csrf_token'])" "$SESSION_RESP")"
 
-PAYLOAD='{"title":"Rate Test","description":"","nodes":[],"edges":[]}'
+PAYLOAD='{"title":"ngs-ratetest-diagram","description":"","nodes":[],"edges":[]}'
 
 got_429=0
 for i in $(seq 1 60); do

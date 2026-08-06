@@ -232,6 +232,17 @@ void clearLoginFailures(const std::string& ip) {
     loginFailures().erase(ip);
 }
 
+std::string sha256Hex(const std::string& data) {
+    unsigned char digest[EVP_MAX_MD_SIZE];
+    unsigned int len = 0;
+    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+    EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr);
+    EVP_DigestUpdate(ctx, data.data(), data.size());
+    EVP_DigestFinal_ex(ctx, digest, &len);
+    EVP_MD_CTX_free(ctx);
+    return bytesToHex(digest, len);
+}
+
 std::string contentTypeFor(const std::string& path) {
     if (path.ends_with(".html")) return "text/html; charset=utf-8";
     if (path.ends_with(".js")) return "application/javascript";
@@ -330,6 +341,34 @@ void Routes::applySecurityHeaders(httplib::Response& res) const {
                    "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; "
                    "img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; "
                    "frame-ancestors 'none'; form-action 'self'");
+}
+
+// Static assets carry no content hash in their names, and the app sent no
+// caching headers at all, so Cloudflare applied its own default and a CSS or JS
+// deploy could take hours to reach visitors.
+//
+// no-cache does not mean "do not store": caches may keep the response but must
+// revalidate, so an unchanged file still costs only a 304 while a changed one
+// is picked up on the next request.
+void Routes::serveStatic(const httplib::Request& req, httplib::Response& res, const std::string& path) const {
+    std::string body;
+    try {
+        body = readTextFile(path);
+    } catch (const std::exception&) {
+        res.status = 404;
+        res.set_content("not found", "text/plain");
+        return;
+    }
+
+    const auto etag = "\"" + sha256Hex(body).substr(0, 32) + "\"";
+    res.set_header("ETag", etag);
+    res.set_header("Cache-Control", "no-cache");
+
+    if (req.get_header_value("If-None-Match") == etag) {
+        res.status = 304;
+        return;
+    }
+    res.set_content(body, contentTypeFor(path));
 }
 
 void Routes::sendJson(httplib::Response& res, int status, const nlohmann::json& body) const {
@@ -572,14 +611,14 @@ void Routes::registerRoutes(httplib::Server& server) {
         sendJson(res, 200, {{"status", "ok"}, {"service", "nuigraph-studio"}});
     });
 
-    server.Get("/styles.css", [this](const httplib::Request&, httplib::Response& res) {
-        res.set_content(readTextFile(cfg_.projectRoot + "/public/styles.css"), "text/css");
+    server.Get("/styles.css", [this](const httplib::Request& req, httplib::Response& res) {
+        serveStatic(req, res, cfg_.projectRoot + "/public/styles.css");
     });
-    server.Get("/app.js", [this](const httplib::Request&, httplib::Response& res) {
-        res.set_content(readTextFile(cfg_.projectRoot + "/public/app.js"), "application/javascript");
+    server.Get("/app.js", [this](const httplib::Request& req, httplib::Response& res) {
+        serveStatic(req, res, cfg_.projectRoot + "/public/app.js");
     });
-    server.Get("/editor.js", [this](const httplib::Request&, httplib::Response& res) {
-        res.set_content(readTextFile(cfg_.projectRoot + "/public/editor.js"), "application/javascript");
+    server.Get("/editor.js", [this](const httplib::Request& req, httplib::Response& res) {
+        serveStatic(req, res, cfg_.projectRoot + "/public/editor.js");
     });
     server.Get(R"(/nui/(.+))", [this](const httplib::Request& req, httplib::Response& res) {
         auto rel = req.matches[1].str();
@@ -594,10 +633,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             res.set_content("not found", "text/plain");
             return;
         }
-        if (path.ends_with(".wasm")) {
-            res.set_header("Cache-Control", "public, max-age=31536000, immutable");
-        }
-        res.set_content(readTextFile(path), contentTypeFor(path));
+        serveStatic(req, res, path);
     });
 
     server.Get("/login", [](const httplib::Request&, httplib::Response& res) {

@@ -33,6 +33,7 @@ private:
     bool ensureCanRead(const httplib::Request& req, httplib::Response& res, long diagramId, const char* what);
     bool ensureCanEdit(const httplib::Request& req, httplib::Response& res, long diagramId);
     nlohmann::json diagramResponse(const httplib::Request& req, const Diagram& diagram);
+    void serveStatic(const httplib::Request& req, httplib::Response& res, const std::string& path) const;
     void sendJson(httplib::Response& res, int status, const nlohmann::json& body) const;
     void sendStorageError(httplib::Response& res, const std::exception& e, int status) const;
     void applySecurityHeaders(httplib::Response& res) const;
