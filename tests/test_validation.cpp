@@ -494,6 +494,40 @@ void testRateLimiterMultipleKeys() {
     require(limiter.allow("c", 1, 60, 101), "key 'c' should be independent");
 }
 
+// Keys arrive from the network, so the map must not grow without bound.
+void testRateLimiterEvictsExpiredKeys() {
+    RateLimiter limiter;
+    const std::size_t flood = RateLimiter::kMaxTrackedKeys + 500;
+    for (std::size_t i = 0; i < flood; ++i) {
+        limiter.allow("ip-" + std::to_string(i), 5, 60, 1000);
+    }
+    require(limiter.trackedKeys() <= RateLimiter::kMaxTrackedKeys,
+            "tracked keys should stay at or below the cap while filling");
+
+    // Well past the window: the next call sweeps the stale entries away.
+    limiter.allow("fresh", 5, 60, 100000);
+    require(limiter.trackedKeys() < RateLimiter::kMaxTrackedKeys,
+            "expired keys should be evicted once the window passes");
+}
+
+// Eviction resets whichever counter it drops, so it must not be usable as a way
+// to clear an existing throttle by flooding the map with fresh keys.
+void testRateLimiterEvictionKeepsThrottledKeys() {
+    RateLimiter limiter;
+    for (int i = 0; i < 3; ++i) {
+        limiter.allow("throttled", 3, 60, 1000 + i);
+    }
+    require(!limiter.allow("throttled", 3, 60, 1004), "key should be at its limit before the flood");
+
+    for (std::size_t i = 0; i < RateLimiter::kMaxTrackedKeys + 100; ++i) {
+        limiter.allow("flood-" + std::to_string(i), 5, 60, 1005);
+    }
+
+    require(limiter.trackedKeys() <= RateLimiter::kMaxTrackedKeys, "map should stay bounded through the flood");
+    require(!limiter.allow("throttled", 3, 60, 1006),
+            "a throttled key should survive eviction and stay limited");
+}
+
 } // namespace
 
 int main() {
@@ -541,10 +575,12 @@ int main() {
         testRateLimiterClear();
         testRateLimiterSlidingWindow();
         testRateLimiterMultipleKeys();
+        testRateLimiterEvictsExpiredKeys();
+        testRateLimiterEvictionKeepsThrottledKeys();
     } catch (const std::exception& e) {
         std::cerr << "test failed: " << e.what() << '\n';
         return EXIT_FAILURE;
     }
-    std::cout << "nuigraph validation tests passed (36 tests)\n";
+    std::cout << "nuigraph validation tests passed (38 tests)\n";
     return EXIT_SUCCESS;
 }

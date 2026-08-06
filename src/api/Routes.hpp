@@ -34,6 +34,7 @@ private:
     nlohmann::json diagramResponse(const httplib::Request& req, const Diagram& diagram);
     void sendJson(httplib::Response& res, int status, const nlohmann::json& body) const;
     void sendStorageError(httplib::Response& res, const std::exception& e, int status) const;
+    void applySecurityHeaders(httplib::Response& res) const;
 
     const Config& cfg_;
     PostgresStorage& storage_;

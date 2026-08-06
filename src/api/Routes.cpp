@@ -115,15 +115,26 @@ std::string trimHeaderValue(std::string value) {
     return value;
 }
 
+// The service binds loopback only, so the sole legitimate peer is the local
+// nginx, which sets X-Real-IP from $remote_addr (already rewritten to the real
+// visitor by the Cloudflare real-ip config).
+//
+// The X-Forwarded-For fallback must take the LAST entry, not the first: nginx
+// forwards it as $proxy_add_x_forwarded_for, which appends the peer address to
+// whatever the client sent. The leading entries are attacker-controlled, so
+// keying rate limits on them would let anyone forge a fresh bucket per request.
 std::string clientIp(const httplib::Request& req) {
-    auto real = req.get_header_value("X-Real-IP");
+    auto real = trimHeaderValue(req.get_header_value("X-Real-IP"));
     if (!real.empty()) {
-        return trimHeaderValue(real);
+        return real;
     }
     auto forwarded = req.get_header_value("X-Forwarded-For");
     if (!forwarded.empty()) {
-        auto comma = forwarded.find(',');
-        return trimHeaderValue(forwarded.substr(0, comma == std::string::npos ? std::string::npos : comma));
+        auto comma = forwarded.rfind(',');
+        auto last = trimHeaderValue(comma == std::string::npos ? forwarded : forwarded.substr(comma + 1));
+        if (!last.empty()) {
+            return last;
+        }
     }
     return req.remote_addr;
 }
@@ -153,24 +164,46 @@ RateLimiter& createRateLimiter() {
     return limiter;
 }
 
+constexpr long long kLoginFailureWindow = 10 * 60;
+constexpr std::size_t kMaxLoginFailureKeys = 10000;
+constexpr int kGuestSessionSeconds = 7 * 24 * 60 * 60;
+
+// Caller must hold loginFailuresMutex(). Entries are only pruned when the map
+// they live in is touched, so a sweep is needed to stop addresses that never
+// come back from accumulating for the process lifetime.
+void pruneLoginFailuresLocked(long long now) {
+    auto& failures = loginFailures();
+    for (auto it = failures.begin(); it != failures.end();) {
+        auto& items = it->second;
+        items.erase(std::remove_if(items.begin(), items.end(), [now](long long t) {
+            return now - t > kLoginFailureWindow;
+        }), items.end());
+        if (items.empty()) {
+            it = failures.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
 bool loginBlocked(const std::string& ip) {
     auto now = epochSeconds();
     std::lock_guard<std::mutex> lock(loginFailuresMutex());
-    auto& items = loginFailures()[ip];
-    items.erase(std::remove_if(items.begin(), items.end(), [now](long long t) {
-        return now - t > 10 * 60;
-    }), items.end());
-    return items.size() >= 8;
+    pruneLoginFailuresLocked(now);
+    auto it = loginFailures().find(ip);
+    return it != loginFailures().end() && it->second.size() >= 8;
 }
 
 void recordLoginFailure(const std::string& ip) {
     auto now = epochSeconds();
     std::lock_guard<std::mutex> lock(loginFailuresMutex());
-    auto& items = loginFailures()[ip];
-    items.erase(std::remove_if(items.begin(), items.end(), [now](long long t) {
-        return now - t > 10 * 60;
-    }), items.end());
-    items.push_back(now);
+    pruneLoginFailuresLocked(now);
+    if (loginFailures().size() >= kMaxLoginFailureKeys && !loginFailures().contains(ip)) {
+        // Every tracked address is inside the window already; refuse to grow
+        // rather than let a spray of addresses drive memory use.
+        return;
+    }
+    loginFailures()[ip].push_back(now);
 }
 
 void clearLoginFailures(const std::string& ip) {
@@ -236,6 +269,22 @@ Diagram defaultDiagram() {
 
 Routes::Routes(const Config& cfg, PostgresStorage& storage)
     : cfg_(cfg), storage_(storage) {}
+
+// The vhost sets these too, but the app must not depend on a proxy staying
+// configured correctly to be safe. httplib keeps the first value for a header,
+// so nginx's copies win where both are present.
+void Routes::applySecurityHeaders(httplib::Response& res) const {
+    res.set_header("X-Content-Type-Options", "nosniff");
+    res.set_header("X-Frame-Options", "DENY");
+    res.set_header("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.set_header("Cross-Origin-Opener-Policy", "same-origin");
+    res.set_header("Cross-Origin-Resource-Policy", "same-origin");
+    res.set_header("Permissions-Policy", "geolocation=(), microphone=(), camera=(), interest-cohort=()");
+    res.set_header("Content-Security-Policy",
+                   "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; "
+                   "img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; "
+                   "frame-ancestors 'none'; form-action 'self'");
+}
 
 void Routes::sendJson(httplib::Response& res, int status, const nlohmann::json& body) const {
     res.status = status;
@@ -445,6 +494,10 @@ bool Routes::ensureAuthenticated(const httplib::Request& req, httplib::Response&
 }
 
 void Routes::registerRoutes(httplib::Server& server) {
+    server.set_post_routing_handler([this](const httplib::Request&, httplib::Response& res) {
+        applySecurityHeaders(res);
+    });
+
     server.Get("/health", [this](const httplib::Request&, httplib::Response& res) {
         sendJson(res, 200, {{"status", "ok"}, {"service", "nuigraph-studio"}});
     });
@@ -541,7 +594,10 @@ void Routes::registerRoutes(httplib::Server& server) {
                 return;
             }
             username = "guest_" + randomHex(12);
-            auto maxAge = 180 * 24 * 60 * 60;
+            // Guest sessions are the ownership token for anything the visitor
+            // creates and cannot be revoked individually, so they are kept
+            // short rather than the six months this used to issue.
+            auto maxAge = kGuestSessionSeconds;
             auto session = makeSessionValue(username, maxAge);
             res.set_header("Set-Cookie", "ngs_session=" + session + "; Path=/; Max-Age=" + std::to_string(maxAge) + "; HttpOnly; SameSite=Strict; Secure");
             sendJson(res, 200, {{"username", username}, {"public_access", true}, {"csrf_token", csrfTokenForSession(session)}});
