@@ -43,7 +43,8 @@
     pointers: new Map(),
     pinch: null,
     multiSelectArmed: false,
-    longPressTimer: null
+    longPressTimer: null,
+    filter: ""
   };
 
   const el = (id) => document.getElementById(id);
@@ -197,6 +198,87 @@
     };
     paint();
     document.querySelector(".top-actions")?.prepend(button);
+  }
+
+
+  // ------------------------------------------------------ search + help --
+  // Injected rather than added to the server-rendered markup so the shell keeps
+  // working unchanged if this script fails to load.
+  function initSearch() {
+    const panel = document.querySelector(".project-panel");
+    const list = el("diagram-list");
+    if (!panel || !list) return;
+
+    const wrap = document.createElement("div");
+    wrap.className = "search-wrap";
+    const input = document.createElement("input");
+    input.type = "search";
+    input.id = "diagram-search";
+    input.placeholder = "Search diagrams";
+    input.setAttribute("aria-label", "Search diagrams");
+    input.autocomplete = "off";
+    input.oninput = () => {
+      state.filter = input.value;
+      renderDiagramList();
+    };
+    wrap.appendChild(input);
+    list.parentNode.insertBefore(wrap, list);
+  }
+
+  const SHORTCUTS = [
+    ["Ctrl / Cmd + S", "Save diagram"],
+    ["Ctrl / Cmd + Z", "Undo"],
+    ["Ctrl / Cmd + Y", "Redo"],
+    ["Ctrl / Cmd + C", "Copy selection"],
+    ["Ctrl / Cmd + V", "Paste"],
+    ["Delete / Backspace", "Delete selection"],
+    ["Escape", "Clear selection, close panels"],
+    ["Shift + click", "Add to selection"],
+    ["Long press (touch)", "Add to selection"],
+    ["Middle drag / Pan tool", "Pan the canvas"],
+    ["Wheel / pinch", "Zoom"],
+    ["?", "Show this help"]
+  ];
+
+  function toggleShortcuts() {
+    const existing = document.querySelector(".shortcuts-overlay");
+    if (existing) {
+      existing.remove();
+      return;
+    }
+    const overlay = document.createElement("div");
+    overlay.className = "shortcuts-overlay";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-label", "Keyboard shortcuts");
+
+    const card = document.createElement("div");
+    card.className = "shortcuts-card";
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    const title = document.createElement("h2");
+    title.textContent = "Shortcuts";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.textContent = "Close";
+    close.onclick = () => overlay.remove();
+    head.append(title, close);
+    card.appendChild(head);
+
+    const table = document.createElement("dl");
+    table.className = "shortcut-list";
+    for (const [keys, what] of SHORTCUTS) {
+      const dt = document.createElement("dt");
+      dt.textContent = keys;
+      const dd = document.createElement("dd");
+      dd.textContent = what;
+      table.append(dt, dd);
+    }
+    card.appendChild(table);
+    overlay.appendChild(card);
+    overlay.onclick = (evt) => { if (evt.target === overlay) overlay.remove(); };
+    document.body.appendChild(overlay);
+    close.focus();
   }
 
   function cloneDiagram() {
@@ -534,6 +616,47 @@
     img.src = url;
   }
 
+  const MERMAID_SHAPES = {
+    decision: (t) => `{${t}}`,
+    database: (t) => `[(${t})]`,
+    external: (t) => `[/${t}/]`,
+    note: (t) => `>${t}]`,
+    api: (t) => `([${t}])`,
+    service: (t) => `[[${t}]]`
+  };
+
+  function mermaidLabel(text) {
+    // Quotes and brackets would terminate the node shape early.
+    return (text || "").replace(/["\[\]{}()<>|]/g, " ").trim() || "node";
+  }
+
+  function mermaidId(key) {
+    return `n_${String(key).replace(/[^A-Za-z0-9_]/g, "_")}`;
+  }
+
+  function toMermaid(diagram) {
+    const lines = ["flowchart LR"];
+    for (const node of diagram.nodes) {
+      const shape = MERMAID_SHAPES[node.type] || ((t) => `[${t}]`);
+      lines.push(`  ${mermaidId(node.key)}${shape(mermaidLabel(node.title))}`);
+    }
+    for (const edge of diagram.edges) {
+      const arrow = edge.directed ? "-->" : "---";
+      const label = mermaidLabel(edge.label);
+      const mid = edge.label ? `${arrow}|${label}|` : arrow;
+      lines.push(`  ${mermaidId(edge.source)} ${mid} ${mermaidId(edge.target)}`);
+    }
+    return lines.join("\n");
+  }
+
+  function exportMermaid() {
+    if (!state.current) return;
+    const text = toMermaid(state.current);
+    downloadBlob(new Blob([text], { type: "text/plain" }),
+      `${state.current.slug || state.current.title || "diagram"}.mmd`);
+    toast("Mermaid file exported.", "success");
+  }
+
   async function shareDiagram() {
     if (!state.current) return;
     const url = state.current.share_url || `${location.origin}/d/${state.current.slug}`;
@@ -747,17 +870,26 @@
     }
   }
 
+  function visibleDiagrams() {
+    const needle = state.filter.trim().toLowerCase();
+    if (!needle) return state.diagrams;
+    return state.diagrams.filter((d) =>
+      (d.title || "").toLowerCase().includes(needle) ||
+      (d.description || "").toLowerCase().includes(needle));
+  }
+
   function renderDiagramList() {
     const list = el("diagram-list");
     list.replaceChildren();
-    if (!state.diagrams.length) {
+    const items = visibleDiagrams();
+    if (!items.length) {
       const empty = document.createElement("div");
       empty.className = "muted";
-      empty.textContent = "No diagrams yet.";
+      empty.textContent = state.diagrams.length ? "No diagrams match that search." : "No diagrams yet.";
       list.appendChild(empty);
       return;
     }
-    for (const d of state.diagrams) {
+    for (const d of items) {
       const item = document.createElement("div");
       item.className = `diagram-item ${state.current?.id === d.id ? "active" : ""}`;
       item.innerHTML = `
@@ -1078,6 +1210,27 @@
     el("zoom-out").onclick = () => { state.zoom = Math.max(0.25, state.zoom / 1.15); render(); };
     el("export-json").onclick = () => { if (state.current) window.open(`/api/diagrams/${state.current.id}/export.json`, "_blank"); };
     el("export-svg").onclick = exportSvg;
+
+    // Added here rather than in the server markup so the shell stays stable.
+    const actions = document.querySelector(".top-actions");
+    if (actions) {
+      const mmd = document.createElement("button");
+      mmd.type = "button";
+      mmd.id = "export-mermaid";
+      mmd.textContent = "Mermaid";
+      mmd.title = "Export as a Mermaid flowchart";
+      mmd.onclick = exportMermaid;
+      actions.insertBefore(mmd, el("export-png"));
+
+      const help = document.createElement("button");
+      help.type = "button";
+      help.id = "show-shortcuts";
+      help.textContent = "?";
+      help.title = "Keyboard shortcuts";
+      help.setAttribute("aria-label", "Keyboard shortcuts");
+      help.onclick = toggleShortcuts;
+      actions.appendChild(help);
+    }
     el("export-png").onclick = exportPng;
     el("make-version").onclick = async () => {
       if (!state.current) return;
@@ -1222,6 +1375,8 @@
       if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "v") { evt.preventDefault(); pasteSelected(); }
       if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "z") { evt.preventDefault(); evt.shiftKey ? redo() : undo(); }
       if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "y") { evt.preventDefault(); redo(); }
+      if (evt.key === "?") { evt.preventDefault(); toggleShortcuts(); }
+      if (evt.key === "Escape") document.querySelector(".shortcuts-overlay")?.remove();
     });
 
     window.addEventListener("beforeunload", (evt) => {
@@ -1234,6 +1389,7 @@
   initBindings();
   initSheets();
   initTheme();
+  initSearch();
   Promise.all([loadTemplates(), loadDiagrams()])
     .then(() => {
       const slug = sharedSlugFromPath();
