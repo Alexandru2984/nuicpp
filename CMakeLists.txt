@@ -20,6 +20,7 @@ add_executable(nuigraph-studio
     src/config/Config.cpp
     src/validation/DiagramValidator.cpp
     src/storage/PostgresStorage.cpp
+    src/storage/ConnectionPool.cpp
     src/api/Routes.cpp
     src/ui/NuiApp.cpp
     src/utils/Json.cpp

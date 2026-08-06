@@ -18,6 +18,7 @@ struct Config {
     int maxEdgesPerDiagram = 2000;
     int maxVersionsPerDiagram = 50;
     int maxDiagramsPerGuest = 60;
+    int dbPoolSize = 8;
     std::size_t maxImportBytes = 1048576;
     std::string projectRoot = "/home/micu/nuicpp";
 

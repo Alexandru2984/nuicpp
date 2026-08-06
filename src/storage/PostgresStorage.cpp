@@ -66,16 +66,12 @@ nlohmann::json diagramSummaryJson(const pqxx::row& row) {
 } // namespace
 
 PostgresStorage::PostgresStorage(const Config& cfg, const DiagramValidator& validator)
-    : cfg_(cfg), validator_(validator) {}
-
-pqxx::connection PostgresStorage::connect() {
-    pqxx::connection conn(cfg_.databaseUrl);
-    return conn;
-}
+    : pool_(cfg.databaseUrl, static_cast<std::size_t>(cfg.dbPoolSize)),
+      cfg_(cfg), validator_(validator) {}
 
 bool PostgresStorage::ping() {
-    auto conn = connect();
-    pqxx::work tx(conn);
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
     auto result = tx.exec("SELECT 1");
     tx.commit();
     return !result.empty();
@@ -92,8 +88,8 @@ std::string PostgresStorage::uniqueSlug(pqxx::work& tx, const std::string& title
 }
 
 std::vector<nlohmann::json> PostgresStorage::listDiagrams() {
-    auto conn = connect();
-    pqxx::work tx(conn);
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
     auto rows = tx.exec(R"SQL(
         SELECT d.id, d.title, d.slug, d.description,
                to_char(d.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
@@ -115,8 +111,8 @@ std::vector<nlohmann::json> PostgresStorage::listDiagramsForOwner(const std::str
     if (ownerTokenHash.empty()) {
         return {};
     }
-    auto conn = connect();
-    pqxx::work tx(conn);
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
     auto rows = tx.exec_params(R"SQL(
         SELECT d.id, d.title, d.slug, d.description,
                to_char(d.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
@@ -136,16 +132,16 @@ std::vector<nlohmann::json> PostgresStorage::listDiagramsForOwner(const std::str
 }
 
 Diagram PostgresStorage::getDiagram(long id) {
-    auto conn = connect();
-    pqxx::work tx(conn);
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
     auto diagram = getDiagram(tx, id);
     tx.commit();
     return diagram;
 }
 
 Diagram PostgresStorage::getDiagramBySlug(const std::string& slug) {
-    auto conn = connect();
-    pqxx::work tx(conn);
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
     auto rows = tx.exec_params("SELECT id FROM diagrams WHERE slug=$1", slug);
     if (rows.empty()) {
         throw std::runtime_error("diagram not found");
@@ -156,8 +152,8 @@ Diagram PostgresStorage::getDiagramBySlug(const std::string& slug) {
 }
 
 std::string PostgresStorage::ownerHashForDiagram(long id) {
-    auto conn = connect();
-    pqxx::work tx(conn);
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
     auto rows = tx.exec_params("SELECT owner_token_hash FROM diagrams WHERE id=$1", id);
     if (rows.empty()) {
         throw std::runtime_error("diagram not found");
@@ -171,8 +167,8 @@ long PostgresStorage::countDiagramsForOwner(const std::string& ownerTokenHash) {
     if (ownerTokenHash.empty()) {
         return 0;
     }
-    auto conn = connect();
-    pqxx::work tx(conn);
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
     auto rows = tx.exec_params("SELECT count(*) AS n FROM diagrams WHERE owner_token_hash=$1", ownerTokenHash);
     auto count = rows[0]["n"].as<long>();
     tx.commit();
@@ -257,8 +253,8 @@ Diagram PostgresStorage::createDiagram(const Diagram& input, bool importMode, co
     if (!validation.ok) {
         throw std::runtime_error(validation.errors.front());
     }
-    auto conn = connect();
-    pqxx::work tx(conn);
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
     auto slug = uniqueSlug(tx, diagram.title);
     auto rows = tx.exec_params(R"SQL(
         INSERT INTO diagrams (title, slug, description, owner_token_hash)
@@ -279,8 +275,8 @@ Diagram PostgresStorage::updateDiagram(long id, const Diagram& input, const std:
     if (!validation.ok) {
         throw std::runtime_error(validation.errors.front());
     }
-    auto conn = connect();
-    pqxx::work tx(conn);
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
     auto exists = tx.exec_params("SELECT 1 FROM diagrams WHERE id=$1", id);
     if (exists.empty()) {
         throw std::runtime_error("diagram not found");
@@ -293,8 +289,8 @@ Diagram PostgresStorage::updateDiagram(long id, const Diagram& input, const std:
 }
 
 void PostgresStorage::deleteDiagram(long id) {
-    auto conn = connect();
-    pqxx::work tx(conn);
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
     tx.exec_params("DELETE FROM diagrams WHERE id=$1", id);
     tx.commit();
 }
@@ -308,8 +304,8 @@ Diagram PostgresStorage::duplicateDiagram(long id, const std::string& ownerToken
 }
 
 std::vector<VersionInfo> PostgresStorage::listVersions(long diagramId) {
-    auto conn = connect();
-    pqxx::work tx(conn);
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
     auto rows = tx.exec_params(R"SQL(
         SELECT id, diagram_id, version_number,
                to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
@@ -327,8 +323,8 @@ std::vector<VersionInfo> PostgresStorage::listVersions(long diagramId) {
 }
 
 VersionInfo PostgresStorage::createVersion(long diagramId, const std::string& note) {
-    auto conn = connect();
-    pqxx::work tx(conn);
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
     auto info = createVersion(tx, diagramId, note);
     tx.commit();
     return info;
@@ -363,8 +359,8 @@ void PostgresStorage::pruneVersions(pqxx::work& tx, long diagramId) {
 }
 
 Diagram PostgresStorage::restoreVersion(long diagramId, long versionId) {
-    auto conn = connect();
-    pqxx::work tx(conn);
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
     auto rows = tx.exec_params("SELECT snapshot_json::text FROM diagram_versions WHERE diagram_id=$1 AND id=$2", diagramId, versionId);
     if (rows.empty()) {
         throw std::runtime_error("version not found");

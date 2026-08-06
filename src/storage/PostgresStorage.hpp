@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config/Config.hpp"
+#include "storage/ConnectionPool.hpp"
 #include "domain/Diagram.hpp"
 #include "validation/DiagramValidator.hpp"
 
@@ -31,7 +32,7 @@ public:
     Diagram restoreVersion(long diagramId, long versionId);
 
 private:
-    pqxx::connection connect();
+    ConnectionPool pool_;
     Diagram getDiagram(pqxx::work& tx, long id);
     void replaceNodesAndEdges(pqxx::work& tx, long diagramId, const Diagram& diagram);
     VersionInfo createVersion(pqxx::work& tx, long diagramId, const std::string& note);
