@@ -28,8 +28,12 @@ private:
     std::string ownerHashForRequest(const httplib::Request& req) const;
     bool canEditDiagram(const httplib::Request& req, long diagramId);
     bool canReadDiagramById(const httplib::Request& req, long diagramId);
+    bool ensureId(const httplib::Request& req, httplib::Response& res, int index, long& out);
+    bool ensureCanRead(const httplib::Request& req, httplib::Response& res, long diagramId, const char* what);
+    bool ensureCanEdit(const httplib::Request& req, httplib::Response& res, long diagramId);
     nlohmann::json diagramResponse(const httplib::Request& req, const Diagram& diagram);
     void sendJson(httplib::Response& res, int status, const nlohmann::json& body) const;
+    void sendStorageError(httplib::Response& res, const std::exception& e, int status) const;
 
     const Config& cfg_;
     PostgresStorage& storage_;

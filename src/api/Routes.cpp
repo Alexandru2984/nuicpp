@@ -10,11 +10,14 @@
 #include <openssl/hmac.h>
 #include <openssl/rand.h>
 
+#include <pqxx/except>
+
 #include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <filesystem>
 #include <iomanip>
+#include <iostream>
 #include <mutex>
 #include <unordered_map>
 #include <sstream>
@@ -191,8 +194,26 @@ bool safeSlug(const std::string& slug) {
     });
 }
 
-long idParam(const httplib::Request& req, int index) {
-    return std::stol(req.matches[index].str());
+// Route regexes match \d+ with no length bound, so a request for
+// /api/diagrams/99999999999999999999 used to reach std::stol and throw
+// std::out_of_range straight out of the handler. Parse defensively instead and
+// let callers turn a bad id into a 400.
+bool parseIdParam(const httplib::Request& req, int index, long& out) {
+    const auto text = req.matches[index].str();
+    if (text.empty() || text.size() > 18) {
+        return false;
+    }
+    try {
+        std::size_t consumed = 0;
+        long value = std::stol(text, &consumed);
+        if (consumed != text.size() || value <= 0) {
+            return false;
+        }
+        out = value;
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 
 Diagram defaultDiagram() {
@@ -364,6 +385,42 @@ bool Routes::canReadDiagramById(const httplib::Request& req, long diagramId) {
     return !owner.empty() && owner == ownerHashForRequest(req);
 }
 
+bool Routes::ensureId(const httplib::Request& req, httplib::Response& res, int index, long& out) {
+    if (parseIdParam(req, index, out)) {
+        return true;
+    }
+    sendJson(res, 400, errorJson("invalid id"));
+    return false;
+}
+
+bool Routes::ensureCanRead(const httplib::Request& req, httplib::Response& res, long diagramId, const char* what) {
+    if (canReadDiagramById(req, diagramId)) {
+        return true;
+    }
+    sendJson(res, 403, errorJson(std::string(what) + " is not available for this visitor"));
+    return false;
+}
+
+bool Routes::ensureCanEdit(const httplib::Request& req, httplib::Response& res, long diagramId) {
+    if (canEditDiagram(req, diagramId)) {
+        return true;
+    }
+    sendJson(res, 403, errorJson("diagram is read-only for this visitor"));
+    return false;
+}
+
+// Validation failures carry messages meant for the caller; anything escaping the
+// storage layer may embed SQL text or connection strings, so it is logged and
+// replaced with a generic message.
+void Routes::sendStorageError(httplib::Response& res, const std::exception& e, int status) const {
+    if (dynamic_cast<const pqxx::failure*>(&e) != nullptr) {
+        std::cerr << "storage error: " << e.what() << "\n";
+        sendJson(res, status == 400 ? 500 : status, errorJson("storage unavailable"));
+        return;
+    }
+    sendJson(res, status, errorJson(e.what()));
+}
+
 nlohmann::json Routes::diagramResponse(const httplib::Request& req, const Diagram& diagram) {
     auto body = diagramToJson(diagram);
     body["can_edit"] = canEditDiagram(req, diagram.id);
@@ -529,7 +586,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             auto created = storage_.createDiagram(item->diagram, true, ownerHashForRequest(req));
             sendJson(res, 201, diagramResponse(req, created));
         } catch (const std::exception& e) {
-            sendJson(res, 400, errorJson(e.what()));
+            sendStorageError(res, e, 400);
         }
     });
 
@@ -542,21 +599,19 @@ void Routes::registerRoutes(httplib::Server& server) {
             auto created = storage_.createDiagram(d, false, ownerHashForRequest(req));
             sendJson(res, 201, diagramResponse(req, created));
         } catch (const std::exception& e) {
-            sendJson(res, 400, errorJson(e.what()));
+            sendStorageError(res, e, 400);
         }
     });
 
     server.Get(R"(/api/diagrams/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
-        if (!canReadDiagramById(req, idParam(req, 1))) {
-            sendJson(res, 403, errorJson("diagram is not available by id for this visitor"));
-            return;
-        }
+        long id = 0;
+        if (!ensureId(req, res, 1, id)) return;
+        if (!ensureCanRead(req, res, id, "diagram")) return;
         try {
-            auto diagram = storage_.getDiagram(idParam(req, 1));
-            sendJson(res, 200, diagramResponse(req, diagram));
+            sendJson(res, 200, diagramResponse(req, storage_.getDiagram(id)));
         } catch (const std::exception& e) {
-            sendJson(res, 404, errorJson(e.what()));
+            sendStorageError(res, e, 404);
         }
     });
 
@@ -571,7 +626,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             auto diagram = storage_.getDiagramBySlug(slug);
             sendJson(res, 200, diagramResponse(req, diagram));
         } catch (const std::exception& e) {
-            sendJson(res, 404, errorJson(e.what()));
+            sendStorageError(res, e, 404);
         }
     });
 
@@ -579,17 +634,16 @@ void Routes::registerRoutes(httplib::Server& server) {
         if (!ensureAuthenticated(req, res, false)) return;
         if (!ensureWriteRateLimit(req, res, false)) return;
         if (!ensureCsrf(req, res)) return;
-        if (!canEditDiagram(req, idParam(req, 1))) {
-            sendJson(res, 403, errorJson("diagram is read-only for this visitor"));
-            return;
-        }
+        long id = 0;
+        if (!ensureId(req, res, 1, id)) return;
+        if (!ensureCanEdit(req, res, id)) return;
         try {
             auto body = nlohmann::json::parse(req.body);
             auto d = diagramFromJson(body);
             auto note = body.value("note", "saved snapshot");
-            sendJson(res, 200, diagramResponse(req, storage_.updateDiagram(idParam(req, 1), d, note, false)));
+            sendJson(res, 200, diagramResponse(req, storage_.updateDiagram(id, d, note, false)));
         } catch (const std::exception& e) {
-            sendJson(res, 400, errorJson(e.what()));
+            sendStorageError(res, e, 400);
         }
     });
 
@@ -597,81 +651,95 @@ void Routes::registerRoutes(httplib::Server& server) {
         if (!ensureAuthenticated(req, res, false)) return;
         if (!ensureWriteRateLimit(req, res, false)) return;
         if (!ensureCsrf(req, res)) return;
-        if (!canEditDiagram(req, idParam(req, 1))) {
-            sendJson(res, 403, errorJson("diagram is read-only for this visitor"));
-            return;
+        long id = 0;
+        if (!ensureId(req, res, 1, id)) return;
+        if (!ensureCanEdit(req, res, id)) return;
+        try {
+            storage_.deleteDiagram(id);
+            sendJson(res, 200, {{"ok", true}});
+        } catch (const std::exception& e) {
+            sendStorageError(res, e, 400);
         }
-        storage_.deleteDiagram(idParam(req, 1));
-        sendJson(res, 200, {{"ok", true}});
     });
 
     server.Post(R"(/api/diagrams/(\d+)/duplicate)", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
         if (!ensureWriteRateLimit(req, res, true)) return;
         if (!ensureCsrf(req, res)) return;
+        long id = 0;
+        if (!ensureId(req, res, 1, id)) return;
+        // Duplicating reads the whole source diagram and hands the caller an owned
+        // copy, so it needs the same read check as GET /api/diagrams/{id}.
+        if (!ensureCanRead(req, res, id, "diagram")) return;
         try {
-            auto copy = storage_.duplicateDiagram(idParam(req, 1), ownerHashForRequest(req));
+            auto copy = storage_.duplicateDiagram(id, ownerHashForRequest(req));
             sendJson(res, 201, diagramResponse(req, copy));
         } catch (const std::exception& e) {
-            sendJson(res, 404, errorJson(e.what()));
+            sendStorageError(res, e, 404);
         }
     });
 
     server.Get(R"(/api/diagrams/(\d+)/versions)", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
-        if (!canReadDiagramById(req, idParam(req, 1))) {
-            sendJson(res, 403, errorJson("diagram versions are not available for this visitor"));
-            return;
+        long id = 0;
+        if (!ensureId(req, res, 1, id)) return;
+        if (!ensureCanRead(req, res, id, "diagram versions")) return;
+        try {
+            nlohmann::json items = nlohmann::json::array();
+            for (const auto& v : storage_.listVersions(id)) {
+                items.push_back({{"id", v.id}, {"diagram_id", v.diagramId}, {"version_number", v.versionNumber}, {"created_at", v.createdAt}, {"note", v.note}});
+            }
+            sendJson(res, 200, {{"versions", items}});
+        } catch (const std::exception& e) {
+            sendStorageError(res, e, 404);
         }
-        nlohmann::json items = nlohmann::json::array();
-        for (const auto& v : storage_.listVersions(idParam(req, 1))) {
-            items.push_back({{"id", v.id}, {"diagram_id", v.diagramId}, {"version_number", v.versionNumber}, {"created_at", v.createdAt}, {"note", v.note}});
-        }
-        sendJson(res, 200, {{"versions", items}});
     });
 
     server.Post(R"(/api/diagrams/(\d+)/versions)", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
         if (!ensureWriteRateLimit(req, res, false)) return;
         if (!ensureCsrf(req, res)) return;
-        if (!canEditDiagram(req, idParam(req, 1))) {
-            sendJson(res, 403, errorJson("diagram is read-only for this visitor"));
-            return;
-        }
+        long id = 0;
+        if (!ensureId(req, res, 1, id)) return;
+        if (!ensureCanEdit(req, res, id)) return;
         auto note = std::string("manual snapshot");
         if (!req.body.empty()) {
             try { note = nlohmann::json::parse(req.body).value("note", note); } catch (...) {}
         }
-        auto v = storage_.createVersion(idParam(req, 1), note);
-        sendJson(res, 201, {{"id", v.id}, {"diagram_id", v.diagramId}, {"version_number", v.versionNumber}, {"created_at", v.createdAt}, {"note", v.note}});
+        try {
+            auto v = storage_.createVersion(id, note);
+            sendJson(res, 201, {{"id", v.id}, {"diagram_id", v.diagramId}, {"version_number", v.versionNumber}, {"created_at", v.createdAt}, {"note", v.note}});
+        } catch (const std::exception& e) {
+            sendStorageError(res, e, 404);
+        }
     });
 
     server.Post(R"(/api/diagrams/(\d+)/restore/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
         if (!ensureWriteRateLimit(req, res, false)) return;
         if (!ensureCsrf(req, res)) return;
-        if (!canEditDiagram(req, idParam(req, 1))) {
-            sendJson(res, 403, errorJson("diagram is read-only for this visitor"));
-            return;
-        }
+        long id = 0;
+        long versionId = 0;
+        if (!ensureId(req, res, 1, id) || !ensureId(req, res, 2, versionId)) return;
+        if (!ensureCanEdit(req, res, id)) return;
         try {
-            sendJson(res, 200, diagramResponse(req, storage_.restoreVersion(idParam(req, 1), idParam(req, 2))));
+            sendJson(res, 200, diagramResponse(req, storage_.restoreVersion(id, versionId)));
         } catch (const std::exception& e) {
-            sendJson(res, 404, errorJson(e.what()));
+            sendStorageError(res, e, 404);
         }
     });
 
     server.Get(R"(/api/diagrams/(\d+)/export\.json)", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
-        if (!canReadDiagramById(req, idParam(req, 1))) {
-            sendJson(res, 403, errorJson("diagram export is not available for this visitor"));
-            return;
-        }
+        long id = 0;
+        if (!ensureId(req, res, 1, id)) return;
+        if (!ensureCanRead(req, res, id, "diagram export")) return;
         try {
-            res.set_header("Content-Disposition", "attachment; filename=\"diagram-" + req.matches[1].str() + ".json\"");
-            sendJson(res, 200, diagramToJson(storage_.getDiagram(idParam(req, 1))));
+            auto diagram = storage_.getDiagram(id);
+            res.set_header("Content-Disposition", "attachment; filename=\"diagram-" + std::to_string(id) + ".json\"");
+            sendJson(res, 200, diagramToJson(diagram));
         } catch (const std::exception& e) {
-            sendJson(res, 404, errorJson(e.what()));
+            sendStorageError(res, e, 404);
         }
     });
 
@@ -687,7 +755,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             auto imported = storage_.createDiagram(diagramFromJson(nlohmann::json::parse(req.body)), true, ownerHashForRequest(req));
             sendJson(res, 201, diagramResponse(req, imported));
         } catch (const std::exception& e) {
-            sendJson(res, 400, errorJson(e.what()));
+            sendStorageError(res, e, 400);
         }
     });
 }
