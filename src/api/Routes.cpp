@@ -242,6 +242,31 @@ std::string contentTypeFor(const std::string& path) {
     return "application/octet-stream";
 }
 
+// The Nui shell is an Emscripten bundle: index.js is only the loader and calls
+// createWasm(), which fetches the compiled module. build_nui_frontend.sh used to
+// install the loader without the .wasm beside it, so the module could never
+// instantiate, Module.main() never ran, and the #app element bootstrap.js waits
+// for was never created. The result was a blank page.
+//
+// Serve the shell only when the bundle is actually complete, otherwise fall
+// back to the server-rendered editor, which needs no WebAssembly at all.
+bool nuiShellReady(const std::string& projectRoot) {
+    std::error_code ec;
+    const auto dir = projectRoot + "/public/nui";
+    if (!std::filesystem::exists(dir + "/index.html", ec)) {
+        return false;
+    }
+    if (!std::filesystem::exists(dir + "/index.js", ec)) {
+        return false;
+    }
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+        if (!ec && entry.is_regular_file(ec) && entry.path().extension() == ".wasm") {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool safeSlug(const std::string& slug) {
     return !slug.empty() && slug.size() <= 140 && std::all_of(slug.begin(), slug.end(), [](char c) {
         return std::isalnum(static_cast<unsigned char>(c)) || c == '-';
@@ -611,17 +636,15 @@ void Routes::registerRoutes(httplib::Server& server) {
             res.set_header("Location", "/login");
             return;
         }
-        auto nuiIndex = cfg_.projectRoot + "/public/nui/index.html";
-        if (std::filesystem::exists(nuiIndex)) {
-            res.set_content(readTextFile(nuiIndex), "text/html; charset=utf-8");
+        if (nuiShellReady(cfg_.projectRoot)) {
+            res.set_content(readTextFile(cfg_.projectRoot + "/public/nui/index.html"), "text/html; charset=utf-8");
             return;
         }
         res.set_content(renderEditorPage(username), "text/html; charset=utf-8");
     });
     server.Get(R"(/d/([A-Za-z0-9-]+))", [this](const httplib::Request&, httplib::Response& res) {
-        auto nuiIndex = cfg_.projectRoot + "/public/nui/index.html";
-        if (std::filesystem::exists(nuiIndex)) {
-            res.set_content(readTextFile(nuiIndex), "text/html; charset=utf-8");
+        if (nuiShellReady(cfg_.projectRoot)) {
+            res.set_content(readTextFile(cfg_.projectRoot + "/public/nui/index.html"), "text/html; charset=utf-8");
             return;
         }
         res.set_content(renderEditorPage("guest"), "text/html; charset=utf-8");
