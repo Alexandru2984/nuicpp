@@ -21,6 +21,7 @@ public:
     Diagram getDiagram(long id);
     Diagram getDiagramBySlug(const std::string& slug);
     std::string ownerHashForDiagram(long id);
+    long countDiagramsForOwner(const std::string& ownerTokenHash);
     Diagram createDiagram(const Diagram& input, bool importMode, const std::string& ownerTokenHash = "");
     Diagram updateDiagram(long id, const Diagram& input, const std::string& note, bool importMode);
     void deleteDiagram(long id);

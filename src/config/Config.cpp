@@ -88,6 +88,7 @@ Config Config::load(const std::string& envPath) {
     cfg.maxNodesPerDiagram = getInt(file, "MAX_NODES_PER_DIAGRAM", cfg.maxNodesPerDiagram);
     cfg.maxEdgesPerDiagram = getInt(file, "MAX_EDGES_PER_DIAGRAM", cfg.maxEdgesPerDiagram);
     cfg.maxVersionsPerDiagram = getInt(file, "MAX_VERSIONS_PER_DIAGRAM", cfg.maxVersionsPerDiagram);
+    cfg.maxDiagramsPerGuest = getInt(file, "MAX_DIAGRAMS_PER_GUEST", cfg.maxDiagramsPerGuest);
     cfg.maxImportBytes = static_cast<std::size_t>(getInt(file, "MAX_IMPORT_BYTES", static_cast<int>(cfg.maxImportBytes)));
     cfg.projectRoot = getValue(file, "PROJECT_ROOT", cfg.projectRoot);
 

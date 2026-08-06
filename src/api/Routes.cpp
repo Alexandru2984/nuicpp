@@ -392,6 +392,30 @@ bool Routes::ensureWriteRateLimit(const httplib::Request& req, httplib::Response
     return true;
 }
 
+// Anyone can mint a guest session, and every guest can create diagrams, so the
+// per-address rate limits only slow storage growth down rather than bound it.
+// A quota per owner puts a ceiling on what one visitor can accumulate.
+bool Routes::ensureCreateQuota(const httplib::Request& req, httplib::Response& res) {
+    if (isAdmin(req)) {
+        return true;
+    }
+    auto owner = ownerHashForRequest(req);
+    if (owner.empty()) {
+        return true;
+    }
+    try {
+        if (storage_.countDiagramsForOwner(owner) >= cfg_.maxDiagramsPerGuest) {
+            sendJson(res, 403, errorJson("diagram limit reached for this session; delete one to make room"));
+            return false;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "quota check failed: " << e.what() << "\n";
+        sendJson(res, 500, errorJson("storage unavailable"));
+        return false;
+    }
+    return true;
+}
+
 bool Routes::isAdmin(const httplib::Request& req) const {
     std::string username;
     return verifySession(req, &username) && username == cfg_.authUsername;
@@ -633,6 +657,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         if (!ensureAuthenticated(req, res, false)) return;
         if (!ensureWriteRateLimit(req, res, true)) return;
         if (!ensureCsrf(req, res)) return;
+        if (!ensureCreateQuota(req, res)) return;
         const auto* item = findDiagramTemplate(req.matches[1].str());
         if (!item) {
             sendJson(res, 404, errorJson("template not found"));
@@ -650,6 +675,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         if (!ensureAuthenticated(req, res, false)) return;
         if (!ensureWriteRateLimit(req, res, true)) return;
         if (!ensureCsrf(req, res)) return;
+        if (!ensureCreateQuota(req, res)) return;
         try {
             Diagram d = req.body.empty() ? defaultDiagram() : diagramFromJson(nlohmann::json::parse(req.body));
             auto created = storage_.createDiagram(d, false, ownerHashForRequest(req));
@@ -722,6 +748,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         if (!ensureAuthenticated(req, res, false)) return;
         if (!ensureWriteRateLimit(req, res, true)) return;
         if (!ensureCsrf(req, res)) return;
+        if (!ensureCreateQuota(req, res)) return;
         long id = 0;
         if (!ensureId(req, res, 1, id)) return;
         // Duplicating reads the whole source diagram and hands the caller an owned
@@ -803,6 +830,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         if (!ensureAuthenticated(req, res, false)) return;
         if (!ensureWriteRateLimit(req, res, true)) return;
         if (!ensureCsrf(req, res)) return;
+        if (!ensureCreateQuota(req, res)) return;
         if (req.body.size() > cfg_.maxImportBytes) {
             sendJson(res, 413, errorJson("import body too large"));
             return;

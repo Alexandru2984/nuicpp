@@ -167,6 +167,18 @@ std::string PostgresStorage::ownerHashForDiagram(long id) {
     return owner;
 }
 
+long PostgresStorage::countDiagramsForOwner(const std::string& ownerTokenHash) {
+    if (ownerTokenHash.empty()) {
+        return 0;
+    }
+    auto conn = connect();
+    pqxx::work tx(conn);
+    auto rows = tx.exec_params("SELECT count(*) AS n FROM diagrams WHERE owner_token_hash=$1", ownerTokenHash);
+    auto count = rows[0]["n"].as<long>();
+    tx.commit();
+    return count;
+}
+
 Diagram PostgresStorage::getDiagram(pqxx::work& tx, long id) {
     auto rows = tx.exec_params(R"SQL(
         SELECT id, title, slug, description,
