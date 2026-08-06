@@ -36,7 +36,11 @@ std::string renderEditorPage(const std::string& username) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NuiGraph Studio</title>
+  <meta name="theme-color" content="#0b0f14">
   <link rel="stylesheet" href="/styles.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/icon.svg">
 </head>
 <body>
   <div id="app" data-user=")HTML") + htmlEscape(username) + R"HTML(">

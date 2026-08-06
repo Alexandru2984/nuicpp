@@ -250,6 +250,8 @@ std::string contentTypeFor(const std::string& path) {
     if (path.ends_with(".css")) return "text/css";
     if (path.ends_with(".json")) return "application/json";
     if (path.ends_with(".map")) return "application/json";
+    if (path.ends_with(".svg")) return "image/svg+xml";
+    if (path.ends_with(".webmanifest")) return "application/manifest+json";
     return "application/octet-stream";
 }
 
@@ -642,6 +644,28 @@ void Routes::registerRoutes(httplib::Server& server) {
             return;
         }
         serveStatic(req, res, path);
+    });
+
+    server.Get("/manifest.webmanifest", [this](const httplib::Request& req, httplib::Response& res) {
+        serveStatic(req, res, cfg_.projectRoot + "/public/manifest.webmanifest");
+    });
+    server.Get("/offline.html", [this](const httplib::Request& req, httplib::Response& res) {
+        serveStatic(req, res, cfg_.projectRoot + "/public/offline.html");
+    });
+    server.Get("/sw.js", [this](const httplib::Request& req, httplib::Response& res) {
+        // A worker may only control the scope it is served from, so this has to
+        // stay at the root rather than living under a static prefix.
+        res.set_header("Service-Worker-Allowed", "/");
+        serveStatic(req, res, cfg_.projectRoot + "/public/sw.js");
+    });
+    server.Get(R"(/icons/([A-Za-z0-9._-]+))", [this](const httplib::Request& req, httplib::Response& res) {
+        const auto name = req.matches[1].str();
+        if (name.find("..") != std::string::npos) {
+            res.status = 400;
+            res.set_content("bad icon path", "text/plain");
+            return;
+        }
+        serveStatic(req, res, cfg_.projectRoot + "/public/icons/" + name);
     });
 
     server.Get("/login", [](const httplib::Request&, httplib::Response& res) {
