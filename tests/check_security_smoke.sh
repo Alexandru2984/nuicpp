@@ -36,13 +36,21 @@ LOG_FILE="$TMP_DIR/server.log"
 PID=""
 
 TEST_TITLE_PREFIX="ngs-smoke-"
+# Filled in once the guest session exists. Cleaning by owner rather than by
+# title matters here: when an authorization check regresses, this run creates a
+# copy of somebody else's diagram, which carries their title and would survive a
+# prefix-based sweep.
+TEST_OWNER_HASH=""
 
 cleanup() {
   if [[ -n "$PID" ]] && kill -0 "$PID" >/dev/null 2>&1; then
     kill "$PID" >/dev/null 2>&1 || true
     wait "$PID" >/dev/null 2>&1 || true
   fi
-  # Remove the rows this run created so repeated runs do not accumulate.
+  if [[ -n "$TEST_OWNER_HASH" ]]; then
+    psql "$DATABASE_URL" -tAc \
+      "DELETE FROM diagrams WHERE owner_token_hash = '${TEST_OWNER_HASH}'" >/dev/null 2>&1 || true
+  fi
   psql "$DATABASE_URL" -tAc \
     "DELETE FROM diagrams WHERE title LIKE '${TEST_TITLE_PREFIX}%'" >/dev/null 2>&1 || true
   rm -rf "$TMP_DIR"
@@ -77,7 +85,11 @@ if [[ "$healthy" != "1" ]]; then
   exit 1
 fi
 
-curl --noproxy '*' -fsS -c "$COOKIE_JAR" "http://127.0.0.1:${PORT}/api/session" >/dev/null
+session_json="$(curl --noproxy '*' -fsS -c "$COOKIE_JAR" "http://127.0.0.1:${PORT}/api/session")"
+guest_user="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["username"])' "$session_json")"
+# Same derivation as ownerHashForRequest(): HMAC-SHA256(SESSION_SECRET, "owner:" + username).
+TEST_OWNER_HASH="$(printf 'owner:%s' "$guest_user" \
+  | openssl dgst -sha256 -hmac "$(env_value SESSION_SECRET)" -r | cut -d' ' -f1)"
 
 diagrams_json="$(curl --noproxy '*' -fsS -b "$COOKIE_JAR" "http://127.0.0.1:${PORT}/api/diagrams")"
 python3 - "$diagrams_json" <<'PY'

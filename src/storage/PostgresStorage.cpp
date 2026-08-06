@@ -87,7 +87,11 @@ std::string PostgresStorage::uniqueSlug(pqxx::work& tx, const std::string& title
     return slug;
 }
 
-std::vector<nlohmann::json> PostgresStorage::listDiagrams() {
+// The ordering is (updated_at DESC, id DESC) and id is unique, so it is a total
+// order. That matters for paging: without the id tiebreak, two diagrams saved in
+// the same second could swap places between two page fetches and one of them
+// would be skipped or shown twice.
+std::vector<nlohmann::json> PostgresStorage::listDiagrams(long limit, long offset) {
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
     auto rows = tx.exec(R"SQL(
@@ -98,7 +102,8 @@ std::vector<nlohmann::json> PostgresStorage::listDiagrams() {
                (SELECT count(*) FROM edges e WHERE e.diagram_id=d.id) AS edge_count
         FROM diagrams d
         ORDER BY d.updated_at DESC, d.id DESC
-    )SQL");
+        LIMIT $1 OFFSET $2
+    )SQL", pqxx::params{limit, offset});
     std::vector<nlohmann::json> out;
     for (const auto& row : rows) {
         out.push_back(diagramSummaryJson(row));
@@ -107,7 +112,7 @@ std::vector<nlohmann::json> PostgresStorage::listDiagrams() {
     return out;
 }
 
-std::vector<nlohmann::json> PostgresStorage::listDiagramsForOwner(const std::string& ownerTokenHash) {
+std::vector<nlohmann::json> PostgresStorage::listDiagramsForOwner(const std::string& ownerTokenHash, long limit, long offset) {
     if (ownerTokenHash.empty()) {
         return {};
     }
@@ -122,7 +127,8 @@ std::vector<nlohmann::json> PostgresStorage::listDiagramsForOwner(const std::str
         FROM diagrams d
         WHERE d.owner_token_hash=$1
         ORDER BY d.updated_at DESC, d.id DESC
-    )SQL", pqxx::params{ownerTokenHash});
+        LIMIT $2 OFFSET $3
+    )SQL", pqxx::params{ownerTokenHash, limit, offset});
     std::vector<nlohmann::json> out;
     for (const auto& row : rows) {
         out.push_back(diagramSummaryJson(row));
@@ -161,6 +167,15 @@ std::string PostgresStorage::ownerHashForDiagram(long id) {
     auto owner = rows[0]["owner_token_hash"].is_null() ? "" : rows[0]["owner_token_hash"].as<std::string>();
     tx.commit();
     return owner;
+}
+
+long PostgresStorage::countDiagrams() {
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
+    auto rows = tx.exec("SELECT count(*) AS n FROM diagrams");
+    auto count = rows[0]["n"].as<long>();
+    tx.commit();
+    return count;
 }
 
 long PostgresStorage::countDiagramsForOwner(const std::string& ownerTokenHash) {

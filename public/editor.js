@@ -20,6 +20,8 @@
 
   const state = {
     diagrams: [],
+    diagramsTotal: 0,
+    diagramsHasMore: false,
     templates: [],
     current: null,
     selected: null,
@@ -885,9 +887,10 @@
     if (!items.length) {
       const empty = document.createElement("div");
       empty.className = "muted";
-      empty.textContent = state.diagrams.length ? "No diagrams match that search." : "No diagrams yet.";
+      empty.textContent = !state.diagrams.length ? "No diagrams yet."
+        : state.diagramsHasMore ? "No loaded diagrams match that search."
+        : "No diagrams match that search.";
       list.appendChild(empty);
-      return;
     }
     for (const d of items) {
       const item = document.createElement("div");
@@ -908,6 +911,27 @@
       item.querySelector('[data-act="dup"]').onclick = () => duplicateDiagram(d.id);
       item.querySelector('[data-act="del"]').onclick = () => deleteDiagram(d.id);
       list.appendChild(item);
+    }
+
+    // Shown while filtering too: the filter only sees diagrams already loaded,
+    // so hiding this would leave a search looking conclusive when it is not.
+    if (state.diagramsHasMore) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "load-more";
+      more.textContent = `Load more (${state.diagrams.length} of ${state.diagramsTotal})`;
+      more.onclick = async () => {
+        more.disabled = true;
+        more.textContent = "Loading...";
+        try {
+          await loadMoreDiagrams();
+        } catch (err) {
+          more.disabled = false;
+          more.textContent = "Load more";
+          toast(err.message || "Could not load more diagrams");
+        }
+      };
+      list.appendChild(more);
     }
   }
 
@@ -940,13 +964,31 @@
     }
   }
 
+  // The list endpoint is paged. A guest never fills a page, so this is a single
+  // request for them; the admin view loads more on demand rather than pulling
+  // the whole table into the sidebar.
   async function loadDiagrams() {
     const data = await api("/api/diagrams");
     state.diagrams = data.diagrams || [];
+    state.diagramsTotal = typeof data.total === "number" ? data.total : state.diagrams.length;
+    state.diagramsHasMore = Boolean(data.has_more);
     renderDiagramList();
     if (!state.current && !sharedSlugFromPath() && state.diagrams[0]) {
       await openDiagram(state.diagrams[0].id);
     }
+  }
+
+  async function loadMoreDiagrams() {
+    if (!state.diagramsHasMore) return;
+    const data = await api(`/api/diagrams?offset=${state.diagrams.length}`);
+    const page = data.diagrams || [];
+    // A diagram saved between the two fetches moves to the top of the ordering
+    // and would arrive again in this page, so drop ids already held.
+    const seen = new Set(state.diagrams.map((d) => d.id));
+    state.diagrams = state.diagrams.concat(page.filter((d) => !seen.has(d.id)));
+    state.diagramsTotal = typeof data.total === "number" ? data.total : state.diagrams.length;
+    state.diagramsHasMore = Boolean(data.has_more) && page.length > 0;
+    renderDiagramList();
   }
 
   async function loadTemplates() {

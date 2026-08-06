@@ -17,11 +17,12 @@ public:
     PostgresStorage(const Config& cfg, const DiagramValidator& validator);
 
     bool ping();
-    std::vector<nlohmann::json> listDiagrams();
-    std::vector<nlohmann::json> listDiagramsForOwner(const std::string& ownerTokenHash);
+    std::vector<nlohmann::json> listDiagrams(long limit, long offset);
+    std::vector<nlohmann::json> listDiagramsForOwner(const std::string& ownerTokenHash, long limit, long offset);
     Diagram getDiagram(long id);
     Diagram getDiagramBySlug(const std::string& slug);
     std::string ownerHashForDiagram(long id);
+    long countDiagrams();
     long countDiagramsForOwner(const std::string& ownerTokenHash);
     Diagram createDiagram(const Diagram& input, bool importMode, const std::string& ownerTokenHash = "");
     Diagram updateDiagram(long id, const Diagram& input, const std::string& note, bool importMode);

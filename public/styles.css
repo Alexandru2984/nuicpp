@@ -369,6 +369,19 @@ body.dirty .draft-status { color: var(--warn); }
   gap: 7px;
 }
 
+.load-more {
+  width: 100%;
+  min-height: var(--tap);
+  border: 1px dashed var(--line);
+  background: transparent;
+  color: var(--muted);
+}
+
+.load-more:hover:not(:disabled) {
+  border-style: solid;
+  color: var(--text);
+}
+
 .diagram-item.active {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, var(--panel-2));

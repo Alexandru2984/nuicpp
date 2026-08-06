@@ -189,6 +189,37 @@ constexpr long long kLoginFailureWindow = 10 * 60;
 constexpr std::size_t kMaxLoginFailureKeys = 10000;
 constexpr int kGuestSessionSeconds = 7 * 24 * 60 * 60;
 
+// A page comfortably exceeds MAX_DIAGRAMS_PER_GUEST, so a guest still gets its
+// whole list in one request and only the admin view ever pages.
+constexpr long kDefaultListLimit = 100;
+constexpr long kMaxListLimit = 200;
+// OFFSET makes PostgreSQL walk and discard every skipped row, so a huge value is
+// a cheap way to make the server work hard. Cap it; anyone legitimately past
+// this many diagrams needs keyset pagination, not a bigger offset.
+constexpr long kMaxListOffset = 100000;
+
+// Out-of-range and unparseable values are clamped rather than rejected: this is
+// a list view, and a 400 for ?limit=0 helps nobody.
+long clampQueryParam(const httplib::Request& req, const char* name, long fallback, long low, long high) {
+    if (!req.has_param(name)) {
+        return fallback;
+    }
+    const auto raw = req.get_param_value(name);
+    if (raw.empty() || raw.size() > 18) {
+        return fallback;
+    }
+    try {
+        std::size_t consumed = 0;
+        long value = std::stol(raw, &consumed);
+        if (consumed != raw.size()) {
+            return fallback;
+        }
+        return std::clamp(value, low, high);
+    } catch (...) {
+        return fallback;
+    }
+}
+
 // Caller must hold loginFailuresMutex(). Entries are only pruned when the map
 // they live in is touched, so a sweep is needed to stop addresses that never
 // come back from accumulating for the process lifetime.
@@ -743,10 +774,30 @@ void Routes::registerRoutes(httplib::Server& server) {
         sendJson(res, 200, {{"username", username}, {"public_access", cfg_.publicAccess}, {"csrf_token", csrfTokenForSession(session)}});
     });
 
+    // The list used to return every row. A guest is capped by the create quota,
+    // but the admin view grows with the whole table, and each row costs two
+    // correlated subqueries, so one request could end up counting every node and
+    // edge in the database.
     server.Get("/api/diagrams", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
-        auto diagrams = isAdmin(req) ? storage_.listDiagrams() : storage_.listDiagramsForOwner(ownerHashForRequest(req));
-        sendJson(res, 200, {{"diagrams", diagrams}});
+        const long limit = clampQueryParam(req, "limit", kDefaultListLimit, 1, kMaxListLimit);
+        const long offset = clampQueryParam(req, "offset", 0, 0, kMaxListOffset);
+        try {
+            const bool admin = isAdmin(req);
+            const auto owner = admin ? std::string{} : ownerHashForRequest(req);
+            auto diagrams = admin ? storage_.listDiagrams(limit, offset)
+                                  : storage_.listDiagramsForOwner(owner, limit, offset);
+            const long total = admin ? storage_.countDiagrams() : storage_.countDiagramsForOwner(owner);
+            sendJson(res, 200, {
+                {"diagrams", diagrams},
+                {"total", total},
+                {"limit", limit},
+                {"offset", offset},
+                {"has_more", offset + static_cast<long>(diagrams.size()) < total}
+            });
+        } catch (const std::exception& e) {
+            sendStorageError(res, e, 500);
+        }
     });
 
     server.Get("/api/templates", [this](const httplib::Request& req, httplib::Response& res) {

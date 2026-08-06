@@ -198,6 +198,12 @@ sites, so never restart nginx.
 Mutating endpoints require `X-CSRF-Token` from `/api/session`. Template keys:
 `cloud-architecture`, `incident-response`, `data-pipeline`.
 
+`GET /api/diagrams` is paged: `?limit=` (default 100, max 200) and `?offset=`
+(max 100000). Out-of-range or unparseable values are clamped rather than
+rejected. The response carries `total`, `limit`, `offset`, and `has_more`
+alongside `diagrams`. A page exceeds `MAX_DIAGRAMS_PER_GUEST`, so only the admin
+view ever pages.
+
 ## Diagram JSON format
 
 ```json
