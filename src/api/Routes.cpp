@@ -337,10 +337,18 @@ void Routes::applySecurityHeaders(httplib::Response& res) const {
     res.set_header("Cross-Origin-Opener-Policy", "same-origin");
     res.set_header("Cross-Origin-Resource-Policy", "same-origin");
     res.set_header("Permissions-Policy", "geolocation=(), microphone=(), camera=(), interest-cohort=()");
+    // Cloudflare injects its Web Analytics beacon at the edge, so the script
+    // host has to be allowed even though nothing in this repo references it.
+    // 'unsafe-inline' is deliberately NOT granted: the beacon's inline loader
+    // stays blocked, which costs some reporting fidelity but keeps the policy
+    // meaningful against injected script.
     res.set_header("Content-Security-Policy",
-                   "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; "
-                   "img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; "
-                   "frame-ancestors 'none'; form-action 'self'");
+                   "default-src 'self'; "
+                   "script-src 'self' 'wasm-unsafe-eval' https://static.cloudflareinsights.com; "
+                   "style-src 'self' 'unsafe-inline'; "
+                   "img-src 'self' data: blob:; "
+                   "connect-src 'self' https://cloudflareinsights.com; "
+                   "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
 }
 
 // Static assets carry no content hash in their names, and the app sent no
