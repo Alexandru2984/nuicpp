@@ -47,6 +47,7 @@
     multiSelectArmed: false,
     longPressTimer: null,
     marquee: null,
+    resizing: null,
     filter: ""
   };
 
@@ -243,6 +244,7 @@
     ["Shift + click", "Add to selection"],
     ["Drag on empty canvas", "Rubber-band select"],
     ["Shift + drag", "Rubber-band adds to selection"],
+    ["Drag a corner handle", "Resize the selected node"],
     ["Long press (touch)", "Add to selection"],
     ["Middle drag / Pan tool", "Pan the canvas"],
     ["Wheel / pinch", "Zoom"],
@@ -513,6 +515,18 @@
     return state.snap ? Math.round(value / grid) * grid : value;
   }
 
+  function clamp(value, low, high) {
+    return Math.max(low, Math.min(high, value));
+  }
+
+  // The same bounds DiagramValidator clamps to. Enforcing them while dragging
+  // means the handle stops where the node stops instead of the server silently
+  // rewriting the size on the next save.
+  const NODE_MIN_WIDTH = 72;
+  const NODE_MAX_WIDTH = 600;
+  const NODE_MIN_HEIGHT = 48;
+  const NODE_MAX_HEIGHT = 400;
+
   function selectedNodeKeys() {
     if (!state.selected) return [];
     if (state.selected.type === "node") return [state.selected.key];
@@ -568,6 +582,86 @@
     // Shift extends what was already selected, so the band is re-applied to the
     // original set every move instead of accumulating as the pointer wanders.
     selectNodeKeys(m.additive ? [...new Set(m.baseKeys.concat(inside))] : inside);
+  }
+
+  // Handles are placed by sign rather than by name: -1 is the left/top edge, 1
+  // the right/bottom, 0 the midpoint, which is also exactly the arithmetic the
+  // resize itself needs.
+  const HANDLE_SIGNS = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
+  const HANDLE_CURSOR = {
+    "-1,-1": "nwse", "1,1": "nwse", "1,-1": "nesw", "-1,1": "nesw",
+    "0,-1": "ns", "0,1": "ns", "-1,0": "ew", "1,0": "ew"
+  };
+  const HANDLE_SIZE = 9;
+  const HANDLE_TOUCH_SIZE = 26;
+
+  // Resize is a single-node affair: with several selected there is no one box
+  // to put the handles on.
+  function resizeTarget() {
+    if (state.readOnly || !state.current) return null;
+    if (!state.selected || state.selected.type !== "node") return null;
+    return state.current.nodes.find((n) => n.key === state.selected.key) || null;
+  }
+
+  function applyResize(node, gesture, point) {
+    const o = gesture.orig;
+    if (gesture.sx !== 0) {
+      const edge = snapValue(point.x);
+      const width = clamp(gesture.sx > 0 ? edge - o.x : o.x + o.width - edge, NODE_MIN_WIDTH, NODE_MAX_WIDTH);
+      // x comes from the clamped width, not from the pointer: once the node hits
+      // its minimum the anchored edge has to stay put instead of being dragged
+      // along by the handle the user is still moving.
+      node.x = gesture.sx > 0 ? o.x : o.x + o.width - width;
+      node.width = width;
+    }
+    if (gesture.sy !== 0) {
+      const edge = snapValue(point.y);
+      const height = clamp(gesture.sy > 0 ? edge - o.y : o.y + o.height - edge, NODE_MIN_HEIGHT, NODE_MAX_HEIGHT);
+      node.y = gesture.sy > 0 ? o.y : o.y + o.height - height;
+      node.height = height;
+    }
+  }
+
+  function beginResize(evt, node, sx, sy) {
+    if (state.readOnly) return;
+    // Without this the canvas would also see the press and start a rubber-band
+    // underneath the resize.
+    evt.stopPropagation();
+    state.pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
+    if (state.pointers.size > 1) return;
+    pushHistory();
+    state.resizing = {
+      key: node.key,
+      sx,
+      sy,
+      orig: { x: node.x, y: node.y, width: node.width, height: node.height }
+    };
+    canvas.setPointerCapture(evt.pointerId);
+  }
+
+  function renderResizeHandles() {
+    const node = resizeTarget();
+    // Mid-band the selection is still changing, so handles would flicker across
+    // whichever node happens to be alone in the box.
+    if (!node || (state.marquee && state.marquee.moved)) return;
+    const size = HANDLE_SIZE / state.zoom;
+    const touch = HANDLE_TOUCH_SIZE / state.zoom;
+    for (const [sx, sy] of HANDLE_SIGNS) {
+      const cx = node.x + (node.width * (sx + 1)) / 2;
+      const cy = node.y + (node.height * (sy + 1)) / 2;
+      const cursor = HANDLE_CURSOR[`${sx},${sy}`];
+      const box = (side, cls) => svg("rect", {
+        class: cls, x: cx - side / 2, y: cy - side / 2, width: side, height: side
+      }, overlayLayer);
+      // Invisible fat square first so a fingertip can grab a 9px handle, same
+      // trick the edges use.
+      const hit = box(touch, `resize-hit resize-${cursor}`);
+      const visible = box(size, `resize-handle resize-${cursor}`);
+      visible.setAttribute("rx", size / 4);
+      visible.setAttribute("stroke-width", 1.5 / state.zoom);
+      hit.addEventListener("pointerdown", (evt) => beginResize(evt, node, sx, sy));
+      visible.addEventListener("pointerdown", (evt) => beginResize(evt, node, sx, sy));
+    }
   }
 
   function svg(tag, attrs = {}, parent) {
@@ -845,8 +939,13 @@
     }
   }
 
-  function renderMarquee() {
+  function renderOverlay() {
     overlayLayer.replaceChildren();
+    renderMarquee();
+    renderResizeHandles();
+  }
+
+  function renderMarquee() {
     if (!state.marquee || !state.marquee.moved) return;
     const rect = marqueeRect(state.marquee);
     // The overlay sits inside the zoomed viewport, so a plain stroke width would
@@ -902,7 +1001,7 @@
     }
     renderEdges();
     renderNodes();
-    renderMarquee();
+    renderOverlay();
     renderProperties();
     renderMinimap();
   }
@@ -1442,7 +1541,15 @@
       }
       if (state.pinch) return;
 
-      if (state.dragging && state.current) {
+      if (state.resizing && state.current) {
+        if (state.readOnly) return;
+        cancelLongPress();
+        const node = state.current.nodes.find((n) => n.key === state.resizing.key);
+        if (node) {
+          applyResize(node, state.resizing, worldPoint(evt));
+          render();
+        }
+      } else if (state.dragging && state.current) {
         if (state.readOnly) return;
         cancelLongPress();
         const node = state.current.nodes.find((n) => n.key === state.dragging.key);
@@ -1488,8 +1595,9 @@
       cancelLongPress();
       if (state.pointers.size < 2) state.pinch = null;
       if (state.pointers.size === 0) state.multiSelectArmed = false;
-      if (state.dragging && state.current && !state.readOnly) markDirty();
+      if ((state.dragging || state.resizing) && state.current && !state.readOnly) markDirty();
       state.dragging = null;
+      state.resizing = null;
       state.panning = null;
       if (state.marquee) {
         // A click that never became a drag still means "deselect", which is what

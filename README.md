@@ -22,6 +22,8 @@ admin account for maintenance.
 - Snap-to-grid, simple auto-layout, minimap, copy/paste, undo/redo.
 - Multi-select by Shift-click, by rubber-band drag on empty canvas (Shift-drag
   extends), or by long-press on touch.
+- Eight resize handles on a single selected node, honouring the same 72x48 to
+  600x400 bounds the server clamps to.
 - Keyboard shortcuts with a `?` overlay listing them.
 - Diagram search filter over the sidebar list.
 - Light and dark themes, remembered per browser.

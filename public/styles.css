@@ -507,6 +507,19 @@ body.dirty .draft-status { color: var(--warn); }
   pointer-events: none;
 }
 
+.resize-handle {
+  fill: var(--accent);
+  stroke: var(--bg-canvas);
+}
+
+/* Invisible fat square so a fingertip can grab a 9px handle. */
+.resize-hit { fill: transparent; }
+
+.resize-nwse { cursor: nwse-resize; }
+.resize-nesw { cursor: nesw-resize; }
+.resize-ns { cursor: ns-resize; }
+.resize-ew { cursor: ew-resize; }
+
 /* ----------------------------------------------------------------- login -- */
 
 .login-body {
