@@ -373,6 +373,30 @@ void PostgresStorage::pruneVersions(pqxx::work& tx, long diagramId) {
     )SQL", pqxx::params{diagramId, cfg_.maxVersionsPerDiagram});
 }
 
+// Reads a snapshot without writing it back, so a version can be compared with
+// the live diagram instead of having to be restored to be looked at. The
+// diagram id is part of the WHERE clause, not just the version id, so a caller
+// that has been allowed to read one diagram cannot reach another one's history
+// by guessing version numbers.
+Diagram PostgresStorage::getVersion(long diagramId, long versionId) {
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
+    auto rows = tx.exec("SELECT snapshot_json::text FROM diagram_versions WHERE diagram_id=$1 AND id=$2",
+                        pqxx::params{diagramId, versionId});
+    if (rows.empty()) {
+        throw std::runtime_error("version not found");
+    }
+    Diagram diagram = diagramFromJson(nlohmann::json::parse(rows[0][0].as<std::string>()));
+    diagram.id = diagramId;
+    // Snapshots predate any later tightening of the rules, so they are clamped
+    // on the way out the same as on the way in rather than trusted wholesale.
+    auto validation = validator_.validate(diagram, true);
+    if (!validation.ok) {
+        throw std::runtime_error(validation.errors.front());
+    }
+    return diagram;
+}
+
 Diagram PostgresStorage::restoreVersion(long diagramId, long versionId) {
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());

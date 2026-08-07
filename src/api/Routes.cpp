@@ -960,6 +960,21 @@ void Routes::registerRoutes(httplib::Server& server) {
         }
     });
 
+    // A snapshot is diagram content, so this needs the same read check as GET
+    // on the diagram itself, not just the weaker "may list versions".
+    server.Get(R"(/api/diagrams/(\d+)/versions/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!ensureAuthenticated(req, res, false)) return;
+        long id = 0;
+        long versionId = 0;
+        if (!ensureId(req, res, 1, id) || !ensureId(req, res, 2, versionId)) return;
+        if (!ensureCanRead(req, res, id, "diagram version")) return;
+        try {
+            sendJson(res, 200, diagramToJson(storage_.getVersion(id, versionId)));
+        } catch (const std::exception& e) {
+            sendStorageError(res, e, 404);
+        }
+    });
+
     server.Post(R"(/api/diagrams/(\d+)/restore/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
         if (!ensureWriteRateLimit(req, res, false)) return;

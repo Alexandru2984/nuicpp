@@ -293,6 +293,109 @@
     close.focus();
   }
 
+  // ---------------------------------------------------------- version diff --
+  const NODE_DIFF_FIELDS = ["title", "type", "x", "y", "width", "height", "color"];
+  const EDGE_DIFF_FIELDS = ["source", "target", "label", "directed", "color"];
+
+  // Coordinates round-trip through PostgreSQL doubles and JSON. That is exact
+  // for the values the editor produces today, but alignment snapping already
+  // yields fractional positions, so comparison is rounded to two decimals:
+  // finer than any pointer can express, coarser than float formatting noise.
+  function diffValue(value) {
+    if (typeof value === "number") return String(Math.round(value * 100) / 100);
+    if (value === undefined || value === null) return "";
+    return String(value);
+  }
+
+  function describeNode(node) {
+    return node.title ? `"${shortText(node.title, 28)}"` : node.key;
+  }
+
+  function describeEdge(edge) {
+    const label = edge.label ? ` "${shortText(edge.label, 20)}"` : "";
+    return `${edge.source} to ${edge.target}${label}`;
+  }
+
+  function diffCollection(before, after, fields, describe) {
+    const index = (list) => new Map((list || []).map((item) => [item.key, item]));
+    const old = index(before);
+    const now = index(after);
+    const rows = [];
+    for (const [key, item] of now) {
+      const previous = old.get(key);
+      if (!previous) {
+        rows.push({ kind: "added", text: `Added ${describe(item)}` });
+        continue;
+      }
+      const changed = fields.filter((f) => diffValue(previous[f]) !== diffValue(item[f]));
+      if (changed.length) {
+        rows.push({ kind: "changed", text: `Changed ${describe(item)}: ${changed.join(", ")}` });
+      }
+    }
+    for (const [key, item] of old) {
+      if (!now.has(key)) rows.push({ kind: "removed", text: `Removed ${describe(item)}` });
+    }
+    return rows;
+  }
+
+  function diffDiagrams(before, after) {
+    const rows = [];
+    if (diffValue(before.title) !== diffValue(after.title)) {
+      rows.push({ kind: "changed", text: `Title: "${before.title}" to "${after.title}"` });
+    }
+    if (diffValue(before.description) !== diffValue(after.description)) {
+      rows.push({ kind: "changed", text: "Description changed" });
+    }
+    return rows
+      .concat(diffCollection(before.nodes, after.nodes, NODE_DIFF_FIELDS, describeNode))
+      .concat(diffCollection(before.edges, after.edges, EDGE_DIFF_FIELDS, describeEdge));
+  }
+
+  function showDiff(version, rows) {
+    document.querySelector(".shortcuts-overlay")?.remove();
+    const overlay = document.createElement("div");
+    overlay.className = "shortcuts-overlay";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-label", `Changes since version ${version.version_number}`);
+
+    const card = document.createElement("div");
+    card.className = "shortcuts-card";
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    const title = document.createElement("h2");
+    title.textContent = `Since v${version.version_number}`;
+    const close = document.createElement("button");
+    close.type = "button";
+    close.textContent = "Close";
+    close.onclick = () => overlay.remove();
+    head.append(title, close);
+    card.appendChild(head);
+
+    // The editor buffer, not the saved diagram: comparing against the server
+    // copy would hide exactly the unsaved work the user is trying to review.
+    const note = document.createElement("p");
+    note.className = "muted";
+    note.textContent = rows.length
+      ? `${rows.length} change${rows.length === 1 ? "" : "s"} between that snapshot and what is open now.`
+      : "That snapshot matches what is open now.";
+    card.appendChild(note);
+
+    const list = document.createElement("ul");
+    list.className = "diff-list";
+    for (const row of rows) {
+      const item = document.createElement("li");
+      item.className = `diff-${row.kind}`;
+      item.textContent = row.text;
+      list.appendChild(item);
+    }
+    card.appendChild(list);
+    overlay.appendChild(card);
+    overlay.onclick = (evt) => { if (evt.target === overlay) overlay.remove(); };
+    document.body.appendChild(overlay);
+    close.focus();
+  }
+
   function cloneDiagram() {
     return JSON.parse(JSON.stringify(state.current));
   }
@@ -1340,9 +1443,14 @@
     for (const v of data.versions || []) {
       const item = document.createElement("div");
       item.className = "version-item";
-      item.innerHTML = `<strong>v${v.version_number}</strong><span class="meta">${v.created_at}</span><span class="meta"></span><button>Restore</button>`;
+      item.innerHTML = `<strong>v${v.version_number}</strong><span class="meta">${v.created_at}</span><span class="meta"></span>` +
+        `<div class="small-actions"><button data-act="diff">Diff</button><button data-act="restore">Restore</button></div>`;
       item.querySelectorAll(".meta")[1].textContent = v.note || "";
-      item.querySelector("button").onclick = async () => {
+      item.querySelector('[data-act="diff"]').onclick = async () => {
+        const snapshot = await api(`/api/diagrams/${state.current.id}/versions/${v.id}`);
+        showDiff(v, diffDiagrams(snapshot, state.current));
+      };
+      item.querySelector('[data-act="restore"]').onclick = async () => {
         if (!confirm(`Restore version ${v.version_number}?`)) return;
         if (state.readOnly) return;
         state.current = await api(`/api/diagrams/${state.current.id}/restore/${v.id}`, { method: "POST", body: "{}" });

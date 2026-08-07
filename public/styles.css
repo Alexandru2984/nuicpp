@@ -445,6 +445,27 @@ body.dirty .draft-status { color: var(--warn); }
   background: var(--panel-2);
 }
 
+.diff-list {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The bar carries the meaning, not the text colour: added and removed have to
+   stay apart for a reader who cannot separate green from red. */
+.diff-list li {
+  border-left: 3px solid var(--line);
+  padding: 4px 0 4px 9px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.diff-added { border-left-color: #22c55e; }
+.diff-removed { border-left-color: #f87171; }
+.diff-changed { border-left-color: #f59e0b; }
+
 /* ---------------------------------------------------------------- canvas -- */
 
 .node-shape { filter: drop-shadow(0 12px 16px rgba(0, 0, 0, .26)); }

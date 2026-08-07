@@ -33,8 +33,9 @@ admin account for maintenance.
 ### Diagrams
 
 - Create, list, open, rename, duplicate, delete, save, import, export.
-- Version history with automatic snapshots on save, manual snapshots, and
-  restore. Retention is bounded by `MAX_VERSIONS_PER_DIAGRAM`.
+- Version history with automatic snapshots on save, manual snapshots, restore,
+  and a diff view listing what changed between a snapshot and the open diagram.
+  Retention is bounded by `MAX_VERSIONS_PER_DIAGRAM`.
 - Export to JSON, SVG, PNG, and Mermaid.
 - Template gallery: architecture, incident-response, and data-pipeline diagrams.
 - Public share links at `/d/{slug}` with read-only viewing and one-click fork.
@@ -193,6 +194,7 @@ sites, so never restart nginx.
 | `POST` | `/api/diagrams/{id}/duplicate` |
 | `GET` | `/api/diagrams/{id}/versions` |
 | `POST` | `/api/diagrams/{id}/versions` |
+| `GET` | `/api/diagrams/{id}/versions/{versionId}` |
 | `POST` | `/api/diagrams/{id}/restore/{versionId}` |
 | `GET` | `/api/diagrams/{id}/export.json` |
 | `POST` | `/api/diagrams/import` |

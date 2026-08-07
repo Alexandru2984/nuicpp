@@ -184,11 +184,12 @@ DELETE /api/diagrams/{id}
 POST /api/diagrams/{id}/duplicate
 GET /api/diagrams/{id}/versions
 POST /api/diagrams/{id}/versions
+GET /api/diagrams/{id}/versions/{versionId}
 POST /api/diagrams/{id}/restore/{versionId}
 GET /api/diagrams/{id}/export.json
 POST /api/diagrams/import</pre>
     <h2>Storage And Versioning</h2>
-    <p>PostgreSQL stores diagrams, nodes, edges, and bounded version snapshots. Each save creates a snapshot and old versions are pruned by MAX_VERSIONS_PER_DIAGRAM.</p>
+    <p>PostgreSQL stores diagrams, nodes, edges, and bounded version snapshots. Each save creates a snapshot and old versions are pruned by MAX_VERSIONS_PER_DIAGRAM. Diff on a version lists what was added, removed and changed between that snapshot and the diagram currently open in the editor, including unsaved edits.</p>
     <h2>Security</h2>
     <p>Public editing uses signed guest sessions, CSRF tokens, owner checks, input validation, and IP-based write/create rate limits. Admin login remains available for full access.</p>
     <h2>Templates</h2>

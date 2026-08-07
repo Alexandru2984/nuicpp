@@ -30,6 +30,7 @@ public:
     Diagram duplicateDiagram(long id, const std::string& ownerTokenHash = "");
     std::vector<VersionInfo> listVersions(long diagramId);
     VersionInfo createVersion(long diagramId, const std::string& note);
+    Diagram getVersion(long diagramId, long versionId);
     Diagram restoreVersion(long diagramId, long versionId);
 
 private:

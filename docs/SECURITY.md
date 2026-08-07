@@ -102,7 +102,13 @@ Two subtleties worth preserving:
    previously did not, which let any visitor copy any diagram by id — a direct
    object reference vulnerability. Any future endpoint that emits diagram
    content must call `ensureCanRead` even if it looks like a write.
-2. **Share links are read-only by slug.** `GET /d/{slug}` and
+2. **A version snapshot is diagram content.**
+   `GET /api/diagrams/{id}/versions/{versionId}` returns a whole past diagram,
+   so it takes `ensureCanRead` on the *diagram* id, not the weaker "may list
+   versions". The storage query also filters on `diagram_id` as well as the
+   version id, so a caller allowed to read one diagram cannot walk into another
+   one's history by guessing version numbers.
+3. **Share links are read-only by slug.** `GET /d/{slug}` and
    `GET /api/diagrams/slug/{slug}` serve a read-only view to non-owners. Slugs
    are the capability, so they must be unguessable: `003_randomize_legacy_slugs.sql`
    replaced the old sequential `-<timestamp>` suffix with 16 hex characters from
@@ -257,10 +263,13 @@ These are accepted, not overlooked:
 
 `tests/check_security_smoke.sh` starts a throwaway instance on a free port and
 asserts the live behaviour: a fresh guest cannot enumerate existing diagrams,
-cannot read one by id, cannot copy one via duplicate, gets `400` rather than a
-crash on an out-of-range id, is refused without a CSRF token, and receives the
-security headers. `tests/check_rate_limits.sh` exercises the limiter and
-`tests/test_validation.cpp` covers the validation and eviction logic.
+cannot read one by id, cannot copy one via duplicate, cannot read one's version
+snapshots, gets `400` rather than a crash on an out-of-range id, is refused
+without a CSRF token, and receives the security headers. Each `403` has a
+matching positive control on the visitor's own diagram, so a pass cannot come
+from a route that is simply broken. `tests/check_rate_limits.sh` exercises the
+limiter and `tests/test_validation.cpp` covers the validation and eviction
+logic.
 
 ```bash
 ctest --test-dir build --output-on-failure

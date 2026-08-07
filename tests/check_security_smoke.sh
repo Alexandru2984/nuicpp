@@ -142,6 +142,33 @@ if [[ -n "$existing_id" ]]; then
     echo "expected duplicate of another visitor's diagram to return 403, got $status" >&2
     exit 1
   fi
+
+  # A version snapshot is a whole diagram at a past moment, so reading one is
+  # reading the diagram. The ownership check runs before the version lookup, so
+  # this is 403 whether or not that version number exists.
+  status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" \
+    "http://127.0.0.1:${PORT}/api/diagrams/${existing_id}/versions/1")"
+  if [[ "$status" != "403" ]]; then
+    echo "expected another visitor's version snapshot to return 403, got $status" >&2
+    exit 1
+  fi
+fi
+
+# Positive control for the same route: the visitor's own snapshot is readable,
+# so the 403 above is the ownership check answering and not a routing accident.
+own_version="$(curl --noproxy '*' -fsS -b "$COOKIE_JAR" \
+  "http://127.0.0.1:${PORT}/api/diagrams/${own_id}/versions" \
+  | python3 -c 'import json,sys; vs=json.load(sys.stdin)["versions"]; print(vs[0]["id"] if vs else "")')"
+if [[ -n "$own_version" ]]; then
+  status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" \
+    "http://127.0.0.1:${PORT}/api/diagrams/${own_id}/versions/${own_version}")"
+  if [[ "$status" != "200" ]]; then
+    echo "expected the visitor's own version snapshot to return 200, got $status" >&2
+    exit 1
+  fi
+else
+  echo "security smoke failed: own diagram has no version to read" >&2
+  exit 1
 fi
 
 # The route regex matches \d+ with no length bound, so an id past LONG_MAX used
