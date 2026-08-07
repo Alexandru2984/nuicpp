@@ -512,6 +512,13 @@ body.dirty .draft-status { color: var(--warn); }
   stroke: var(--bg-canvas);
 }
 
+/* Alignment guide shown while dragging. Deliberately not the accent colour:
+   it is a transient hint, not part of the diagram or of the selection. */
+.align-guide {
+  stroke: #f472b6;
+  pointer-events: none;
+}
+
 /* Invisible fat square so a fingertip can grab a 9px handle. */
 .resize-hit { fill: transparent; }
 

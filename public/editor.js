@@ -48,6 +48,7 @@
     longPressTimer: null,
     marquee: null,
     resizing: null,
+    guides: [],
     filter: ""
   };
 
@@ -622,6 +623,100 @@
     }
   }
 
+  // Screen pixels within which a dragged box latches onto another node's edge
+  // or centre line.
+  const ALIGN_THRESHOLD = 6;
+  const GUIDE_OVERHANG = 14;
+
+  // Three lines per axis per node: both edges and the centre. Aligning centres
+  // is what makes a row of differently sized nodes line up sensibly.
+  const alignLinesX = (r) => [r.x, r.x + r.width / 2, r.x + r.width];
+  const alignLinesY = (r) => [r.y, r.y + r.height / 2, r.y + r.height];
+
+  function movingBox(dragging, deltaX, deltaY) {
+    const keys = dragging.keys || [dragging.key];
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const key of keys) {
+      const original = dragging.originals[key];
+      const node = state.current.nodes.find((n) => n.key === key);
+      if (!original || !node) continue;
+      minX = Math.min(minX, original.x + deltaX);
+      minY = Math.min(minY, original.y + deltaY);
+      maxX = Math.max(maxX, original.x + deltaX + node.width);
+      maxY = Math.max(maxY, original.y + deltaY + node.height);
+    }
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  }
+
+  // Returns the nudge that puts the dragged box on the nearest alignment line,
+  // plus which nodes it matched so the guide can be drawn across all of them.
+  function alignmentAdjust(box, movingKeys) {
+    const tolerance = ALIGN_THRESHOLD / state.zoom;
+    const others = state.current.nodes.filter((n) => !movingKeys.includes(n.key));
+    const result = { dx: 0, dy: 0, matches: [] };
+    for (const axis of ["x", "y"]) {
+      const lines = axis === "x" ? alignLinesX : alignLinesY;
+      const mine = lines(box);
+      let best = null;
+      for (const other of others) {
+        for (const value of lines(other)) {
+          for (const own of mine) {
+            const distance = Math.abs(value - own);
+            // Strictly closer wins, so a tie between two equally near nodes
+            // keeps the first and the guide does not flicker between them.
+            if (distance <= tolerance && (!best || distance < best.distance)) {
+              best = { distance, value, offset: value - own };
+            }
+          }
+        }
+      }
+      if (!best) continue;
+      if (axis === "x") result.dx = best.offset; else result.dy = best.offset;
+      result.matches.push({
+        axis,
+        value: best.value,
+        others: others.filter((n) => lines(n).includes(best.value))
+      });
+    }
+    return result;
+  }
+
+  // The guide spans every box it touches, so it reads as a relationship rather
+  // than as a line that happens to pass nearby.
+  function guideSpans(matches, box) {
+    return matches.map((match) => {
+      const rects = match.others.concat([box]);
+      if (match.axis === "x") {
+        return {
+          axis: "x",
+          value: match.value,
+          from: Math.min(...rects.map((r) => r.y)) - GUIDE_OVERHANG,
+          to: Math.max(...rects.map((r) => r.y + r.height)) + GUIDE_OVERHANG
+        };
+      }
+      return {
+        axis: "y",
+        value: match.value,
+        from: Math.min(...rects.map((r) => r.x)) - GUIDE_OVERHANG,
+        to: Math.max(...rects.map((r) => r.x + r.width)) + GUIDE_OVERHANG
+      };
+    });
+  }
+
+  function renderGuides() {
+    for (const guide of state.guides) {
+      const ends = guide.axis === "x"
+        ? { x1: guide.value, y1: guide.from, x2: guide.value, y2: guide.to }
+        : { x1: guide.from, y1: guide.value, x2: guide.to, y2: guide.value };
+      svg("line", {
+        ...ends,
+        class: "align-guide",
+        "stroke-width": 1 / state.zoom,
+        "stroke-dasharray": `${6 / state.zoom} ${4 / state.zoom}`
+      }, overlayLayer);
+    }
+  }
+
   function beginResize(evt, node, sx, sy) {
     if (state.readOnly) return;
     // Without this the canvas would also see the press and start a rubber-band
@@ -942,6 +1037,7 @@
   function renderOverlay() {
     overlayLayer.replaceChildren();
     renderMarquee();
+    renderGuides();
     renderResizeHandles();
   }
 
@@ -1557,9 +1653,17 @@
           const p = worldPoint(evt);
           const nextX = snapValue(p.x - state.dragging.dx);
           const nextY = snapValue(p.y - state.dragging.dy);
-          const deltaX = nextX - state.dragging.originals[state.dragging.key].x;
-          const deltaY = nextY - state.dragging.originals[state.dragging.key].y;
-          for (const key of state.dragging.keys || [state.dragging.key]) {
+          let deltaX = nextX - state.dragging.originals[state.dragging.key].x;
+          let deltaY = nextY - state.dragging.originals[state.dragging.key].y;
+          // Alignment is applied after the grid, and wins: a node the user is
+          // visibly lining up with another should land on it, not one grid step
+          // short of it.
+          const keys = state.dragging.keys || [state.dragging.key];
+          const align = alignmentAdjust(movingBox(state.dragging, deltaX, deltaY), keys);
+          deltaX += align.dx;
+          deltaY += align.dy;
+          state.guides = guideSpans(align.matches, movingBox(state.dragging, deltaX, deltaY));
+          for (const key of keys) {
             const moving = state.current.nodes.find((n) => n.key === key);
             const original = state.dragging.originals[key];
             if (moving && original) {
@@ -1596,9 +1700,12 @@
       if (state.pointers.size < 2) state.pinch = null;
       if (state.pointers.size === 0) state.multiSelectArmed = false;
       if ((state.dragging || state.resizing) && state.current && !state.readOnly) markDirty();
+      const hadGuides = state.guides.length > 0;
       state.dragging = null;
       state.resizing = null;
       state.panning = null;
+      state.guides = [];
+      if (hadGuides) render();
       if (state.marquee) {
         // A click that never became a drag still means "deselect", which is what
         // clicking empty canvas did before the rubber-band existed. Shift-click

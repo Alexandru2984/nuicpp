@@ -24,6 +24,8 @@ admin account for maintenance.
   extends), or by long-press on touch.
 - Eight resize handles on a single selected node, honouring the same 72x48 to
   600x400 bounds the server clamps to.
+- Alignment guides while dragging: edges and centres latch onto neighbouring
+  nodes within 6 screen pixels, and the guide spans every box it lines up.
 - Keyboard shortcuts with a `?` overlay listing them.
 - Diagram search filter over the sidebar list.
 - Light and dark themes, remembered per browser.
