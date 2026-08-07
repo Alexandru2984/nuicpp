@@ -19,8 +19,9 @@ admin account for maintenance.
   updates in the browser.
 - Node types: `process`, `decision`, `database`, `service`, `api`, `note`,
   `external`. Directed and undirected labelled edges with colours and arrowheads.
-- Snap-to-grid, simple auto-layout, minimap, copy/paste, multi-select,
-  undo/redo.
+- Snap-to-grid, simple auto-layout, minimap, copy/paste, undo/redo.
+- Multi-select by Shift-click, by rubber-band drag on empty canvas (Shift-drag
+  extends), or by long-press on touch.
 - Keyboard shortcuts with a `?` overlay listing them.
 - Diagram search filter over the sidebar list.
 - Light and dark themes, remembered per browser.

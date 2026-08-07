@@ -499,6 +499,14 @@ body.dirty .draft-status { color: var(--warn); }
   filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 65%, transparent));
 }
 
+/* Rubber-band selection. It is drawn over the nodes, so it must not intercept
+   the pointer or the drag would end the moment the band grew under the cursor. */
+.marquee {
+  fill: color-mix(in srgb, var(--accent) 14%, transparent);
+  stroke: var(--accent);
+  pointer-events: none;
+}
+
 /* ----------------------------------------------------------------- login -- */
 
 .login-body {

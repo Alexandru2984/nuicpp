@@ -46,6 +46,7 @@
     pinch: null,
     multiSelectArmed: false,
     longPressTimer: null,
+    marquee: null,
     filter: ""
   };
 
@@ -54,6 +55,10 @@
   const viewport = el("viewport");
   const nodesLayer = el("nodes");
   const edgesLayer = el("edges");
+  // Both shells ship this layer, but a browser holding a cached copy of an
+  // older Nui bundle would not have it, and a missing overlay must not take the
+  // whole canvas down. svg() is a hoisted declaration, so this is safe here.
+  const overlayLayer = el("overlay") || svg("g", { id: "overlay" }, viewport);
 
   async function ensureCsrfToken() {
     if (state.csrfToken) return state.csrfToken;
@@ -236,6 +241,8 @@
     ["Delete / Backspace", "Delete selection"],
     ["Escape", "Clear selection, close panels"],
     ["Shift + click", "Add to selection"],
+    ["Drag on empty canvas", "Rubber-band select"],
+    ["Shift + drag", "Rubber-band adds to selection"],
     ["Long press (touch)", "Add to selection"],
     ["Middle drag / Pan tool", "Pan the canvas"],
     ["Wheel / pinch", "Zoom"],
@@ -438,6 +445,9 @@
   }
 
   const LONG_PRESS_MS = 450;
+  // Screen pixels of pointer travel before an empty-canvas drag counts as a
+  // rubber-band rather than a click.
+  const MARQUEE_MIN_DRAG = 4;
 
   function cancelLongPress() {
     window.clearTimeout(state.longPressTimer);
@@ -514,6 +524,14 @@
     return selectedNodeKeys().includes(key);
   }
 
+  // One node and many nodes are different selection shapes, so every path that
+  // produces a set of keys goes through here rather than guessing the shape.
+  function selectNodeKeys(keys) {
+    state.selected = keys.length === 0 ? null
+      : keys.length === 1 ? { type: "node", key: keys[0] }
+      : { type: "nodes", keys };
+  }
+
   function toggleNodeSelection(key) {
     const keys = new Set(selectedNodeKeys());
     if (keys.has(key)) {
@@ -521,8 +539,35 @@
     } else {
       keys.add(key);
     }
-    const next = [...keys];
-    state.selected = next.length === 0 ? null : next.length === 1 ? { type: "node", key: next[0] } : { type: "nodes", keys: next };
+    selectNodeKeys([...keys]);
+  }
+
+  // A rubber-band drag can go up and to the left, so the stored corners are the
+  // start and the current pointer, not a top-left plus a size.
+  function marqueeRect(m) {
+    return {
+      x: Math.min(m.x0, m.x1),
+      y: Math.min(m.y0, m.y1),
+      width: Math.abs(m.x1 - m.x0),
+      height: Math.abs(m.y1 - m.y0)
+    };
+  }
+
+  // Touching the band is enough. Requiring full containment means a band drawn
+  // across a wide row of nodes catches none of them, which reads as broken.
+  function nodeKeysInRect(rect) {
+    if (!state.current) return [];
+    return state.current.nodes
+      .filter((n) => n.x < rect.x + rect.width && n.x + n.width > rect.x &&
+                     n.y < rect.y + rect.height && n.y + n.height > rect.y)
+      .map((n) => n.key);
+  }
+
+  function applyMarqueeSelection(m) {
+    const inside = nodeKeysInRect(marqueeRect(m));
+    // Shift extends what was already selected, so the band is re-applied to the
+    // original set every move instead of accumulating as the pointer wanders.
+    selectNodeKeys(m.additive ? [...new Set(m.baseKeys.concat(inside))] : inside);
   }
 
   function svg(tag, attrs = {}, parent) {
@@ -800,6 +845,23 @@
     }
   }
 
+  function renderMarquee() {
+    overlayLayer.replaceChildren();
+    if (!state.marquee || !state.marquee.moved) return;
+    const rect = marqueeRect(state.marquee);
+    // The overlay sits inside the zoomed viewport, so a plain stroke width would
+    // thicken with the zoom. Divide it back out to keep the band 1px on screen.
+    svg("rect", {
+      class: "marquee",
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+      "stroke-width": 1 / state.zoom,
+      "stroke-dasharray": `${5 / state.zoom} ${4 / state.zoom}`
+    }, overlayLayer);
+  }
+
   function renderProperties() {
     const empty = el("selection-empty");
     const nodeProps = el("node-props");
@@ -840,6 +902,7 @@
     }
     renderEdges();
     renderNodes();
+    renderMarquee();
     renderProperties();
     renderMinimap();
   }
@@ -1324,14 +1387,16 @@
       state.pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
       if (state.pointers.size === 2) {
         cancelLongPress();
+        state.marquee = null;
         beginPinch();
         return;
       }
       if (state.pointers.size > 2) return;
 
       // Middle mouse, the pan tool, or a touch drag on empty canvas all pan.
-      // On touch the select tool has nothing to rubber-band over, so panning
-      // is the more useful default than clearing the selection.
+      // On touch the select tool pans rather than rubber-bands: a finger has no
+      // Shift key to extend with and panning is what a drag means everywhere
+      // else on a phone.
       const panGesture = evt.button === 1 || state.tool === "pan" ||
         (evt.pointerType !== "mouse" && state.tool === "select");
       if (panGesture) {
@@ -1341,11 +1406,26 @@
       }
       if (state.tool === "node") {
         createNodeAt(worldPoint(evt));
-      } else {
-        state.selected = null;
-        state.edgeSource = null;
-        render();
+        return;
       }
+      if (state.tool === "select") {
+        const p = worldPoint(evt);
+        // The selection is deliberately left alone here. A drag that ends up
+        // empty and a plain click both clear it on release, and clearing now
+        // would throw away the selection a Shift-drag is meant to extend.
+        state.marquee = {
+          x0: p.x, y0: p.y, x1: p.x, y1: p.y,
+          clientX: evt.clientX, clientY: evt.clientY,
+          additive: evt.shiftKey,
+          baseKeys: selectedNodeKeys(),
+          moved: false
+        };
+        canvas.setPointerCapture(evt.pointerId);
+        return;
+      }
+      state.selected = null;
+      state.edgeSource = null;
+      render();
     });
 
     canvas.addEventListener("pointermove", (evt) => {
@@ -1387,6 +1467,19 @@
         state.pan.x = evt.clientX - state.panning.x;
         state.pan.y = evt.clientY - state.panning.y;
         render();
+      } else if (state.marquee) {
+        const m = state.marquee;
+        // A couple of pixels of travel while clicking is normal. Below the
+        // threshold this is still a click, so no band is drawn and the
+        // selection is left for the release handler to clear.
+        if (!m.moved && Math.hypot(evt.clientX - m.clientX, evt.clientY - m.clientY) > MARQUEE_MIN_DRAG) {
+          m.moved = true;
+        }
+        const p = worldPoint(evt);
+        m.x1 = p.x;
+        m.y1 = p.y;
+        if (m.moved) applyMarqueeSelection(m);
+        render();
       }
     });
 
@@ -1398,6 +1491,17 @@
       if (state.dragging && state.current && !state.readOnly) markDirty();
       state.dragging = null;
       state.panning = null;
+      if (state.marquee) {
+        // A click that never became a drag still means "deselect", which is what
+        // clicking empty canvas did before the rubber-band existed. Shift-click
+        // is excluded: it is an attempt to extend, not to clear.
+        if (!state.marquee.moved && !state.marquee.additive) {
+          state.selected = null;
+          state.edgeSource = null;
+        }
+        state.marquee = null;
+        render();
+      }
     };
     window.addEventListener("pointerup", endPointer);
     window.addEventListener("pointercancel", endPointer);

@@ -100,7 +100,10 @@ Nui::ElementRenderer MainPage::render() {
                     se::rect{id = "grid-bg", sa::x = "-50000", sa::y = "-50000", sa::width = "100000", sa::height = "100000", sa::fill = "url(#grid)"}(),
                     se::g{id = "viewport"}(
                         se::g{id = "edges"}(),
-                        se::g{id = "nodes"}()
+                        se::g{id = "nodes"}(),
+                        // Rubber-band selection draws here, above the nodes and
+                        // outside the layers that editor.js rebuilds per frame.
+                        se::g{id = "overlay"}()
                     )
                 ),
                 div{id = "minimap", class_ = "minimap"}()

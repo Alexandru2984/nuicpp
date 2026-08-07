@@ -110,7 +110,7 @@ std::string renderEditorPage(const std::string& username) {
           </marker>
         </defs>
         <rect id="grid-bg" x="-50000" y="-50000" width="100000" height="100000" fill="url(#grid)"></rect>
-        <g id="viewport"><g id="edges"></g><g id="nodes"></g></g>
+        <g id="viewport"><g id="edges"></g><g id="nodes"></g><g id="overlay"></g></g>
       </svg>
       <div id="minimap" class="minimap"></div>
     </main>
@@ -159,7 +159,7 @@ std::string renderDocsPage() {
     <h1>NuiGraph Studio</h1>
     <p>NuiGraph Studio is a C++ powered graph and diagram editor for flowcharts, architecture maps, service graphs, and node-link diagrams. Public share links open read-only views for other visitors, who can fork a diagram into their own session.</p>
     <h2>Canvas Controls</h2>
-    <p>Select nodes and edges with the Select tool. Shift-click nodes for basic multi-select. Drag nodes to move them. Use the Node tool to create nodes, Edge to connect two nodes, and Pan or middle mouse drag to move the canvas. Delete removes the selected object. Ctrl+S saves, Ctrl+C/Ctrl+V copy and paste selected nodes, Ctrl+Z/Ctrl+Y undo and redo, Esc clears selection. Snap, Layout, SVG, PNG, and Sample are available in the top toolbar. Unsaved browser drafts are stored locally and can be restored when reopening the same diagram.</p>
+    <p>Select nodes and edges with the Select tool. Shift-click nodes for basic multi-select, or drag on empty canvas to rubber-band everything the band touches; hold Shift while dragging to add to the current selection instead of replacing it. Drag nodes to move them. Use the Node tool to create nodes, Edge to connect two nodes, and Pan or middle mouse drag to move the canvas. Delete removes the selected object. Ctrl+S saves, Ctrl+C/Ctrl+V copy and paste selected nodes, Ctrl+Z/Ctrl+Y undo and redo, Esc clears selection. Snap, Layout, SVG, PNG, and Sample are available in the top toolbar. Unsaved browser drafts are stored locally and can be restored when reopening the same diagram.</p>
     <h2>Node Types</h2>
     <p>Supported types: process, decision, database, service, api, note, external. Unknown imported types are mapped to note.</p>
     <h2>Edges</h2>
