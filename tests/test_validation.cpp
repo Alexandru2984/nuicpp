@@ -52,9 +52,40 @@ std::string tmpEnvPath() {
     return "/tmp/nuigraph-test-" + std::to_string(getpid()) + ".env";
 }
 
+const std::string kValidPasswordHash =
+    "pbkdf2_sha256$150000$00112233445566778899aabbccddeeff$"
+    "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+const std::string kValidSessionSecret =
+    "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+
+std::string validConfig(const std::string& extra = "") {
+    return "APP_ENV=test\n"
+           "APP_HOST=127.0.0.1\n"
+           "APP_PORT=18081\n"
+           "APP_BASE_URL=http://127.0.0.1:18081\n"
+           "DATABASE_URL=postgresql://unused\n"
+           "AUTH_USERNAME=admin\n"
+           "AUTH_PASSWORD_HASH=" + kValidPasswordHash + "\n"
+           "SESSION_SECRET=" + kValidSessionSecret + "\n"
+           "PROJECT_ROOT=/tmp\n" + extra;
+}
+
 void writeEnvFile(const std::string& path, const std::string& content) {
     std::ofstream out(path);
     out << content;
+}
+
+bool configThrows(const std::string& content) {
+    const auto path = tmpEnvPath();
+    writeEnvFile(path, content);
+    bool threw = false;
+    try {
+        Config::load(path);
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    std::remove(path.c_str());
+    return threw;
 }
 
 // ===== Original tests =====
@@ -143,13 +174,7 @@ void testFormUrlDecode() {
 
 void testPublicAccessConfigLoads() {
     auto path = tmpEnvPath();
-    writeEnvFile(path,
-        "APP_HOST=127.0.0.1\n"
-        "APP_PORT=18081\n"
-        "DATABASE_URL=postgresql://unused\n"
-        "AUTH_PASSWORD_HASH=unused\n"
-        "SESSION_SECRET=unused\n"
-        "PUBLIC_ACCESS=true\n");
+    writeEnvFile(path, validConfig("PUBLIC_ACCESS=true\n"));
     auto cfg = Config::load(path);
     require(cfg.publicAccess, "PUBLIC_ACCESS=true should enable public access");
     std::remove(path.c_str());
@@ -192,39 +217,30 @@ void testConfigMissingEnvThrows() {
 }
 
 void testConfigHostRestriction() {
-    auto path = tmpEnvPath();
-    writeEnvFile(path,
-        "APP_HOST=0.0.0.0\n"
-        "DATABASE_URL=postgresql://unused\n"
-        "AUTH_PASSWORD_HASH=unused\n"
-        "SESSION_SECRET=unused\n");
-    bool threw = false;
-    try {
-        Config::load(path);
-    } catch (const std::runtime_error&) {
-        threw = true;
-    }
-    std::remove(path.c_str());
-    require(threw, "APP_HOST != 127.0.0.1 should throw");
+    require(configThrows(validConfig("APP_HOST=0.0.0.0\n")),
+            "APP_HOST != 127.0.0.1 should throw");
 }
 
 void testConfigMissingRequiredFields() {
     auto path = tmpEnvPath();
 
     // missing DATABASE_URL
-    writeEnvFile(path, "APP_HOST=127.0.0.1\nAUTH_PASSWORD_HASH=x\nSESSION_SECRET=x\n");
+    writeEnvFile(path, "APP_ENV=test\nAPP_HOST=127.0.0.1\nAUTH_PASSWORD_HASH=" +
+                       kValidPasswordHash + "\nSESSION_SECRET=" + kValidSessionSecret + "\n");
     bool threw = false;
     try { Config::load(path); } catch (const std::runtime_error&) { threw = true; }
     require(threw, "missing DATABASE_URL should throw");
 
     // missing AUTH_PASSWORD_HASH
-    writeEnvFile(path, "APP_HOST=127.0.0.1\nDATABASE_URL=postgresql://x\nSESSION_SECRET=x\n");
+    writeEnvFile(path, "APP_ENV=test\nAPP_HOST=127.0.0.1\nDATABASE_URL=postgresql://x\nSESSION_SECRET=" +
+                       kValidSessionSecret + "\n");
     threw = false;
     try { Config::load(path); } catch (const std::runtime_error&) { threw = true; }
     require(threw, "missing AUTH_PASSWORD_HASH should throw");
 
     // missing SESSION_SECRET
-    writeEnvFile(path, "APP_HOST=127.0.0.1\nDATABASE_URL=postgresql://x\nAUTH_PASSWORD_HASH=x\n");
+    writeEnvFile(path, "APP_ENV=test\nAPP_HOST=127.0.0.1\nDATABASE_URL=postgresql://x\nAUTH_PASSWORD_HASH=" +
+                       kValidPasswordHash + "\n");
     threw = false;
     try { Config::load(path); } catch (const std::runtime_error&) { threw = true; }
     require(threw, "missing SESSION_SECRET should throw");
@@ -235,14 +251,16 @@ void testConfigMissingRequiredFields() {
 void testConfigQuotedValues() {
     auto path = tmpEnvPath();
     writeEnvFile(path,
+        "APP_ENV=test\n"
         "APP_HOST=127.0.0.1\n"
         "DATABASE_URL=\"postgresql://quoted\"\n"
-        "AUTH_PASSWORD_HASH='single-quoted'\n"
-        "SESSION_SECRET=unquoted\n");
+        "AUTH_PASSWORD_HASH='" + kValidPasswordHash + "'\n"
+        "SESSION_SECRET=" + kValidSessionSecret + "\n"
+        "PROJECT_ROOT=/tmp\n");
     auto cfg = Config::load(path);
     require(cfg.databaseUrl == "postgresql://quoted", "double quotes should be stripped");
-    require(cfg.authPasswordHash == "single-quoted", "single quotes should be stripped");
-    require(cfg.sessionSecret == "unquoted", "unquoted values should work");
+    require(cfg.authPasswordHash == kValidPasswordHash, "single quotes should be stripped");
+    require(cfg.sessionSecret == kValidSessionSecret, "unquoted values should work");
     std::remove(path.c_str());
 }
 
@@ -251,12 +269,14 @@ void testConfigCommentAndBlankLines() {
     writeEnvFile(path,
         "# This is a comment\n"
         "\n"
+        "APP_ENV=test\n"
         "APP_HOST=127.0.0.1\n"
         "# Another comment\n"
         "DATABASE_URL=postgresql://test\n"
         "\n"
-        "AUTH_PASSWORD_HASH=hash\n"
-        "SESSION_SECRET=secret\n");
+        "AUTH_PASSWORD_HASH=" + kValidPasswordHash + "\n"
+        "SESSION_SECRET=" + kValidSessionSecret + "\n"
+        "PROJECT_ROOT=/tmp\n");
     auto cfg = Config::load(path);
     require(cfg.databaseUrl == "postgresql://test", "comments and blanks should be ignored");
     std::remove(path.c_str());
@@ -264,17 +284,40 @@ void testConfigCommentAndBlankLines() {
 
 void testConfigEnvOverrides() {
     auto path = tmpEnvPath();
-    writeEnvFile(path,
-        "APP_HOST=127.0.0.1\n"
-        "DATABASE_URL=postgresql://file\n"
-        "AUTH_PASSWORD_HASH=hash\n"
-        "SESSION_SECRET=secret\n"
-        "APP_PORT=9999\n");
+    writeEnvFile(path, validConfig("APP_PORT=9999\n"));
     setenv("APP_PORT", "7777", 1);
     auto cfg = Config::load(path);
     unsetenv("APP_PORT");
     require(cfg.port == 7777, "env var should override file value");
     std::remove(path.c_str());
+}
+
+void testConfigRejectsAmbiguousValues() {
+    require(configThrows(validConfig("PUBLIC_ACCESS=truthy\n")),
+            "unknown boolean spellings should throw");
+    require(configThrows(validConfig("APP_PORT=18081oops\n")),
+            "integer values with trailing data should throw");
+}
+
+void testConfigRejectsUnsafeLimits() {
+    require(configThrows(validConfig("MAX_IMPORT_BYTES=-1\n")),
+            "negative import limits must not wrap to a huge size_t");
+    require(configThrows(validConfig("DB_POOL_SIZE=1000\n")),
+            "excessive database pools should throw");
+}
+
+void testConfigRejectsWeakSecrets() {
+    require(configThrows(validConfig("SESSION_SECRET=abcd\n")),
+            "short session secrets should throw");
+    require(configThrows(validConfig("AUTH_PASSWORD_HASH=pbkdf2_sha256$1$aa$bb\n")),
+            "weak password hashes should throw");
+}
+
+void testProductionConfigRequiresSafePathsAndHttps() {
+    require(configThrows(validConfig("APP_ENV=production\nAPP_BASE_URL=http://example.test\n")),
+            "production base URL must use HTTPS");
+    require(configThrows(validConfig("PROJECT_ROOT=relative/path\n")),
+            "project root must be absolute");
 }
 
 // ===== New validation edge case tests =====
@@ -551,6 +594,10 @@ int main() {
         testConfigQuotedValues();
         testConfigCommentAndBlankLines();
         testConfigEnvOverrides();
+        testConfigRejectsAmbiguousValues();
+        testConfigRejectsUnsafeLimits();
+        testConfigRejectsWeakSecrets();
+        testProductionConfigRequiresSafePathsAndHttps();
         // validation edge cases
         testEmptyTitleFails();
         testDuplicateNodeKeysFails();
@@ -581,6 +628,6 @@ int main() {
         std::cerr << "test failed: " << e.what() << '\n';
         return EXIT_FAILURE;
     }
-    std::cout << "nuigraph validation tests passed (38 tests)\n";
+    std::cout << "nuigraph validation tests passed (42 tests)\n";
     return EXIT_SUCCESS;
 }

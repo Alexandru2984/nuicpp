@@ -20,7 +20,7 @@ struct Config {
     int maxDiagramsPerGuest = 60;
     int dbPoolSize = 8;
     std::size_t maxImportBytes = 1048576;
-    std::string projectRoot = "/home/micu/nuicpp";
+    std::string projectRoot = "/opt/nuigraph-studio/current";
 
     static Config load(const std::string& envPath);
 };

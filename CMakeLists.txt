@@ -8,9 +8,20 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(PkgConfig REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(PostgreSQL REQUIRED)
 find_package(nlohmann_json REQUIRED)
-pkg_check_modules(PQXX REQUIRED IMPORTED_TARGET libpqxx)
+pkg_check_modules(PQXX REQUIRED libpqxx)
 pkg_check_modules(CPPHTTPLIB REQUIRED IMPORTED_TARGET cpp-httplib)
+
+# libpqxx 7.10 documents a shared-library double-free involving its header-
+# defined type_name<T> strings. Link its distribution-provided static archive
+# so those instances and their destructors live in one image. The remaining
+# libraries stay dynamically linked and receive normal security updates.
+find_file(PQXX_STATIC_LIBRARY
+    NAMES libpqxx.a
+    HINTS ${PQXX_LIBRARY_DIRS}
+    REQUIRED
+)
 
 add_executable(nuigraph-studio
     src/main.cpp
@@ -27,9 +38,10 @@ add_executable(nuigraph-studio
     src/utils/RateLimiter.cpp
 )
 
-target_include_directories(nuigraph-studio PRIVATE src)
+target_include_directories(nuigraph-studio PRIVATE src ${PQXX_INCLUDE_DIRS})
 target_link_libraries(nuigraph-studio PRIVATE
-    PkgConfig::PQXX
+    ${PQXX_STATIC_LIBRARY}
+    PostgreSQL::PostgreSQL
     PkgConfig::CPPHTTPLIB
     nlohmann_json::nlohmann_json
     OpenSSL::Crypto

@@ -235,11 +235,20 @@ deploy could take hours to reach visitors.
 ## Process hardening
 
 - Binds `127.0.0.1` only; nginx is the sole path in.
+- Startup rejects ambiguous booleans, malformed integers, unsafe resource
+  bounds, non-HTTPS production URLs, relative static roots, session secrets
+  below 256 bits, and malformed or under-costed PBKDF2 password hashes. Use
+  `nuigraph-studio check-config <path>` as a deployment gate; it never prints
+  secret values.
 - systemd unit applies `NoNewPrivileges`, `PrivateTmp`, `ProtectSystem`,
   `ProtectHome`, and a restricted syscall/address family set.
 - SIGTERM/SIGINT stop the listener and drain in-flight requests before exit, so
   a restart does not truncate a save. SIGPIPE is ignored.
 - Secrets live in `.env`, mode `600`, git-ignored, loaded at startup only.
+- The Ubuntu `libpqxx 7.10` header documents a shared-library double-free on
+  normal exit for its header-defined type-name strings. The service links the
+  package-provided static `libpqxx.a` so these objects have one owner; OpenSSL,
+  libpq and the remaining libraries stay dynamically linked for normal updates.
 
 ## Known limitations
 

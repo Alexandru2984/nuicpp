@@ -5,7 +5,18 @@
 #include <iostream>
 
 int main(int argc, char** argv) {
-    std::string envPath = "/home/micu/nuicpp/.env";
+    if (argc == 3 && std::string(argv[1]) == "check-config") {
+        try {
+            (void)nuigraph::Config::load(argv[2]);
+            std::cout << "configuration valid\n";
+            return 0;
+        } catch (const std::exception& e) {
+            std::cerr << "invalid configuration: " << e.what() << "\n";
+            return 1;
+        }
+    }
+
+    std::string envPath = "/etc/nuigraph-studio/app.env";
     if (argc > 1) {
         envPath = argv[1];
     }
