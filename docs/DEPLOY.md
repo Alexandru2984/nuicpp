@@ -1,8 +1,8 @@
 # Deploy runbook
 
 Production host: the VPS. Public URL: `https://nuicpp.micutu.com`.
-Everything below assumes `PROJECT_ROOT=/home/micu/nuicpp` and that you are the
-`micu` user, with `sudo` for nginx and systemd.
+Everything below assumes the source checkout is `/home/micu/nuicpp` and that
+you are the `micu` user, with `sudo` for nginx and systemd.
 
 This host runs dozens of unrelated sites. **Never restart nginx** — always
 `sudo nginx -t && sudo systemctl reload nginx`, which is atomic and leaves other
@@ -14,13 +14,15 @@ vhosts serving. Never edit files under `/etc/nginx/conf.d/` other than
 ```bash
 cd /home/micu/nuicpp
 git pull                                   # if deploying from a remote
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release -j "$(nproc)"
-ctest --test-dir build --output-on-failure
-scripts/migrate.sh                         # idempotent; safe to re-run
-sudo systemctl restart nuigraph-studio.service
-scripts/deploy_check.sh
+./scripts/deploy.sh
 ```
+
+The deploy refuses a dirty tree, builds and tests the committed source, audits
+the frontend dependency lock, validates the root-only runtime config, applies
+migrations with the owner role, reapplies the DML-only runtime grants, and then
+publishes a root-owned release under `/opt/nuigraph-studio/releases/`. The
+`current` symlink changes atomically. A failed restart or health check restores
+the previous symlink and restarts the previous release.
 
 The restart is safe under load: the service traps SIGTERM, stops accepting new
 connections, and drains in-flight requests before exiting, so a save in progress
@@ -49,9 +51,18 @@ a failed build.
 ```bash
 sudo -u postgres createuser nuigraph_user --pwprompt
 sudo -u postgres createdb nuigraph_studio -O nuigraph_user
-scripts/migrate.sh
-psql -d nuigraph_studio -f deploy/postgres/runtime_privileges.sql   # as owner/superuser
+sudo -u postgres createuser nuigraph_app --pwprompt
+sudo env ENV_FILE=/etc/nuigraph-studio/migrate.env scripts/migrate.sh
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d nuigraph_studio \
+  -v app_user=nuigraph_app -v migration_owner=nuigraph_user \
+  -f deploy/postgres/runtime_privileges.sql
 ```
+
+`nuigraph_user` owns the database, schema, tables and sequences and is used only
+by the root-run migration step. `nuigraph_app` owns nothing, belongs to no role,
+and receives only connect, schema usage, table DML and sequence usage/select.
+The privilege script refuses to continue if those ownership and role-attribute
+invariants are not true; revoking `CREATE` from an owner does not constrain it.
 
 `003_randomize_legacy_slugs.sql` uses `gen_random_uuid()`, which is built into
 PostgreSQL 13+. `pgcrypto` is **not** installed on this host, so do not add
@@ -59,7 +70,11 @@ migrations that call `gen_random_bytes()`.
 
 ### 2. Environment
 
-`.env` lives at `/home/micu/nuicpp/.env`, mode `600`, git-ignored.
+Production has two root-owned mode-`0600` files under
+`/etc/nuigraph-studio/`. `app.env` is copied into a private systemd credential
+mount visible only to the service. `migrate.env` contains only the owner
+`DATABASE_URL` and is read by the root-run migration step. The source `.env`
+is for local development only and must not remain on the production checkout.
 
 | Variable | Production value | Notes |
 | --- | --- | --- |
@@ -67,7 +82,7 @@ migrations that call `gen_random_bytes()`.
 | `APP_HOST` | `127.0.0.1` | Never bind publicly; nginx is the only ingress |
 | `APP_PORT` | `18081` | Must match `proxy_pass` in the vhost |
 | `APP_BASE_URL` | `https://nuicpp.micutu.com` | Used to build share URLs |
-| `DATABASE_URL` | `postgresql://nuigraph_user:…@localhost/nuigraph_studio` | |
+| `DATABASE_URL` | `postgresql://nuigraph_app:…@localhost/nuigraph_studio` | Runtime role, never the owner role |
 | `AUTH_USERNAME` | admin login name | Guest usernames are `guest_<hex>` and cannot collide |
 | `AUTH_PASSWORD_HASH` | `pbkdf2_sha256$<iters>$<salt>$<hash>` | |
 | `SESSION_SECRET` | 32+ random bytes, hex | See the rotation warning below |
@@ -78,7 +93,7 @@ migrations that call `gen_random_bytes()`.
 | `MAX_IMPORT_BYTES` | `1048576` | nginx rejects >2 MiB before buffering |
 | `MAX_DIAGRAMS_PER_GUEST` | `60` | Hard ceiling per guest session |
 | `DB_POOL_SIZE` | `8` | Pooled connections; see sizing below |
-| `PROJECT_ROOT` | `/home/micu/nuicpp` | Static file root |
+| `PROJECT_ROOT` | `/opt/nuigraph-studio/current` | Root-owned release/static root |
 
 **Rotating `SESSION_SECRET` logs everyone out and orphans every guest-owned
 diagram**, because owner hashes are derived from it. Only the admin account
@@ -92,15 +107,20 @@ for headroom under burst, not throughput.
 ### 3. systemd
 
 ```bash
+sudo useradd --system --user-group --home-dir /nonexistent --shell /usr/sbin/nologin nuigraph
+sudo install -d -o root -g root -m 0755 /opt/nuigraph-studio/releases
+sudo install -d -o root -g root -m 0700 /etc/nuigraph-studio
 sudo cp systemd/nuigraph-studio.service.example /etc/systemd/system/nuigraph-studio.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now nuigraph-studio.service
 ```
 
-The unit runs as `micu` with `NoNewPrivileges`, `ProtectSystem=strict`,
-`ProtectHome=read-only`, `MemoryDenyWriteExecute`, an empty capability set, and
-`RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX`. If you add a feature that
-needs to write outside `/tmp`, add a `ReadWritePaths=` line rather than
+The unit runs as dedicated `nuigraph`, receives the config through
+`LoadCredential`, cannot see the checkout or deploy user's home, and sees only
+the root-owned release as read-only. It denies non-loopback network traffic,
+permits binding only TCP `127.0.0.1:18081`, has an empty capability set, a
+syscall allowlist and explicit task/file/memory/core limits. If a future feature
+needs persistent writes, give it a dedicated state directory rather than
 loosening `ProtectSystem`.
 
 ### 4. nginx
@@ -136,6 +156,7 @@ still match what certbot expects before reloading.
 
 ```bash
 scripts/deploy_check.sh
+sudo /opt/nuigraph-studio/current/nuigraph-studio check-config /etc/nuigraph-studio/app.env
 curl -fsS https://nuicpp.micutu.com/health
 curl -sS -o /dev/null -w '%{http_code}\n' https://nuicpp.micutu.com/         # 200
 sudo journalctl -u nuigraph-studio.service -n 50 --no-pager
@@ -168,11 +189,10 @@ entries are cleared from visitors' browsers.
 ## Rollback
 
 ```bash
-cd /home/micu/nuicpp
-git log --oneline -10
-git checkout <good-sha>
-cmake --build build --config Release -j "$(nproc)"
+sudo ln -s /opt/nuigraph-studio/releases/<good-release> /opt/nuigraph-studio/.rollback
+sudo mv -Tf /opt/nuigraph-studio/.rollback /opt/nuigraph-studio/current
 sudo systemctl restart nuigraph-studio.service
+curl -fsS http://127.0.0.1:18081/health
 ```
 
 Migrations are forward-only and additive; none of them drop or rewrite columns,
@@ -195,7 +215,7 @@ was the point of the migration.
 
 ```bash
 sudo journalctl -u nuigraph-studio.service -n 200 --no-pager
-psql "$DATABASE_URL" -c '\dt'
+sudo -u postgres psql -d nuigraph_studio -c '\dt+'
 ss -ltnp | grep 18081
 sudo nginx -t
 ```

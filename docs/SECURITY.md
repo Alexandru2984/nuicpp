@@ -244,7 +244,10 @@ deploy could take hours to reach visitors.
   `ProtectHome`, and a restricted syscall/address family set.
 - SIGTERM/SIGINT stop the listener and drain in-flight requests before exit, so
   a restart does not truncate a save. SIGPIPE is ignored.
-- Secrets live in `.env`, mode `600`, git-ignored, loaded at startup only.
+- Production secrets live in root-owned mode-`0600` files outside the checkout.
+  systemd copies the runtime file into a private per-service credential mount;
+  the service UID cannot read the source file. The database owner credential is
+  separate and available only to the root-run migration step.
 - The Ubuntu `libpqxx 7.10` header documents a shared-library double-free on
   normal exit for its header-defined type-name strings. The service links the
   package-provided static `libpqxx.a` so these objects have one owner; OpenSSL,

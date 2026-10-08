@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-set -a
-source "$ROOT_DIR/.env"
-set +a
+APP_HOST="${APP_HOST:-127.0.0.1}"
+APP_PORT="${APP_PORT:-18081}"
 
 echo "Health:"
 curl -fsS "http://${APP_HOST}:${APP_PORT}/health"

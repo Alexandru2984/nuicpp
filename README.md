@@ -164,12 +164,13 @@ psql -d nuigraph_studio -f deploy/postgres/runtime_privileges.sql
 Full runbook in [`docs/DEPLOY.md`](docs/DEPLOY.md). The short version:
 
 ```bash
-cmake --build build --config Release -j "$(nproc)"
-ctest --test-dir build --output-on-failure
-scripts/migrate.sh
-sudo systemctl restart nuigraph-studio.service
-scripts/deploy_check.sh
+./scripts/deploy.sh
 ```
+
+Production runs a root-owned atomic release as the dedicated `nuigraph` user.
+Its runtime PostgreSQL role is distinct from the database-owning migration role,
+and its config is delivered through a private systemd credential mount. The
+deploy script is fail-closed and restores the previous release on failed health.
 
 nginx config is versioned in `deploy/nginx/`. Both files are needed: the vhost
 and the `conf.d/` rate-limit zones it references. Always
@@ -256,4 +257,5 @@ view ever pages.
   attributes.
 - Rate limits are per process; running a second instance would double them.
 - The admin diagram list is unpaginated, which will not scale indefinitely.
-- Remove `.initial_admin_password` once the password is in a password manager.
+- Never retain `.initial_admin_password` on the production checkout; move any
+  recovery copy to root-only incident storage after the password is recorded.
