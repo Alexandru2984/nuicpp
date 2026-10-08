@@ -35,7 +35,10 @@ done
 
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release -j "$(nproc)"
-ctest --test-dir build --output-on-failure
+# The production config is root-only. Running the test harness through sudo
+# keeps it out of the checkout while ensuring DB-backed suites cannot silently
+# skip after the legacy development .env is quarantined.
+sudo env ENV_FILE="$APP_CONFIG" ctest --test-dir build --output-on-failure
 npm audit --prefix nui-frontend --audit-level=high
 
 sudo ./build/nuigraph-studio check-config "$APP_CONFIG"

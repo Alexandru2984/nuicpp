@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_FILE="$ROOT_DIR/.env"
+ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 BINARY="$ROOT_DIR/build/nuigraph-studio"
 
 if [[ ! -x "$BINARY" ]]; then
@@ -25,7 +25,7 @@ env_value() {
 
 DATABASE_URL="$(env_value DATABASE_URL || echo '')"
 if [[ -z "$DATABASE_URL" ]]; then
-  echo "api integration skipped: no DATABASE_URL in .env"
+  echo "api integration skipped: no DATABASE_URL in configured environment file"
   exit 0
 fi
 

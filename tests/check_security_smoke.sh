@@ -2,11 +2,11 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_FILE="$ROOT_DIR/.env"
+ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 BINARY="$ROOT_DIR/build/nuigraph-studio"
 
 if [[ ! -f "$ENV_FILE" || ! -x "$BINARY" ]]; then
-  echo "security smoke skipped: missing .env or build/nuigraph-studio"
+  echo "security smoke skipped: missing configured environment file or binary"
   exit 0
 fi
 
