@@ -39,7 +39,10 @@ private:
     void serveStatic(const httplib::Request& req, httplib::Response& res,
                      const std::string& path, bool noStore = false) const;
     void sendJson(httplib::Response& res, int status, const nlohmann::json& body) const;
-    void sendStorageError(httplib::Response& res, const std::exception& e, int status) const;
+    void sendStorageError(const httplib::Request& req, httplib::Response& res,
+                          const std::exception& e, int status) const;
+    void logSecurityEvent(const httplib::Request& req, const httplib::Response& res,
+                          const std::string& event, const std::string& outcome) const;
     void applySecurityHeaders(httplib::Response& res) const;
 
     const Config& cfg_;

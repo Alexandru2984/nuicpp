@@ -188,13 +188,21 @@ for header in \
   "referrer-policy" \
   "cross-origin-opener-policy" \
   "cross-origin-resource-policy" \
-  "permissions-policy"
+  "permissions-policy" \
+  "x-request-id"
 do
   if ! grep -qi "^${header}:" <<<"$headers"; then
     echo "expected $header on responses from the app itself" >&2
     exit 1
   fi
 done
+
+correlation_headers="$(curl --noproxy '*' -sS -D - -o /dev/null \
+  -H 'X-Request-ID: smoke-request-1234' "http://127.0.0.1:${PORT}/live")"
+if ! grep -qi '^x-request-id: smoke-request-1234' <<<"$correlation_headers"; then
+  echo "expected a valid trusted request id to be echoed" >&2
+  exit 1
+fi
 
 if grep -qi "^content-security-policy:.*unsafe-inline" <<<"$headers"; then
   echo "content security policy must not allow unsafe-inline" >&2
@@ -276,6 +284,23 @@ done
 
 if ! curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/offline.js" >/dev/null; then
   echo "offline script is not served" >&2
+  exit 1
+fi
+
+if ! grep -q 'category=security event=csrf_rejected outcome=blocked' "$LOG_FILE"; then
+  echo "expected an explicit CSRF rejection security event" >&2
+  exit 1
+fi
+if ! grep -q 'category=security event=share_view outcome=allowed.*path=/d/<redacted>' "$LOG_FILE"; then
+  echo "expected a redacted share-view security event" >&2
+  exit 1
+fi
+if grep -q 'not-a-real-share' "$LOG_FILE"; then
+  echo "bearer share value leaked into application logs" >&2
+  exit 1
+fi
+if ! grep -Eq 'request_id=[A-Za-z0-9_-]{8,64}' "$LOG_FILE"; then
+  echo "expected request ids in application logs" >&2
   exit 1
 fi
 

@@ -23,6 +23,9 @@ rollback notes where applicable.
 - Conditional save, delete and restore with monotonic revisions, strong ETags,
   `428` for missing preconditions, `412` for stale clients and browser-draft
   preservation.
+- End-to-end request IDs in nginx and the app plus redacted structured events for
+  login, logout, share views, authorization, CSRF, throttling, quotas, revision
+  conflicts and storage failures.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -30,10 +33,7 @@ High risk remain open.
 
 ## P0 — contain current production risk
 
-- Replace the login limiter's capacity fail-open behaviour and move abuse limits
-  to a persistent/shared enforcement point.
-- Redact bearer share slugs from app/nginx logs; add request IDs and explicit
-  login/share/security events without storing secret values.
+- Move process-local abuse limits to a persistent/shared enforcement point.
 - Add encrypted off-host PostgreSQL backups, retention, failure alerts and a
   scheduled restore drill with measured RPO/RTO.
 - Reconcile the checked-in and live nginx vhost, including ACME handling. Add

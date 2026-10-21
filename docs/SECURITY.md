@@ -83,6 +83,20 @@ nginx access format replace values in `/d/{slug}` and
 the vhost back to the default `$request` access format, which contains the raw
 path, or add the raw `Referer`, which can contain the share page URL.
 
+nginx generates `$request_id`, forwards it as `X-Request-ID`, records it in the
+dedicated access log and receives the same value in the response. Requests
+without a valid ID get a cryptographically random one from the app. Only 8–64
+characters from a restricted alphabet are accepted, so a forged header cannot
+inject a log line. Application access, exception and security-event records
+carry the ID.
+
+Security events cover admin login outcomes, logout, authorization/CSRF denials,
+write/create throttling, quota/capacity exhaustion, revision conflicts,
+share-page views and storage failures. They record actor class, redacted route,
+source IP and outcome, but never usernames, cookies, CSRF values, passwords,
+request bodies or share capabilities. Source IPs are personal data; journal and
+nginx retention/access still need an explicit privacy policy.
+
 ## Authorization
 
 Every diagram row carries an owner hash:
@@ -214,8 +228,9 @@ string-concatenated SQL in the codebase, and no shell execution at all.
 `sendStorageError()` distinguishes validation errors, whose messages are meant
 for the caller, from `pqxx::failure`, which can embed SQL text or connection
 strings. The latter is logged server-side and replaced with a generic
-`storage unavailable`. Do not pass raw exception text to `errorJson` for
-anything that can originate in the storage layer.
+`storage unavailable`. Raw database and handler exception text is not written to
+the application journal either, because it may contain connection details. Use
+the request ID, PostgreSQL logs and bounded operational metadata to investigate.
 
 ## Response headers
 
@@ -313,8 +328,9 @@ These are accepted, not overlooked:
   per connection.
 - **Rate limiting is per process.** The service is single-instance; running two
   copies would double every app-level limit. The nginx limits would still hold.
-- **Admin is a single shared credential.** There is no MFA and no audit trail of
-  admin actions beyond the access log.
+- **Admin is a single shared credential.** There is no MFA or tamper-resistant,
+  per-action audit trail. Security events identify the admin actor class but not
+  an individual person.
 
 ## Verifying the model
 
@@ -322,7 +338,8 @@ These are accepted, not overlooked:
 asserts the live behaviour: a fresh guest cannot enumerate existing diagrams,
 cannot read one by id, cannot copy one via duplicate, cannot read one's version
 snapshots, gets `400` rather than a crash on an out-of-range id, is refused
-without a CSRF token, and receives the security headers. Each `403` has a
+without a CSRF token, receives a request ID and emits redacted share/CSRF
+security events. Each `403` has a
 matching positive control on the visitor's own diagram, so a pass cannot come
 from a route that is simply broken. `tests/check_rate_limits.sh` exercises the
 limiter, `tests/check_global_quota.sh` launches six distinct guest sessions

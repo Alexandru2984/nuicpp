@@ -30,7 +30,7 @@ complete.
 ## Evidence snapshot
 
 - `main` was clean and three commits ahead of `origin/main` at assessment start.
-- Release build and 47 C++ tests passed. All seven CTest suites, including the five
+- Release build and 48 C++ tests passed. All seven CTest suites, including the five
   live suites, passed against a disposable PostgreSQL 18 database with isolated
   `_test` identities. JavaScript syntax checks, ShellCheck and Cppcheck passed.
 - `npm audit --package-lock-only --audit-level=low` reported zero known
@@ -80,8 +80,8 @@ complete.
 | 2 | Information disclosure | App, DB, backups, journals, or bearer-link logs expose private diagram content. Every diagram receives a share capability even before its owner intentionally shares it. | Medium | High | Random slugs, owner checks, least-privilege DB role, CSP, origin guard | Opt-in sharing with rotate/revoke; 128-bit tokens; redact tokens; encrypted and access-controlled backups; retention policy |
 | 3 | Spoofing / elevation | Theft or forgery of the single admin session grants access to all diagrams. Stateless sessions have no individual revocation and one secret also derives guest ownership. | Low | High | HMAC cookies, Secure/HttpOnly/SameSite, PBKDF2, login throttles | `__Host-` cookie; server-side admin session revocation; MFA/passkey; split signing and ownership keys; alert on admin login |
 | 4 | Tampering | Concurrent editors attempt to overwrite, delete or restore over newer work. | Low | Medium | Atomic revision increments, strong ETags, mandatory `If-Match`, `412` rejection, bounded history and local draft preservation | Add a merge/recovery UI before real-time collaboration |
-| 5 | Repudiation | Current access lines lack request IDs, actor type and security event records; there is no tamper-resistant audit trail. | Medium | Medium | systemd journal and nginx logs | Structured security events, request IDs, retention/access policy and alerts |
-| 6 | Supply chain | C++ packages come from the OS without an SBOM; Nui is pinned to a mutable Git tag; configured CI has not run remotely yet. | Medium | Medium | npm lockfile and audit; pinned CI actions/service image; CodeQL, Cppcheck, ShellCheck and Dependabot; root-owned releases | Pin Nui to an immutable commit, generate an SBOM, observe the first remote CI run and add signed release provenance |
+| 5 | Repudiation | A shared admin credential prevents attribution to one person, and local logs can be altered after host compromise. | Medium | Medium | Correlated nginx/app request IDs; structured actor-class login/share/auth/CSRF/quota/storage events; redacted routes | Central/tamper-resistant audit storage, retention/access policy, individual admin identities and alerts |
+| 6 | Supply chain | C++ packages come from the OS without an SBOM; Nui is pinned to a mutable Git tag. | Medium | Medium | npm lockfile and audit; pinned CI actions/service image; passing CodeQL, Cppcheck, ShellCheck, GitGuardian and Dependabot; root-owned releases | Pin Nui to an immutable commit, generate an SBOM and add signed release provenance |
 
 ## Blast radius and FAIR planning estimate
 

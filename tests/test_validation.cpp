@@ -549,6 +549,19 @@ void testSensitivePathsAreRedacted() {
             "non-matching nested path should be preserved");
 }
 
+void testRequestIdsAndLogFieldsAreSafe() {
+    require(normalizeRequestId("0123456789abcdef") == "0123456789abcdef",
+            "valid proxy request ids should be preserved");
+    require(normalizeRequestId("short").empty(), "short request ids should be rejected");
+    require(normalizeRequestId("request-id-with-newline\n").empty(),
+            "control characters must invalidate request ids");
+    const auto generated = generateRequestId();
+    require(normalizeRequestId(generated) == generated,
+            "generated request ids should satisfy the accepted format");
+    require(sanitizeLogField("ok\nforged=value") == "ok_forged_value",
+            "log fields must not permit line or key injection");
+}
+
 void testRateLimiterSlidingWindow() {
     RateLimiter limiter;
     limiter.allow("ip", 3, 10, 100);
@@ -678,11 +691,12 @@ int main() {
         testRateLimiterEvictsExpiredKeys();
         testRateLimiterEvictionKeepsThrottledKeys();
         testSensitivePathsAreRedacted();
+        testRequestIdsAndLogFieldsAreSafe();
         testSeoMetadata();
     } catch (const std::exception& e) {
         std::cerr << "test failed: " << e.what() << '\n';
         return EXIT_FAILURE;
     }
-    std::cout << "nuigraph validation tests passed (47 tests)\n";
+        std::cout << "nuigraph validation tests passed (48 tests)\n";
     return EXIT_SUCCESS;
 }

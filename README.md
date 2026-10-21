@@ -87,6 +87,8 @@ Summarised here, detailed in [`docs/SECURITY.md`](docs/SECURITY.md).
   endpoint.
 - Rate limiting at the edge and in the app, plus atomic per-guest and global
   diagram quotas so storage growth has a ceiling and not just a slope.
+- End-to-end request IDs and redacted structured security events for login,
+  authorization, CSRF, quota, rate-limit, share-view and storage failures.
 - Defensive id parsing, exhaustive input validation, parameterised SQL only,
   no shell execution, no user-controlled filesystem paths.
 - CSP without `unsafe-inline` for scripts or styles, plus the usual header set,

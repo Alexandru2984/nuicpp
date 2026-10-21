@@ -20,7 +20,8 @@ is the VPS operator until another named owner takes over in the incident record.
    last-known-good times, affected domain/release, and every command or decision.
 2. Preserve evidence before rotating or deleting: relevant journal/nginx slices,
    release ID and hashes, process metadata, database audit metadata, Cloudflare
-   events and authentication events. Do not copy diagram bodies unless necessary.
+   events and authentication events. Correlate edge and app records by
+   `request_id`; do not copy diagram bodies unless necessary.
 3. Contain with the smallest reversible control:
    - disable public writes at Cloudflare/nginx or set `PUBLIC_ACCESS=false`;
    - block an abusive source at the edge;

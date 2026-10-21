@@ -267,7 +267,7 @@ ledger rows or reverts SQL; use a new forward migration for any schema correctio
 | 403 on everything | Origin guard: traffic did not arrive via Cloudflare, or CF is in DNS-only mode |
 | 429 during normal use | Edge zones in `nuicpp-rate-limit.conf`, then the app limits in `ensureWriteRateLimit` |
 | Blank editor page | `ls public/nui/index.wasm`; re-run `scripts/build_nui_frontend.sh` |
-| "storage unavailable" | `journalctl` has the real `pqxx` message; the client is deliberately told nothing |
+| "storage unavailable" | Correlate the response `X-Request-ID` with the generic `storage_failure` journal event and PostgreSQL logs; raw connection errors are deliberately not journaled |
 | Save/delete/restore returns 412 | Another client won the revision; reopen or refresh, then retry deliberately |
 | Save/delete/restore returns 428 | Client omitted the latest diagram ETag in `If-Match` |
 | Migration checksum mismatch | Restore the committed historical file; put the intended change in a new numbered migration |

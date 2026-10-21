@@ -5,6 +5,7 @@
 #include "ui/NuiApp.hpp"
 #include "utils/Json.hpp"
 #include "utils/RateLimiter.hpp"
+#include "utils/Security.hpp"
 
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
@@ -521,6 +522,7 @@ bool Routes::ensureCsrf(const httplib::Request& req, httplib::Response& res) {
     if (verifyCsrf(req)) {
         return true;
     }
+    logSecurityEvent(req, res, "csrf_rejected", "blocked");
     sendJson(res, 403, errorJson("invalid csrf token"));
     return false;
 }
@@ -529,10 +531,12 @@ bool Routes::ensureWriteRateLimit(const httplib::Request& req, httplib::Response
     const auto ip = clientIp(req);
     const auto now = epochSeconds();
     if (!writeRateLimiter().allow("write:" + ip, 240, 10 * 60, now)) {
+        logSecurityEvent(req, res, "write_rate_limited", "blocked");
         sendJson(res, 429, errorJson("too many write requests"));
         return false;
     }
     if (creation && !createRateLimiter().allow("create:" + ip, 40, 10 * 60, now)) {
+        logSecurityEvent(req, res, "create_rate_limited", "blocked");
         sendJson(res, 429, errorJson("too many create requests"));
         return false;
     }
@@ -607,6 +611,7 @@ bool Routes::ensureCanRead(const httplib::Request& req, httplib::Response& res, 
     if (canReadDiagramById(req, diagramId)) {
         return true;
     }
+    logSecurityEvent(req, res, "authorization_read_denied", "blocked");
     sendJson(res, 403, errorJson(std::string(what) + " is not available for this visitor"));
     return false;
 }
@@ -615,6 +620,7 @@ bool Routes::ensureCanEdit(const httplib::Request& req, httplib::Response& res, 
     if (canEditDiagram(req, diagramId)) {
         return true;
     }
+    logSecurityEvent(req, res, "authorization_write_denied", "blocked");
     sendJson(res, 403, errorJson("diagram is read-only for this visitor"));
     return false;
 }
@@ -622,8 +628,10 @@ bool Routes::ensureCanEdit(const httplib::Request& req, httplib::Response& res, 
 // Validation failures carry messages meant for the caller; anything escaping the
 // storage layer may embed SQL text or connection strings, so it is logged and
 // replaced with a generic message.
-void Routes::sendStorageError(httplib::Response& res, const std::exception& e, int status) const {
+void Routes::sendStorageError(const httplib::Request& req, httplib::Response& res,
+                              const std::exception& e, int status) const {
     if (const auto* conflict = dynamic_cast<const DiagramRevisionConflict*>(&e)) {
+        logSecurityEvent(req, res, "revision_conflict", "blocked");
         sendJson(res, 412, {
             {"error", e.what()},
             {"current_revision", conflict->currentRevision()}
@@ -631,10 +639,12 @@ void Routes::sendStorageError(httplib::Response& res, const std::exception& e, i
         return;
     }
     if (dynamic_cast<const DiagramCapacityExceeded*>(&e) != nullptr) {
+        logSecurityEvent(req, res, "global_capacity_exhausted", "blocked");
         sendJson(res, 503, errorJson(e.what()));
         return;
     }
     if (dynamic_cast<const DiagramQuotaExceeded*>(&e) != nullptr) {
+        logSecurityEvent(req, res, "owner_quota_exhausted", "blocked");
         sendJson(res, 403, errorJson(e.what()));
         return;
     }
@@ -643,7 +653,7 @@ void Routes::sendStorageError(httplib::Response& res, const std::exception& e, i
         return;
     }
     if (dynamic_cast<const pqxx::failure*>(&e) != nullptr) {
-        std::cerr << "storage error: " << e.what() << "\n";
+        logSecurityEvent(req, res, "storage_failure", "error");
         sendJson(res, status == 400 ? 500 : status, errorJson("storage unavailable"));
         return;
     }
@@ -663,6 +673,32 @@ void Routes::sendDiagramJson(const httplib::Request& req, httplib::Response& res
     sendJson(res, status, diagramResponse(req, diagram));
 }
 
+void Routes::logSecurityEvent(const httplib::Request& req, const httplib::Response& res,
+                              const std::string& event, const std::string& outcome) const {
+    std::string username;
+    std::string actor = "anonymous";
+    if (verifySession(req, &username)) {
+        actor = username == cfg_.authUsername ? "admin" : "guest";
+    }
+    if (event == "admin_login" && outcome == "succeeded") {
+        actor = "admin";
+    }
+    auto requestId = normalizeRequestId(res.get_header_value("X-Request-ID"));
+    if (requestId.empty()) {
+        requestId = normalizeRequestId(req.get_header_value("X-Request-ID"));
+    }
+    std::cerr << logTimestamp()
+              << " level=" << (outcome == "allowed" || outcome == "succeeded" ? "info" : "warn")
+              << " category=security event=" << sanitizeLogField(event)
+              << " outcome=" << sanitizeLogField(outcome)
+              << " actor=" << actor
+              << " method=" << sanitizeLogField(req.method)
+              << " path=" << sanitizeLogField(redactRequestPath(req.path))
+              << " ip=" << sanitizeLogField(clientIp(req))
+              << " request_id=" << sanitizeLogField(requestId.empty() ? "missing" : requestId)
+              << "\n";
+}
+
 bool Routes::ensureAuthenticated(const httplib::Request& req, httplib::Response& res, bool htmlResponse) {
     if (cfg_.publicAccess) {
         return true;
@@ -670,6 +706,7 @@ bool Routes::ensureAuthenticated(const httplib::Request& req, httplib::Response&
     if (verifySession(req, nullptr)) {
         return true;
     }
+    logSecurityEvent(req, res, "authentication_required", "blocked");
     if (htmlResponse) {
         res.status = 302;
         res.set_header("Location", "/login");
@@ -798,6 +835,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         if (!loginRateLimiter().allow(limiterKey, 8, kLoginFailureWindow, epochSeconds())) {
             res.status = 429;
             res.set_content(renderLoginPage("Too many login attempts. Try again later."), "text/html; charset=utf-8");
+            logSecurityEvent(req, res, "admin_login", "rate_limited");
             return;
         }
         auto username = formValue(req.body, "username");
@@ -807,16 +845,19 @@ void Routes::registerRoutes(httplib::Server& server) {
             res.status = 302;
             res.set_header("Set-Cookie", makeSessionCookie(req, username));
             res.set_header("Location", "/");
+            logSecurityEvent(req, res, "admin_login", "succeeded");
         } else {
             res.status = 401;
             res.set_content(renderLoginPage("Invalid credentials"), "text/html; charset=utf-8");
+            logSecurityEvent(req, res, "admin_login", "failed");
         }
     });
-    server.Post("/logout", [](const httplib::Request& req, httplib::Response& res) {
+    server.Post("/logout", [this](const httplib::Request& req, httplib::Response& res) {
         res.set_header("X-Robots-Tag", "noindex, nofollow, noarchive");
         res.status = 302;
         res.set_header("Set-Cookie", sessionCookie(req, "", 0));
         res.set_header("Location", "/login");
+        logSecurityEvent(req, res, "logout", "succeeded");
     });
 
     server.Get("/", [this](const httplib::Request& req, httplib::Response& res) {
@@ -832,10 +873,11 @@ void Routes::registerRoutes(httplib::Server& server) {
         }
         res.set_content(renderEditorPage(username, cfg_.baseUrl), "text/html; charset=utf-8");
     });
-    server.Get(R"(/d/([A-Za-z0-9-]+))", [this](const httplib::Request&, httplib::Response& res) {
+    server.Get(R"(/d/([A-Za-z0-9-]+))", [this](const httplib::Request& req, httplib::Response& res) {
         // Share slugs are bearer capabilities. Search indexing would both leak
         // them to third parties and make revocation by obscurity impossible.
         res.set_header("X-Robots-Tag", "noindex, nofollow, noarchive");
+        logSecurityEvent(req, res, "share_view", "allowed");
         if (nuiShellReady(cfg_.projectRoot)) {
             res.set_content(nuiShellPage(cfg_.projectRoot, cfg_.baseUrl, false), "text/html; charset=utf-8");
             return;
@@ -890,7 +932,7 @@ void Routes::registerRoutes(httplib::Server& server) {
                 {"has_more", offset + static_cast<long>(diagrams.size()) < total}
             });
         } catch (const std::exception& e) {
-            sendStorageError(res, e, 500);
+            sendStorageError(req, res, e, 500);
         }
     });
 
@@ -923,7 +965,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             auto created = storage_.createDiagram(item->diagram, true, ownerHashForRequest(req));
             sendDiagramJson(req, res, 201, created);
         } catch (const std::exception& e) {
-            sendStorageError(res, e, 400);
+            sendStorageError(req, res, e, 400);
         }
     });
 
@@ -936,7 +978,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             auto created = storage_.createDiagram(d, false, ownerHashForRequest(req));
             sendDiagramJson(req, res, 201, created);
         } catch (const std::exception& e) {
-            sendStorageError(res, e, 400);
+            sendStorageError(req, res, e, 400);
         }
     });
 
@@ -948,7 +990,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         try {
             sendDiagramJson(req, res, 200, storage_.getDiagram(id));
         } catch (const std::exception& e) {
-            sendStorageError(res, e, 404);
+            sendStorageError(req, res, e, 404);
         }
     });
 
@@ -963,7 +1005,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             auto diagram = storage_.getDiagramBySlug(slug);
             sendDiagramJson(req, res, 200, diagram);
         } catch (const std::exception& e) {
-            sendStorageError(res, e, 404);
+            sendStorageError(req, res, e, 404);
         }
     });
 
@@ -983,7 +1025,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             sendDiagramJson(req, res, 200,
                             storage_.updateDiagram(id, d, note, false, expectedRevision));
         } catch (const std::exception& e) {
-            sendStorageError(res, e, 400);
+            sendStorageError(req, res, e, 400);
         }
     });
 
@@ -1000,7 +1042,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             storage_.deleteDiagram(id, expectedRevision);
             sendJson(res, 200, {{"ok", true}});
         } catch (const std::exception& e) {
-            sendStorageError(res, e, 400);
+            sendStorageError(req, res, e, 400);
         }
     });
 
@@ -1017,7 +1059,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             auto copy = storage_.duplicateDiagram(id, ownerHashForRequest(req));
             sendDiagramJson(req, res, 201, copy);
         } catch (const std::exception& e) {
-            sendStorageError(res, e, 404);
+            sendStorageError(req, res, e, 404);
         }
     });
 
@@ -1033,7 +1075,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             }
             sendJson(res, 200, {{"versions", items}});
         } catch (const std::exception& e) {
-            sendStorageError(res, e, 404);
+            sendStorageError(req, res, e, 404);
         }
     });
 
@@ -1052,7 +1094,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             auto v = storage_.createVersion(id, note);
             sendJson(res, 201, {{"id", v.id}, {"diagram_id", v.diagramId}, {"version_number", v.versionNumber}, {"created_at", v.createdAt}, {"note", v.note}});
         } catch (const std::exception& e) {
-            sendStorageError(res, e, 404);
+            sendStorageError(req, res, e, 404);
         }
     });
 
@@ -1067,7 +1109,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         try {
             sendJson(res, 200, diagramToJson(storage_.getVersion(id, versionId)));
         } catch (const std::exception& e) {
-            sendStorageError(res, e, 404);
+            sendStorageError(req, res, e, 404);
         }
     });
 
@@ -1085,7 +1127,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             sendDiagramJson(req, res, 200,
                             storage_.restoreVersion(id, versionId, expectedRevision));
         } catch (const std::exception& e) {
-            sendStorageError(res, e, 404);
+            sendStorageError(req, res, e, 404);
         }
     });
 
@@ -1099,7 +1141,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             res.set_header("Content-Disposition", "attachment; filename=\"diagram-" + std::to_string(id) + ".json\"");
             sendJson(res, 200, diagramToJson(diagram));
         } catch (const std::exception& e) {
-            sendStorageError(res, e, 404);
+            sendStorageError(req, res, e, 404);
         }
     });
 
@@ -1115,7 +1157,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             auto imported = storage_.createDiagram(diagramFromJson(nlohmann::json::parse(req.body)), true, ownerHashForRequest(req));
             sendDiagramJson(req, res, 201, imported);
         } catch (const std::exception& e) {
-            sendStorageError(res, e, 400);
+            sendStorageError(req, res, e, 400);
         }
     });
 }

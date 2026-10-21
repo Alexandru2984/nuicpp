@@ -65,7 +65,7 @@ add_executable(nuigraph-tests
 )
 
 target_include_directories(nuigraph-tests PRIVATE src)
-target_link_libraries(nuigraph-tests PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(nuigraph-tests PRIVATE nlohmann_json::nlohmann_json OpenSSL::Crypto)
 target_compile_options(nuigraph-tests PRIVATE -Wall -Wextra -Wpedantic)
 
 add_test(NAME nuigraph-validation COMMAND nuigraph-tests)

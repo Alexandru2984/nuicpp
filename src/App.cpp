@@ -2,12 +2,8 @@
 #include "utils/Security.hpp"
 
 #include <atomic>
-#include <chrono>
 #include <csignal>
-#include <ctime>
-#include <iomanip>
 #include <iostream>
-#include <sstream>
 
 namespace nuigraph {
 namespace {
@@ -20,16 +16,6 @@ extern "C" void handleStopSignal(int) {
     if (auto* server = g_server.load()) {
         server->stop();
     }
-}
-
-std::string nowIso8601() {
-    const auto now = std::chrono::system_clock::now();
-    const auto secs = std::chrono::system_clock::to_time_t(now);
-    std::tm tm{};
-    gmtime_r(&secs, &tm);
-    std::ostringstream out;
-    out << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
-    return out.str();
 }
 
 } // namespace
@@ -52,19 +38,28 @@ int App::run() {
     server.set_idle_interval(1, 0);
     server.set_payload_max_length(cfg_.maxImportBytes + 65536);
 
+    server.set_pre_routing_handler([](const httplib::Request& req, httplib::Response& res) {
+        auto requestId = normalizeRequestId(req.get_header_value("X-Request-ID"));
+        if (requestId.empty()) {
+            requestId = generateRequestId();
+        }
+        res.set_header("X-Request-ID", requestId);
+        return httplib::Server::HandlerResponse::Unhandled;
+    });
+
     // Without this an uncaught exception in a handler tears the connection down
     // with no record of what happened.
     server.set_exception_handler([](const httplib::Request& req, httplib::Response& res, std::exception_ptr ep) {
-        std::string what = "unknown";
         try {
             std::rethrow_exception(ep);
-        } catch (const std::exception& e) {
-            what = e.what();
+        } catch (const std::exception&) {
         } catch (...) {
         }
-        std::cerr << nowIso8601() << " level=error method=" << req.method
-                  << " path=" << redactRequestPath(req.path)
-                  << " error=\"" << what << "\"\n";
+        std::cerr << logTimestamp() << " level=error event=handler_exception method="
+                  << sanitizeLogField(req.method)
+                  << " path=" << sanitizeLogField(redactRequestPath(req.path))
+                  << " request_id=" << sanitizeLogField(res.get_header_value("X-Request-ID"))
+                  << "\n";
         res.status = 500;
         res.set_header("Cache-Control", "no-store");
         res.set_content("{\"error\":\"internal error\"}", "application/json");
@@ -79,11 +74,12 @@ int App::run() {
         if (ip.empty()) {
             ip = req.remote_addr;
         }
-        std::cout << nowIso8601()
-                  << " level=info method=" << req.method
-                  << " path=" << redactRequestPath(req.path)
+        std::cout << logTimestamp()
+                  << " level=info method=" << sanitizeLogField(req.method)
+                  << " path=" << sanitizeLogField(redactRequestPath(req.path))
                   << " status=" << res.status
-                  << " ip=" << ip
+                  << " ip=" << sanitizeLogField(ip)
+                  << " request_id=" << sanitizeLogField(res.get_header_value("X-Request-ID"))
                   << " len=" << res.body.size() << "\n";
     });
 
@@ -97,7 +93,7 @@ int App::run() {
     std::signal(SIGINT, handleStopSignal);
     std::signal(SIGPIPE, SIG_IGN);
 
-    std::cout << nowIso8601() << " level=info msg=\"listening\" host=" << cfg_.host
+    std::cout << logTimestamp() << " level=info msg=listening host=" << cfg_.host
               << " port=" << cfg_.port << " pool=" << cfg_.dbPoolSize << std::endl;
 
     if (!server.listen(cfg_.host, cfg_.port)) {
@@ -107,7 +103,7 @@ int App::run() {
     }
 
     g_server.store(nullptr);
-    std::cout << nowIso8601() << " level=info msg=\"stopped cleanly\"" << std::endl;
+    std::cout << logTimestamp() << " level=info msg=stopped_cleanly" << std::endl;
     return 0;
 }
 
