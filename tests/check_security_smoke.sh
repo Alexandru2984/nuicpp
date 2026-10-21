@@ -201,6 +201,55 @@ if grep -qi "^content-security-policy:.*unsafe-inline" <<<"$headers"; then
   exit 1
 fi
 
+root_html="$(curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/")"
+for marker in 'name="description"' 'rel="canonical"' 'property="og:title"' 'name="twitter:card"'; do
+  if ! grep -q "$marker" <<<"$root_html"; then
+    echo "expected SEO marker $marker on the public editor" >&2
+    exit 1
+  fi
+done
+
+robots="$(curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/robots.txt")"
+for rule in 'Disallow: /api/' 'Disallow: /d/' 'Disallow: /login' 'Sitemap: http://127.0.0.1:'; do
+  if ! grep -q "$rule" <<<"$robots"; then
+    echo "expected robots.txt rule: $rule" >&2
+    exit 1
+  fi
+done
+
+sitemap="$(curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/sitemap.xml")"
+python3 - "$sitemap" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+root = ET.fromstring(sys.argv[1])
+locations = {element.text for element in root.findall("{http://www.sitemaps.org/schemas/sitemap/0.9}url/{http://www.sitemaps.org/schemas/sitemap/0.9}loc")}
+if not any(location and location.endswith("/") for location in locations):
+    raise SystemExit("sitemap is missing the editor URL")
+if not any(location and location.endswith("/docs") for location in locations):
+    raise SystemExit("sitemap is missing the documentation URL")
+PY
+
+for private_path in /login /d/not-a-real-share; do
+  private_headers="$(curl --noproxy '*' -sS -D - -o /dev/null "http://127.0.0.1:${PORT}${private_path}")"
+  if ! grep -qi '^x-robots-tag:.*noindex' <<<"$private_headers"; then
+    echo "expected X-Robots-Tag noindex on $private_path" >&2
+    exit 1
+  fi
+done
+
+share_html="$(curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/d/not-a-real-share")"
+if ! grep -q 'name="robots" content="noindex, nofollow, noarchive"' <<<"$share_html"; then
+  echo "expected an HTML noindex directive on bearer share pages" >&2
+  exit 1
+fi
+
+api_headers="$(curl --noproxy '*' -sS -D - -o /dev/null "http://127.0.0.1:${PORT}/api/session")"
+if ! grep -qi '^x-robots-tag:.*noindex' <<<"$api_headers"; then
+  echo "expected X-Robots-Tag noindex on JSON API responses" >&2
+  exit 1
+fi
+
 sw_headers="$(curl --noproxy '*' -sS -D - -o /dev/null "http://127.0.0.1:${PORT}/sw.js")"
 for expected in \
   "cache-control: no-store" \

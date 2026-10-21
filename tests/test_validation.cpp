@@ -1,6 +1,7 @@
 #include "config/Config.hpp"
 #include "domain/Diagram.hpp"
 #include "domain/Templates.hpp"
+#include "ui/NuiApp.hpp"
 #include "utils/Json.hpp"
 #include "utils/RateLimiter.hpp"
 #include "utils/Security.hpp"
@@ -594,6 +595,28 @@ void testRateLimiterEvictionKeepsThrottledKeys() {
             "a throttled key should survive eviction and stay limited");
 }
 
+void testSeoMetadata() {
+    const auto editor = renderEditorPage("guest", "https://example.test/");
+    require(editor.find("rel=\"canonical\" href=\"https://example.test/\"") != std::string::npos,
+            "public editor should have one normalized canonical URL");
+    require(editor.find("property=\"og:title\"") != std::string::npos,
+            "public editor should carry Open Graph metadata");
+    require(editor.find("name=\"twitter:card\"") != std::string::npos,
+            "public editor should carry Twitter metadata");
+
+    const auto privateShare = renderEditorPage("guest", "https://example.test", false);
+    require(privateShare.find("noindex, nofollow, noarchive") != std::string::npos,
+            "bearer share page should opt out of indexing");
+    require(privateShare.find("rel=\"canonical\"") == std::string::npos,
+            "bearer share page should not advertise a canonical URL");
+
+    const auto docs = renderDocsPage("https://example.test/");
+    require(docs.find("rel=\"canonical\" href=\"https://example.test/docs\"") != std::string::npos,
+            "documentation should have a normalized canonical URL");
+    require(renderLoginPage("").find("noindex, nofollow, noarchive") != std::string::npos,
+            "login page should opt out of indexing");
+}
+
 } // namespace
 
 int main() {
@@ -649,10 +672,11 @@ int main() {
         testRateLimiterEvictsExpiredKeys();
         testRateLimiterEvictionKeepsThrottledKeys();
         testSensitivePathsAreRedacted();
+        testSeoMetadata();
     } catch (const std::exception& e) {
         std::cerr << "test failed: " << e.what() << '\n';
         return EXIT_FAILURE;
     }
-    std::cout << "nuigraph validation tests passed (46 tests)\n";
+    std::cout << "nuigraph validation tests passed (47 tests)\n";
     return EXIT_SUCCESS;
 }

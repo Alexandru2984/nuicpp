@@ -29,11 +29,11 @@ add_executable(nuigraph-studio
     src/domain/Diagram.cpp
     src/domain/Templates.cpp
     src/config/Config.cpp
+    src/ui/NuiApp.cpp
     src/validation/DiagramValidator.cpp
     src/storage/PostgresStorage.cpp
     src/storage/ConnectionPool.cpp
     src/api/Routes.cpp
-    src/ui/NuiApp.cpp
     src/utils/Json.cpp
     src/utils/RateLimiter.cpp
     src/utils/Security.cpp
@@ -57,6 +57,7 @@ add_executable(nuigraph-tests
     src/domain/Diagram.cpp
     src/domain/Templates.cpp
     src/config/Config.cpp
+    src/ui/NuiApp.cpp
     src/validation/DiagramValidator.cpp
     src/utils/Json.cpp
     src/utils/RateLimiter.cpp

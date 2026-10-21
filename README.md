@@ -65,6 +65,9 @@ admin account for maintenance.
 - Structured access logging with ISO 8601 timestamps.
 - Static assets use `ETag` and mandatory revalidation; the service-worker script
   is never stored and its registration bypasses the HTTP cache for updates.
+- Search metadata, canonical URLs, `robots.txt`, and `sitemap.xml` cover the
+  public editor and documentation; bearer share links, auth, API, and probes
+  are explicitly excluded from indexing.
 - Separate `/live` process and PostgreSQL-backed `/ready` probes; `/health`
   remains a compatibility alias for liveness. Dependency errors are not exposed.
 
@@ -201,6 +204,7 @@ sites, so never restart nginx.
 | `GET` | `/ready` |
 | `GET` | `/` |
 | `GET` | `/docs` |
+| `GET` | `/robots.txt`, `/sitemap.xml` |
 | `GET` | `/d/{slug}` |
 | `GET` | `/api/session` |
 | `GET` | `/api/diagrams` |

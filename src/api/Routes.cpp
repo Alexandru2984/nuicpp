@@ -232,7 +232,38 @@ std::string contentTypeFor(const std::string& path) {
     if (path.ends_with(".map")) return "application/json";
     if (path.ends_with(".svg")) return "image/svg+xml";
     if (path.ends_with(".webmanifest")) return "application/manifest+json";
+    if (path.ends_with(".xml")) return "application/xml; charset=utf-8";
+    if (path.ends_with(".txt")) return "text/plain; charset=utf-8";
     return "application/octet-stream";
+}
+
+std::string normalizedBaseUrl(std::string baseUrl) {
+    while (!baseUrl.empty() && baseUrl.back() == '/') {
+        baseUrl.pop_back();
+    }
+    return baseUrl;
+}
+
+void replaceAll(std::string& value, const std::string& from, const std::string& to) {
+    if (from.empty()) {
+        return;
+    }
+    std::size_t offset = 0;
+    while ((offset = value.find(from, offset)) != std::string::npos) {
+        value.replace(offset, from.size(), to);
+        offset += to.size();
+    }
+}
+
+std::string nuiShellPage(const std::string& projectRoot, const std::string& baseUrl,
+                         bool indexable) {
+    auto page = readTextFile(projectRoot + "/public/nui/index.html");
+    replaceAll(page, "https://nuicpp.micutu.com", htmlEscape(normalizedBaseUrl(baseUrl)));
+    if (!indexable) {
+        replaceAll(page, "content=\"index, follow\"",
+                   "content=\"noindex, nofollow, noarchive\"");
+    }
+    return page;
 }
 
 // The Nui shell is an Emscripten bundle: index.js is only the loader and calls
@@ -375,6 +406,7 @@ void Routes::serveStatic(const httplib::Request& req, httplib::Response& res,
 void Routes::sendJson(httplib::Response& res, int status, const nlohmann::json& body) const {
     res.status = status;
     res.set_header("Cache-Control", "no-store");
+    res.set_header("X-Robots-Tag", "noindex, nofollow, nosnippet");
     res.set_content(jsonResponse(body), "application/json");
 }
 
@@ -613,6 +645,34 @@ void Routes::registerRoutes(httplib::Server& server) {
         sendJson(res, 503, {{"status", "unavailable"}, {"service", "nuigraph-studio"}});
     });
 
+    server.Get("/robots.txt", [this](const httplib::Request&, httplib::Response& res) {
+        std::string body =
+            "User-agent: *\n"
+            "Allow: /\n"
+            "Disallow: /api/\n"
+            "Disallow: /d/\n"
+            "Disallow: /login\n"
+            "Disallow: /logout\n"
+            "Disallow: /health\n"
+            "Disallow: /live\n"
+            "Disallow: /ready\n"
+            "Disallow: /nui/\n"
+            "Disallow: /offline.html\n"
+            "Sitemap: " + normalizedBaseUrl(cfg_.baseUrl) + "/sitemap.xml\n";
+        res.set_header("Cache-Control", "public, max-age=3600");
+        res.set_content(body, "text/plain; charset=utf-8");
+    });
+    server.Get("/sitemap.xml", [this](const httplib::Request&, httplib::Response& res) {
+        const auto baseUrl = htmlEscape(normalizedBaseUrl(cfg_.baseUrl));
+        const auto body = std::string("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n") +
+            "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n"
+            "  <url><loc>" + baseUrl + "/</loc></url>\n"
+            "  <url><loc>" + baseUrl + "/docs</loc></url>\n"
+            "</urlset>\n";
+        res.set_header("Cache-Control", "public, max-age=3600");
+        res.set_content(body, "application/xml; charset=utf-8");
+    });
+
     server.Get("/styles.css", [this](const httplib::Request& req, httplib::Response& res) {
         serveStatic(req, res, cfg_.projectRoot + "/public/styles.css");
     });
@@ -623,6 +683,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         serveStatic(req, res, cfg_.projectRoot + "/public/editor.js");
     });
     server.Get(R"(/nui/(.+))", [this](const httplib::Request& req, httplib::Response& res) {
+        res.set_header("X-Robots-Tag", "noindex, nofollow");
         auto rel = req.matches[1].str();
         if (rel.find("..") != std::string::npos || rel.starts_with('/')) {
             res.status = 400;
@@ -642,6 +703,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         serveStatic(req, res, cfg_.projectRoot + "/public/manifest.webmanifest");
     });
     server.Get("/offline.html", [this](const httplib::Request& req, httplib::Response& res) {
+        res.set_header("X-Robots-Tag", "noindex, nofollow");
         serveStatic(req, res, cfg_.projectRoot + "/public/offline.html");
     });
     server.Get("/offline.js", [this](const httplib::Request& req, httplib::Response& res) {
@@ -666,9 +728,11 @@ void Routes::registerRoutes(httplib::Server& server) {
     });
 
     server.Get("/login", [](const httplib::Request&, httplib::Response& res) {
+        res.set_header("X-Robots-Tag", "noindex, nofollow, noarchive");
         res.set_content(renderLoginPage(""), "text/html; charset=utf-8");
     });
     server.Post("/login", [this](const httplib::Request& req, httplib::Response& res) {
+        res.set_header("X-Robots-Tag", "noindex, nofollow, noarchive");
         auto ip = clientIp(req);
         const auto limiterKey = "login:" + ip;
         if (!loginRateLimiter().allow(limiterKey, 8, kLoginFailureWindow, epochSeconds())) {
@@ -689,6 +753,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         }
     });
     server.Post("/logout", [](const httplib::Request& req, httplib::Response& res) {
+        res.set_header("X-Robots-Tag", "noindex, nofollow, noarchive");
         res.status = 302;
         res.set_header("Set-Cookie", sessionCookie(req, "", 0));
         res.set_header("Location", "/login");
@@ -702,21 +767,24 @@ void Routes::registerRoutes(httplib::Server& server) {
             return;
         }
         if (nuiShellReady(cfg_.projectRoot)) {
-            res.set_content(readTextFile(cfg_.projectRoot + "/public/nui/index.html"), "text/html; charset=utf-8");
+            res.set_content(nuiShellPage(cfg_.projectRoot, cfg_.baseUrl, true), "text/html; charset=utf-8");
             return;
         }
-        res.set_content(renderEditorPage(username), "text/html; charset=utf-8");
+        res.set_content(renderEditorPage(username, cfg_.baseUrl), "text/html; charset=utf-8");
     });
     server.Get(R"(/d/([A-Za-z0-9-]+))", [this](const httplib::Request&, httplib::Response& res) {
+        // Share slugs are bearer capabilities. Search indexing would both leak
+        // them to third parties and make revocation by obscurity impossible.
+        res.set_header("X-Robots-Tag", "noindex, nofollow, noarchive");
         if (nuiShellReady(cfg_.projectRoot)) {
-            res.set_content(readTextFile(cfg_.projectRoot + "/public/nui/index.html"), "text/html; charset=utf-8");
+            res.set_content(nuiShellPage(cfg_.projectRoot, cfg_.baseUrl, false), "text/html; charset=utf-8");
             return;
         }
-        res.set_content(renderEditorPage("guest"), "text/html; charset=utf-8");
+        res.set_content(renderEditorPage("guest", cfg_.baseUrl, false), "text/html; charset=utf-8");
     });
     server.Get("/docs", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, true)) return;
-        res.set_content(renderDocsPage(), "text/html; charset=utf-8");
+        res.set_content(renderDocsPage(cfg_.baseUrl), "text/html; charset=utf-8");
     });
 
     server.Get("/api/session", [this](const httplib::Request& req, httplib::Response& res) {

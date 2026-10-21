@@ -2,6 +2,44 @@
 #include "utils/Json.hpp"
 
 namespace nuigraph {
+namespace {
+
+constexpr const char* kDescription =
+    "Create flowcharts, architecture maps, service graphs and node-link diagrams in your browser.";
+
+std::string normalizedBaseUrl(std::string baseUrl) {
+    while (!baseUrl.empty() && baseUrl.back() == '/') {
+        baseUrl.pop_back();
+    }
+    return baseUrl;
+}
+
+std::string publicMetadata(const std::string& title, const std::string& canonicalUrl,
+                           bool indexable) {
+    std::string metadata =
+        "  <meta name=\"description\" content=\"" + std::string(kDescription) + "\">\n" +
+        "  <meta name=\"robots\" content=\"" +
+        (indexable ? "index, follow" : "noindex, nofollow, noarchive") + "\">\n";
+    if (!indexable) {
+        return metadata;
+    }
+
+    const auto escapedTitle = htmlEscape(title);
+    const auto escapedUrl = htmlEscape(canonicalUrl);
+    metadata +=
+        "  <link rel=\"canonical\" href=\"" + escapedUrl + "\">\n"
+        "  <meta property=\"og:type\" content=\"website\">\n"
+        "  <meta property=\"og:site_name\" content=\"NuiGraph Studio\">\n"
+        "  <meta property=\"og:title\" content=\"" + escapedTitle + "\">\n"
+        "  <meta property=\"og:description\" content=\"" + std::string(kDescription) + "\">\n"
+        "  <meta property=\"og:url\" content=\"" + escapedUrl + "\">\n"
+        "  <meta name=\"twitter:card\" content=\"summary\">\n"
+        "  <meta name=\"twitter:title\" content=\"" + escapedTitle + "\">\n"
+        "  <meta name=\"twitter:description\" content=\"" + std::string(kDescription) + "\">\n";
+    return metadata;
+}
+
+} // namespace
 
 std::string renderLoginPage(const std::string& error) {
     return std::string(R"HTML(<!doctype html>
@@ -9,6 +47,8 @@ std::string renderLoginPage(const std::string& error) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Administrator sign-in for NuiGraph Studio.">
+  <meta name="robots" content="noindex, nofollow, noarchive">
   <title>NuiGraph Studio Login</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
@@ -29,21 +69,22 @@ std::string renderLoginPage(const std::string& error) {
 </html>)HTML";
 }
 
-std::string renderEditorPage(const std::string& username) {
+std::string renderEditorPage(const std::string& username, const std::string& baseUrl, bool indexable) {
+    const auto canonicalUrl = normalizedBaseUrl(baseUrl) + "/";
     return std::string(R"HTML(<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NuiGraph Studio</title>
-  <meta name="theme-color" content="#0b0f14">
+)HTML") + publicMetadata("NuiGraph Studio — Browser Diagram Editor", canonicalUrl, indexable) + R"HTML(  <meta name="theme-color" content="#0b0f14">
   <link rel="stylesheet" href="/styles.css">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/icon.svg">
 </head>
 <body>
-  <div id="app" data-user=")HTML") + htmlEscape(username) + R"HTML(">
+  <div id="app" data-user=")HTML" + htmlEscape(username) + R"HTML(">
     <header class="topbar">
       <div class="app-title">
         <strong>NuiGraph Studio</strong>
@@ -144,14 +185,15 @@ std::string renderEditorPage(const std::string& username) {
 </html>)HTML";
 }
 
-std::string renderDocsPage() {
-    return R"HTML(<!doctype html>
+std::string renderDocsPage(const std::string& baseUrl) {
+    const auto canonicalUrl = normalizedBaseUrl(baseUrl) + "/docs";
+    return std::string(R"HTML(<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NuiGraph Studio Docs</title>
-  <link rel="stylesheet" href="/styles.css">
+)HTML") + publicMetadata("NuiGraph Studio Documentation", canonicalUrl, true) + R"HTML(  <link rel="stylesheet" href="/styles.css">
 </head>
 <body class="docs-body">
   <main class="docs">
