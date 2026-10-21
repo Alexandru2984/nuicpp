@@ -5,6 +5,12 @@
 checked-in nginx/systemd configuration, the running service, and non-sensitive
 production metadata. Diagram content and secret values were not inspected.
 
+**Remediation update, 2026-10-21:** CI, CodeQL, dependency automation and SEO
+privacy controls are committed locally but are not live until the branch is
+pushed and deployed. The operator explicitly deferred offsite backup work, so
+the corresponding High finding remains open. The host's official Ubuntu PHP
+security backport was applied and verified independently of the app deploy.
+
 ## Executive verdict
 
 **MITIGATE THEN SHIP.** No unauthenticated remote-code execution, SQL injection,
@@ -22,8 +28,9 @@ expand public usage until the P0 controls in `ROADMAP.md` are complete.
 ## Evidence snapshot
 
 - `main` was clean and three commits ahead of `origin/main` at assessment start.
-- Release build and 42 C++ tests passed. JavaScript syntax checks and ShellCheck
-  passed. Cppcheck found style findings only.
+- Release build and 47 C++ tests passed. All six CTest suites, including the four
+  live suites, passed against a disposable PostgreSQL 18 database with isolated
+  `_test` identities. JavaScript syntax checks, ShellCheck and Cppcheck passed.
 - `npm audit --package-lock-only --audit-level=low` reported zero known
   vulnerabilities.
 - The initial audit found three database-backed CTest entries falsely reported
@@ -51,10 +58,16 @@ expand public usage until the P0 controls in `ROADMAP.md` are complete.
   shell as the primary editor.
 - The database contained 15 diagrams, 60 nodes, 45 edges and 16 versions at the
   time of the metadata-only check. It occupied about 8 MiB.
-- Package metadata was refreshed on 2026-10-20. Security updates were pending for
-  host packages including Git and `libxtst`; none of the directly linked OpenSSL,
-  libpq, cpp-httplib or nginx packages appeared in the pending list. Cloudflared
-  also had a newer package available.
+- Package metadata was refreshed on 2026-10-21. Ubuntu's critical PHP fix from
+  [USN-8948-1](https://ubuntu.com/security/notices/USN-8948-1) was applied to all
+  installed PHP 8.5 core/FPM packages (`8.5.4-0ubuntu1.5`). Both FPM pools,
+  configs, sockets and PHP vhosts passed post-update checks. Eighty-two unrelated
+  package updates remain outside this targeted change and require their own
+  compatibility window.
+- GitHub Actions now defines a pinned build/test/audit pipeline with a disposable
+  PostgreSQL service, ShellCheck, Cppcheck, npm audit and CodeQL; Dependabot covers
+  action and npm revisions. These remote checks have not run yet because the
+  local commits have not been pushed.
 
 ## STRIDE threat model
 
@@ -65,7 +78,7 @@ expand public usage until the P0 controls in `ROADMAP.md` are complete.
 | 3 | Spoofing / elevation | Theft or forgery of the single admin session grants access to all diagrams. Stateless sessions have no individual revocation and one secret also derives guest ownership. | Low | High | HMAC cookies, Secure/HttpOnly/SameSite, PBKDF2, login throttles | `__Host-` cookie; server-side admin session revocation; MFA/passkey; split signing and ownership keys; alert on admin login |
 | 4 | Tampering | Concurrent saves overwrite one another or collide while assigning `MAX(version)+1`; no optimistic revision check warns the user. | Medium | Medium | Transactions and bounded version history | Row locking now; later add revision/ETag conflict detection and recovery UI |
 | 5 | Repudiation | Current access lines lack request IDs, actor type and security event records; there is no tamper-resistant audit trail. | Medium | Medium | systemd journal and nginx logs | Structured security events, request IDs, retention/access policy and alerts |
-| 6 | Supply chain | C++ packages come from the OS without an SBOM; Nui is pinned to a mutable Git tag; CI does not continuously scan/build the release. | Medium | Medium | npm lockfile and audit; root-owned releases | Pin immutable commit, SBOM, CI scans, dependency update policy and signed release provenance |
+| 6 | Supply chain | C++ packages come from the OS without an SBOM; Nui is pinned to a mutable Git tag; configured CI has not run remotely yet. | Medium | Medium | npm lockfile and audit; pinned CI actions/service image; CodeQL, Cppcheck, ShellCheck and Dependabot; root-owned releases | Pin Nui to an immutable commit, generate an SBOM, observe the first remote CI run and add signed release provenance |
 
 ## Blast radius and FAIR planning estimate
 
@@ -132,8 +145,9 @@ costs.
 8. **One secret serves three purposes.** Session signing, CSRF derivation and guest
    ownership share `SESSION_SECRET`. Rotation logs everyone out and permanently
    orphans guest diagrams.
-9. **Supply-chain visibility is incomplete.** No SBOM, continuous scanner, or
-    immutable Nui revision is present.
+9. **Supply-chain visibility is incomplete.** CI and continuous scanners are now
+   configured with immutable action/image revisions, but the first remote run is
+   pending. No SBOM, immutable Nui revision or signed release provenance exists.
 
 ### Low
 

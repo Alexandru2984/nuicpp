@@ -4,6 +4,24 @@ Order matters: reliability and privacy foundations come before collaboration and
 growth. Each item should ship as a small reviewed commit with tests, migration and
 rollback notes where applicable.
 
+## Completed locally on 2026-10-21
+
+- GitHub Actions build and all live integration/security suites against a
+  disposable PostgreSQL 18 database; ShellCheck, Cppcheck and npm audit run in
+  the same fail-closed job.
+- Separate scheduled CodeQL analysis for C++ and JavaScript, immutable action and
+  PostgreSQL image references, and weekly Dependabot updates for Actions/npm.
+- Canonical, description, Open Graph and Twitter metadata plus dynamic
+  `robots.txt` and `sitemap.xml`; bearer share links, auth, probes, JSON API,
+  offline shell and raw Nui assets are excluded from indexing.
+- Critical Ubuntu PHP security backport `8.5.4-0ubuntu1.5` applied to the host and
+  verified across both PHP-FPM pools and vhosts. This is host remediation, not an
+  application release.
+
+These application commits are still local until explicitly pushed and deployed.
+Offsite backup work is intentionally deferred by the operator; its P0 item and
+High risk remain open.
+
 ## P0 — contain current production risk
 
 - Add a global storage/diagram ceiling on top of the atomic per-owner quota.
@@ -45,8 +63,9 @@ rollback notes where applicable.
   policy.
 - GDPR data export/delete, privacy notice, retention controls, subprocessor list
   and audit-log access policy.
-- Immutable dependency pins, SBOM, CI security scans and signed/reproducible
-  release metadata.
+- Pin Nui itself to an immutable commit, generate an SBOM, and add
+  signed/reproducible release metadata. Observe and triage the first remote CI
+  and CodeQL runs after push.
 
 ## P2 — editor quality and responsive UX
 
