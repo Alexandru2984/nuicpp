@@ -126,6 +126,7 @@ jobs:
             'MAX_VERSIONS_PER_DIAGRAM=30' \
             'MAX_IMPORT_BYTES=2097152' \
             'MAX_DIAGRAMS_PER_GUEST=20' \
+            'MAX_DIAGRAMS_TOTAL=5000' \
             'DB_POOL_SIZE=4' \
             "PROJECT_ROOT=$GITHUB_WORKSPACE" > "$TEST_ENV_FILE"
           echo "ENV_FILE=$TEST_ENV_FILE" >> "$GITHUB_ENV"

@@ -149,6 +149,7 @@ void validateConfig(const Config& cfg) {
     requireRange("MAX_EDGES_PER_DIAGRAM", cfg.maxEdgesPerDiagram, 1, 20000);
     requireRange("MAX_VERSIONS_PER_DIAGRAM", cfg.maxVersionsPerDiagram, 1, 1000);
     requireRange("MAX_DIAGRAMS_PER_GUEST", cfg.maxDiagramsPerGuest, 1, 10000);
+    requireRange("MAX_DIAGRAMS_TOTAL", cfg.maxDiagramsTotal, 1, 1000000);
     requireRange("DB_POOL_SIZE", cfg.dbPoolSize, 1, 64);
     if (cfg.maxImportBytes < 1024 || cfg.maxImportBytes > 16 * 1024 * 1024) {
         throw std::runtime_error("MAX_IMPORT_BYTES is outside the allowed range");
@@ -192,6 +193,7 @@ Config Config::load(const std::string& envPath) {
     cfg.maxEdgesPerDiagram = getInt(file, "MAX_EDGES_PER_DIAGRAM", cfg.maxEdgesPerDiagram);
     cfg.maxVersionsPerDiagram = getInt(file, "MAX_VERSIONS_PER_DIAGRAM", cfg.maxVersionsPerDiagram);
     cfg.maxDiagramsPerGuest = getInt(file, "MAX_DIAGRAMS_PER_GUEST", cfg.maxDiagramsPerGuest);
+    cfg.maxDiagramsTotal = getInt(file, "MAX_DIAGRAMS_TOTAL", cfg.maxDiagramsTotal);
     cfg.dbPoolSize = getInt(file, "DB_POOL_SIZE", cfg.dbPoolSize);
     cfg.maxImportBytes = static_cast<std::size_t>(getInt(file, "MAX_IMPORT_BYTES", static_cast<int>(cfg.maxImportBytes)));
     cfg.projectRoot = getValue(file, "PROJECT_ROOT", cfg.projectRoot);

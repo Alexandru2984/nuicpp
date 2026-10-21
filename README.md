@@ -83,8 +83,8 @@ Summarised here, detailed in [`docs/SECURITY.md`](docs/SECURITY.md).
   by diagram id on every path that emits diagram content, including duplicate.
 - CSRF tokens bound to the exact session cookie, required on every mutating
   endpoint.
-- Rate limiting at the edge and in the app, plus a per-guest diagram quota so
-  storage growth has a ceiling and not just a slope.
+- Rate limiting at the edge and in the app, plus atomic per-guest and global
+  diagram quotas so storage growth has a ceiling and not just a slope.
 - Defensive id parsing, exhaustive input validation, parameterised SQL only,
   no shell execution, no user-controlled filesystem paths.
 - CSP without `unsafe-inline` for scripts or styles, plus the usual header set,
@@ -160,7 +160,8 @@ values are documented in [`docs/DEPLOY.md`](docs/DEPLOY.md#2-environment):
 APP_ENV  APP_HOST  APP_PORT  APP_BASE_URL  DATABASE_URL
 AUTH_USERNAME  AUTH_PASSWORD_HASH  SESSION_SECRET  PUBLIC_ACCESS
 MAX_NODES_PER_DIAGRAM  MAX_EDGES_PER_DIAGRAM  MAX_VERSIONS_PER_DIAGRAM
-MAX_IMPORT_BYTES  MAX_DIAGRAMS_PER_GUEST  DB_POOL_SIZE  PROJECT_ROOT
+MAX_IMPORT_BYTES  MAX_DIAGRAMS_PER_GUEST  MAX_DIAGRAMS_TOTAL  DB_POOL_SIZE
+PROJECT_ROOT
 ```
 
 Never commit `.env`, `.initial_admin_password`, or generated secrets.

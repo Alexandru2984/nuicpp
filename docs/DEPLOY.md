@@ -125,6 +125,7 @@ operator's exported variables cannot override the files being checked.
 | `MAX_VERSIONS_PER_DIAGRAM` | `50` | Older snapshots are pruned |
 | `MAX_IMPORT_BYTES` | `1048576` | nginx rejects >2 MiB before buffering |
 | `MAX_DIAGRAMS_PER_GUEST` | `60` | Hard ceiling per guest session |
+| `MAX_DIAGRAMS_TOTAL` | `5000` | Global row ceiling across every owner and creation path |
 | `DB_POOL_SIZE` | `8` | Pooled connections; see sizing below |
 | `PROJECT_ROOT` | `/opt/nuigraph-studio/current` | Root-owned release/static root |
 
@@ -136,6 +137,11 @@ would retain edit access. Rotate deliberately, never as routine hygiene.
 what the other projects on this host use. Eight is enough that 60 concurrent
 requests were served using only two backends; raising it trades idle backends
 for headroom under burst, not throughput.
+
+`MAX_DIAGRAMS_TOTAL` bounds rows rather than bytes. Keep it above the current
+diagram count, monitor database/disk growth, and lower it only with an explicit
+retention or deletion plan. If the database is already at or above the value,
+reads and deletes keep working but every creation path returns `503`.
 
 ### 3. systemd
 

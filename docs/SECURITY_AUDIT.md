@@ -6,10 +6,11 @@ checked-in nginx/systemd configuration, the running service, and non-sensitive
 production metadata. Diagram content and secret values were not inspected.
 
 **Remediation update, 2026-10-21:** CI, CodeQL, dependency automation and SEO
-privacy controls are committed locally but are not live until the branch is
-pushed and deployed. The operator explicitly deferred offsite backup work, so
-the corresponding High finding remains open. The host's official Ubuntu PHP
-security backport was applied and verified independently of the app deploy.
+privacy controls were pushed; their remote CI, CodeQL and secret-scanning checks
+passed. Later hardening remains local until pushed and deployed. The operator
+explicitly deferred offsite backup work, so the corresponding High finding
+remains open. The host's official Ubuntu PHP security backport was applied and
+verified independently of the app deploy.
 
 ## Executive verdict
 
@@ -20,15 +21,16 @@ bounded request sizes, a dedicated runtime user and database role, Cloudflare-on
 public ingress, and a heavily sandboxed systemd unit.
 
 The largest residual risks are operational and architectural rather than a single
-critical exploit. Anonymous sessions can be renewed indefinitely, historical and
-error logs may retain bearer share identifiers, there is no alerting or
-NuiGraph-specific backup/restore evidence, and sharing is always-on. Do not
-expand public usage until the P0 controls in `ROADMAP.md` are complete.
+critical exploit. The global row ceiling can still be filled to deny new
+creations, historical and error logs may retain bearer share identifiers, there
+is no alerting or NuiGraph-specific backup/restore evidence, and sharing is
+always-on. Do not expand public usage until the P0 controls in `ROADMAP.md` are
+complete.
 
 ## Evidence snapshot
 
 - `main` was clean and three commits ahead of `origin/main` at assessment start.
-- Release build and 47 C++ tests passed. All six CTest suites, including the four
+- Release build and 47 C++ tests passed. All seven CTest suites, including the five
   live suites, passed against a disposable PostgreSQL 18 database with isolated
   `_test` identities. JavaScript syntax checks, ShellCheck and Cppcheck passed.
 - `npm audit --package-lock-only --audit-level=low` reported zero known
@@ -64,16 +66,17 @@ expand public usage until the P0 controls in `ROADMAP.md` are complete.
   configs, sockets and PHP vhosts passed post-update checks. Eighty-two unrelated
   package updates remain outside this targeted change and require their own
   compatibility window.
-- GitHub Actions now defines a pinned build/test/audit pipeline with a disposable
+- GitHub Actions defines a pinned build/test/audit pipeline with a disposable
   PostgreSQL service, ShellCheck, Cppcheck, npm audit and CodeQL; Dependabot covers
-  action and npm revisions. These remote checks have not run yet because the
-  local commits have not been pushed.
+  action and npm revisions. CI, CodeQL and GitGuardian passed on the first pushed
+  hardening revision. CodeQL action updates are now grouped so Dependabot cannot
+  mix incompatible action versions across init and analysis steps.
 
 ## STRIDE threat model
 
 | Rank | STRIDE | Scenario | Likelihood | Impact | Existing controls | Required treatment |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Denial of service | An attacker rotates guest cookies and source addresses, creates large diagrams and snapshots, or saturates DB workers/storage. App limits reset on restart and there is no global retained-data ceiling. | High | Medium | Cloudflare/nginx/app limits, payload caps, pool cap, atomic per-session quota | Global storage budget; persistent/distributed limiting; Turnstile for suspicious creation; storage and latency alerts |
+| 1 | Denial of service | An attacker rotates guest cookies and source addresses, fills the global row allowance, creates large diagrams/snapshots, or saturates DB workers/storage. App limits reset on restart and the row ceiling does not bound bytes. | High | Medium | Cloudflare/nginx/app limits, payload caps, pool cap, atomic per-session and global row quotas | Logical-byte budget and cleanup; persistent/distributed limiting; Turnstile for suspicious creation; storage and latency alerts |
 | 2 | Information disclosure | App, DB, backups, journals, or bearer-link logs expose private diagram content. Every diagram receives a share capability even before its owner intentionally shares it. | Medium | High | Random slugs, owner checks, least-privilege DB role, CSP, origin guard | Opt-in sharing with rotate/revoke; 128-bit tokens; redact tokens; encrypted and access-controlled backups; retention policy |
 | 3 | Spoofing / elevation | Theft or forgery of the single admin session grants access to all diagrams. Stateless sessions have no individual revocation and one secret also derives guest ownership. | Low | High | HMAC cookies, Secure/HttpOnly/SameSite, PBKDF2, login throttles | `__Host-` cookie; server-side admin session revocation; MFA/passkey; split signing and ownership keys; alert on admin login |
 | 4 | Tampering | Concurrent saves overwrite one another or collide while assigning `MAX(version)+1`; no optimistic revision check warns the user. | Medium | Medium | Transactions and bounded version history | Row locking now; later add revision/ETag conflict detection and recovery UI |
@@ -85,10 +88,12 @@ expand public usage until the P0 controls in `ROADMAP.md` are complete.
 A full application-host compromise exposes every live diagram and version, the
 database credential, admin password hash, and session signing/ownership key. That
 key permits forged admin sessions and makes all guest owner identifiers
-recomputable. The current database blast radius is 15 diagrams; there is no
-architectural upper bound on future global volume. The database does not contain
-raw session cookies, but diagram bodies may contain arbitrary user-entered PII,
-credentials, architecture details, or incident data.
+recomputable. The current database blast radius is 15 diagrams; after deployment,
+the default application ceiling limits future volume to 5,000 diagram rows,
+although node, edge and snapshot sizes still determine the byte-level blast
+radius. The database does not contain raw session cookies, but diagram bodies may
+contain arbitrary user-entered PII, credentials, architecture details, or
+incident data.
 
 The project has no revenue, data-classification, incident-cost, or traffic inputs
 in the repository, so a defensible exact Annualised Loss Expectancy is impossible.
@@ -118,9 +123,12 @@ costs.
 
 ### Medium
 
-1. **Renewable anonymous identity.** Quota enforcement is now atomic per owner,
-   but clearing the cookie creates a fresh owner and quota. There is no global
-   retained-data ceiling.
+1. **Global capacity can be weaponised.** Quota enforcement is atomic per owner
+   and globally. Clearing the cookie no longer increases the overall row budget,
+   but an attacker can consume that budget and deny new creations. The ceiling
+   also counts rows rather than logical or on-disk bytes. Add storage alerts,
+   retention/cleanup and a byte-aware budget; require stronger proof for
+   suspicious anonymous creation.
 2. **Last-write-wins saves.** Version assignment and mutations now serialize on
    the diagram row, preventing version collisions, but a stale editor can still
    overwrite a newer save without a revision-conflict response.

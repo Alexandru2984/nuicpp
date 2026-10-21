@@ -580,6 +580,10 @@ bool Routes::ensureCanEdit(const httplib::Request& req, httplib::Response& res, 
 // storage layer may embed SQL text or connection strings, so it is logged and
 // replaced with a generic message.
 void Routes::sendStorageError(httplib::Response& res, const std::exception& e, int status) const {
+    if (dynamic_cast<const DiagramCapacityExceeded*>(&e) != nullptr) {
+        sendJson(res, 503, errorJson(e.what()));
+        return;
+    }
     if (dynamic_cast<const DiagramQuotaExceeded*>(&e) != nullptr) {
         sendJson(res, 403, errorJson(e.what()));
         return;

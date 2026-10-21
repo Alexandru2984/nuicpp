@@ -17,6 +17,9 @@ rollback notes where applicable.
 - Critical Ubuntu PHP security backport `8.5.4-0ubuntu1.5` applied to the host and
   verified across both PHP-FPM pools and vhosts. This is host remediation, not an
   application release.
+- Atomic global diagram ceiling across all owners and creation paths, with a
+  concurrent multi-session PostgreSQL integration test and distinct `503`
+  capacity response.
 
 These application commits are still local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -24,7 +27,6 @@ High risk remain open.
 
 ## P0 — contain current production risk
 
-- Add a global storage/diagram ceiling on top of the atomic per-owner quota.
 - Add revision/ETag conflict responses on top of serialized per-diagram version
   assignment so stale editors cannot overwrite newer saves.
 - Replace the login limiter's capacity fail-open behaviour and move abuse limits

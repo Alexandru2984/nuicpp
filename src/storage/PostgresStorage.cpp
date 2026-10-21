@@ -273,6 +273,18 @@ Diagram PostgresStorage::createDiagram(const Diagram& input, bool importMode, co
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
 
+    // Every creation path reaches this method. Serialise the global count and
+    // insert in one transaction so parallel requests and fresh guest sessions
+    // cannot race past the retained-data ceiling. This lock is always acquired
+    // before the per-owner lock below, giving concurrent creators one fixed lock
+    // order and avoiding a quota-lock deadlock.
+    tx.exec("SELECT pg_advisory_xact_lock(hashtextextended('nuigraph:global-diagram-quota:v1', 0))");
+    const auto total = tx.exec("SELECT count(*) AS n FROM diagrams")[0]["n"].as<long>();
+    if (total >= cfg_.maxDiagramsTotal) {
+        throw DiagramCapacityExceeded(
+            "diagram capacity is temporarily exhausted; delete one before retrying");
+    }
+
     if (!ownerTokenHash.empty()) {
         // Count-and-insert must be one serial operation per owner. The old route
         // pre-check ran in a different transaction, so parallel requests could

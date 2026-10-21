@@ -155,13 +155,21 @@ Three independent layers, because each has a different failure mode:
 | App | 40 creates / 10 min per IP | `ensureWriteRateLimit` |
 | App | 8 login attempts / 10 min per IP | `loginRateLimiter` |
 | App | `MAX_DIAGRAMS_PER_GUEST` rows per owner hash | `PostgresStorage::createDiagram` |
+| App | `MAX_DIAGRAMS_TOTAL` rows across all owners | `PostgresStorage::createDiagram` |
 
-The per-owner quota exists because per-IP limits only slow storage growth; they
-do not bound it. A visitor who waits between bursts could otherwise fill the
-disk. Creation obtains a transaction-scoped PostgreSQL advisory lock for the
-owner hash, then counts and inserts in that same transaction. Parallel requests
-therefore cannot race past the ceiling. The API returns `403` with a message
-telling the visitor to delete something.
+Per-IP limits only slow storage growth; they do not bound it, and the per-owner
+quota can be renewed by clearing the guest cookie. Every creation first obtains
+a global transaction-scoped PostgreSQL advisory lock, counts retained diagrams,
+and inserts in that same transaction. It then takes the owner lock and applies
+the session quota. The fixed global-then-owner lock order avoids deadlocks, and
+parallel requests or rotated sessions cannot race past either ceiling. The API
+returns `503` when global capacity is exhausted and `403` when only the current
+session is full. Reads and deletes remain available.
+
+The global quota is a containment control, not lifecycle management: it counts
+diagram rows rather than bytes, and an attacker could deliberately fill it to
+deny new creations. Disk alerts, a retention policy, cleanup tooling and a
+logical-byte budget are still required.
 
 `RateLimiter` itself is bounded at `kMaxTrackedKeys = 20000`. When full it
 evicts by **hit count first, recency second** — deliberately, so that flooding
@@ -302,7 +310,9 @@ snapshots, gets `400` rather than a crash on an out-of-range id, is refused
 without a CSRF token, and receives the security headers. Each `403` has a
 matching positive control on the visitor's own diagram, so a pass cannot come
 from a route that is simply broken. `tests/check_rate_limits.sh` exercises the
-limiter and `tests/test_validation.cpp` covers the validation and eviction
+limiter, `tests/check_global_quota.sh` launches six distinct guest sessions
+concurrently against one remaining global slot, and
+`tests/test_validation.cpp` covers the configuration, validation and eviction
 logic.
 
 ```bash

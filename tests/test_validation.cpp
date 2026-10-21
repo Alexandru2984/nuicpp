@@ -304,6 +304,10 @@ void testConfigRejectsAmbiguousValues() {
 void testConfigRejectsUnsafeLimits() {
     require(configThrows(validConfig("MAX_IMPORT_BYTES=-1\n")),
             "negative import limits must not wrap to a huge size_t");
+    require(configThrows(validConfig("MAX_DIAGRAMS_TOTAL=0\n")),
+            "global diagram capacity must be positive");
+    require(configThrows(validConfig("MAX_DIAGRAMS_TOTAL=1000001\n")),
+            "global diagram capacity must have an operational upper bound");
     require(configThrows(validConfig("DB_POOL_SIZE=1000\n")),
             "excessive database pools should throw");
 }
