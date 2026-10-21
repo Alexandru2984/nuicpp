@@ -123,8 +123,9 @@ costs.
    handling, but production remains drifted until that candidate is validated and
    installed through an explicit nginx configuration release.
 6. **CDN cache drift.** Live static responses contradict the documented caching
-   contract. Fixed asset URLs and an old service worker can remain stale for four
-   hours.
+   contract. The origin now sends explicit CDN revalidation headers and
+   `no-store` for the worker, but the observed Cloudflare rule can override them;
+   correct that account-level rule and purge existing objects.
 7. **Application readiness is shallow.** `/health` returns 200 without checking
    PostgreSQL; deployment can declare a broken data path healthy.
 8. **Login limiting remains process-local.** Capacity exhaustion no longer makes
@@ -140,14 +141,7 @@ costs.
 
 ### Low
 
-1. `offline.html` uses an inline `onclick` handler that the current CSP blocks.
-2. `style-src 'unsafe-inline'` appears unnecessary; no runtime inline style
-   assignment was found in the repository.
-3. The security document says `SameSite=Lax`, while implementation uses the
-   stronger `SameSite=Strict` setting.
-4. Version notes have no application-level length check and can turn a client
-   error into a database error.
-5. The app returns 403 for both missing and foreign diagram IDs, which is safe but
+1. The app returns 403 for both missing and foreign diagram IDs, which is safe but
    inconsistent with some 404 paths and should be documented as anti-enumeration.
 
 ## Detection targets

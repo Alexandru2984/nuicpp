@@ -63,8 +63,8 @@ admin account for maintenance.
 - Graceful shutdown on SIGTERM/SIGINT: the listener stops and in-flight requests
   drain before exit, so a restart cannot truncate a save.
 - Structured access logging with ISO 8601 timestamps.
-- Static assets served with `ETag` and `Cache-Control: no-cache`, so deploys
-  reach visitors on their next request at the cost of a `304`.
+- Static assets use `ETag` and mandatory revalidation; the service-worker script
+  is never stored and its registration bypasses the HTTP cache for updates.
 - Public `/health` endpoint returning only service status.
 
 ### Security
@@ -83,8 +83,8 @@ Summarised here, detailed in [`docs/SECURITY.md`](docs/SECURITY.md).
   storage growth has a ceiling and not just a slope.
 - Defensive id parsing, exhaustive input validation, parameterised SQL only,
   no shell execution, no user-controlled filesystem paths.
-- CSP without `unsafe-inline` for scripts, plus the usual header set, sent by
-  both nginx and the app.
+- CSP without `unsafe-inline` for scripts or styles, plus the usual header set,
+  sent by both nginx and the app.
 
 ## Stack
 
@@ -208,7 +208,7 @@ sites, so never restart nginx.
 | `POST` | `/api/diagrams/import` |
 | `GET` | `/api/templates` |
 | `POST` | `/api/templates/{key}/create` |
-| `GET` | `/manifest.webmanifest`, `/sw.js`, `/offline.html`, `/icons/{name}` |
+| `GET` | `/manifest.webmanifest`, `/sw.js`, `/offline.html`, `/offline.js`, `/icons/{name}` |
 
 Mutating endpoints require `X-CSRF-Token` from `/api/session`. Template keys:
 `cloud-architecture`, `incident-response`, `data-pipeline`.
@@ -260,8 +260,6 @@ view ever pages.
 - No collaboration or WebSocket editing.
 - Undo/redo is browser-local and coarse; there is no persisted command history.
 - Draft autosave is browser-local and is not a substitute for Save.
-- `style-src 'unsafe-inline'` is still required by the editor's inline style
-  attributes.
 - Rate limits are per process; running a second instance would double them.
 - The admin diagram list is unpaginated, which will not scale indefinitely.
 - Never retain `.initial_admin_password` on the production checkout; move any

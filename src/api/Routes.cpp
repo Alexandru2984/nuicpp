@@ -327,7 +327,7 @@ void Routes::applySecurityHeaders(httplib::Response& res) const {
     res.set_header("Content-Security-Policy",
                    "default-src 'self'; "
                    "script-src 'self' 'wasm-unsafe-eval' https://static.cloudflareinsights.com; "
-                   "style-src 'self' 'unsafe-inline'; "
+                   "style-src 'self'; "
                    "img-src 'self' data: blob:; "
                    "connect-src 'self' https://cloudflareinsights.com; "
                    "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
@@ -339,8 +339,11 @@ void Routes::applySecurityHeaders(httplib::Response& res) const {
 //
 // no-cache does not mean "do not store": caches may keep the response but must
 // revalidate, so an unchanged file still costs only a 304 while a changed one
-// is picked up on the next request.
-void Routes::serveStatic(const httplib::Request& req, httplib::Response& res, const std::string& path) const {
+// is picked up on the next request. The CDN-specific headers keep that contract
+// separate from browser caching. Cache Rules can still override origin headers,
+// which is why the matching Cloudflare rule is documented in DEPLOY.md.
+void Routes::serveStatic(const httplib::Request& req, httplib::Response& res,
+                         const std::string& path, bool noStore) const {
     std::string body;
     try {
         body = readTextFile(path);
@@ -352,7 +355,15 @@ void Routes::serveStatic(const httplib::Request& req, httplib::Response& res, co
 
     const auto etag = "\"" + sha256Hex(body).substr(0, 32) + "\"";
     res.set_header("ETag", etag);
-    res.set_header("Cache-Control", "no-cache");
+    if (noStore) {
+        res.set_header("Cache-Control", "no-store, max-age=0");
+        res.set_header("CDN-Cache-Control", "no-store");
+        res.set_header("Cloudflare-CDN-Cache-Control", "no-store");
+    } else {
+        res.set_header("Cache-Control", "public, no-cache, must-revalidate");
+        res.set_header("CDN-Cache-Control", "no-cache");
+        res.set_header("Cloudflare-CDN-Cache-Control", "no-cache");
+    }
 
     if (req.get_header_value("If-None-Match") == etag) {
         res.status = 304;
@@ -616,11 +627,16 @@ void Routes::registerRoutes(httplib::Server& server) {
     server.Get("/offline.html", [this](const httplib::Request& req, httplib::Response& res) {
         serveStatic(req, res, cfg_.projectRoot + "/public/offline.html");
     });
+    server.Get("/offline.js", [this](const httplib::Request& req, httplib::Response& res) {
+        serveStatic(req, res, cfg_.projectRoot + "/public/offline.js");
+    });
     server.Get("/sw.js", [this](const httplib::Request& req, httplib::Response& res) {
         // A worker may only control the scope it is served from, so this has to
         // stay at the root rather than living under a static prefix.
         res.set_header("Service-Worker-Allowed", "/");
-        serveStatic(req, res, cfg_.projectRoot + "/public/sw.js");
+        // A stale worker can keep stale shell assets alive, so neither browsers
+        // nor shared caches may reuse this script without fetching it again.
+        serveStatic(req, res, cfg_.projectRoot + "/public/sw.js", true);
     });
     server.Get(R"(/icons/([A-Za-z0-9._-]+))", [this](const httplib::Request& req, httplib::Response& res) {
         const auto name = req.matches[1].str();

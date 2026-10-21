@@ -3,9 +3,19 @@ set -euo pipefail
 
 node --check public/editor.js >/dev/null
 node --check public/app.js >/dev/null
+node --check public/offline.js >/dev/null
+node --check public/sw.js >/dev/null
 node --check public/nui/bootstrap.js >/dev/null
 grep -q "nuigraph:draft:" public/editor.js
 grep -q "draft-status" public/editor.js
+grep -q 'VERSION = "ngs-v2"' public/sw.js
+grep -q '"/offline.html"' public/sw.js
+grep -q '"/offline.js"' public/sw.js
+grep -q '<script src="/offline.js"></script>' public/offline.html
+if grep -Eqi '<[^>]+[[:space:]]on[a-z]+[[:space:]]*=' public/offline.html; then
+  echo "offline page must not contain inline event handlers" >&2
+  exit 1
+fi
 
 # Two shells render the canvas: the server-rendered fallback and the Nui/WASM
 # one. editor.js drives both, so a layer added to one and forgotten in the other

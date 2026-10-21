@@ -201,7 +201,7 @@ Set by both nginx and the app (`applySecurityHeaders`), kept in step by hand:
 ```
 Content-Security-Policy: default-src 'self';
   script-src 'self' 'wasm-unsafe-eval' https://static.cloudflareinsights.com;
-  style-src 'self' 'unsafe-inline';
+  style-src 'self';
   img-src 'self' data: blob:;
   connect-src 'self' https://cloudflareinsights.com;
   object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'
@@ -222,8 +222,9 @@ Notes:
   edge; nothing in this repository references them. `'unsafe-inline'` is
   deliberately withheld, so the beacon's inline loader stays blocked. That costs
   some analytics fidelity and keeps the script policy meaningful.
-- `style-src 'unsafe-inline'` is still needed by the editor's inline style
-  attributes. Removing it is a worthwhile future change.
+- Scripts, event handlers and styles are all external; neither script nor style
+  policy grants `'unsafe-inline'`. The SVG exporter serialises a detached style
+  element into the downloaded file and does not insert it into the live page.
 - **If you edit the CSP, edit it in both places.** Two `Content-Security-Policy`
   headers are enforced as their intersection, which is easy to misread as a bug.
 
@@ -235,12 +236,16 @@ Two rules that are security-relevant, not just performance:
 - The service worker (`public/sw.js`) never touches `/api/`, `/login`,
   `/logout`, or `/health`. The Cache API is origin-wide and outlives the session
   cookie, so caching those would hand one visitor's diagrams to the next person
-  using the same browser profile. Only the six static shell assets are cached.
+  using the same browser profile. Only eight static shell/offline assets are
+  cached.
 
-Static assets use `ETag` + `Cache-Control: no-cache`, meaning "store, but
-revalidate": an unchanged file costs a `304`, a changed one is picked up on the
-next request. Before this existed, Cloudflare applied its own default and a CSS
-deploy could take hours to reach visitors.
+Static assets use `ETag` plus `Cache-Control: public, no-cache,
+must-revalidate`, meaning "store, but revalidate". `CDN-Cache-Control` and
+`Cloudflare-CDN-Cache-Control` carry the same edge requirement. The worker
+script is stricter: every cache layer receives `no-store`, registration uses
+`updateViaCache: none`, and changing the shell bumps its Cache API version.
+Cloudflare Cache Rules can override origin headers, so the matching browser and
+edge rule is an operator control documented in `DEPLOY.md`.
 
 ## Process hardening
 
@@ -280,7 +285,6 @@ These are accepted, not overlooked:
 - **No collaboration/WebSocket layer**, so no real-time authorization model is
   needed yet. Adding one will require re-deriving authorization per message, not
   per connection.
-- **`style-src 'unsafe-inline'`** remains, as noted above.
 - **Rate limiting is per process.** The service is single-instance; running two
   copies would double every app-level limit. The nginx limits would still hold.
 - **Admin is a single shared credential.** There is no MFA and no audit trail of

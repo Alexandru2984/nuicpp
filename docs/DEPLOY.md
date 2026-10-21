@@ -197,19 +197,34 @@ curl -sS -o /dev/null -w '%{http_code}\n' --resolve nuicpp.micutu.com:443:<origi
 
 ## Static assets and caching
 
-Static files are served with `ETag` and `Cache-Control: no-cache`, so a deploy
-is picked up on the next request via a cheap `304`. No manual cache bust is
-needed.
+Static files are served with `ETag`, mandatory browser revalidation and matching
+`CDN-Cache-Control`/`Cloudflare-CDN-Cache-Control` headers. `/sw.js` instead
+sends `no-store` at all three layers, and registration sets
+`updateViaCache: none`.
 
-One exception, historical: assets fetched before that header was added may still
-sit in Cloudflare's cache with the old four-hour TTL. If a stale `styles.css` or
-`editor.js` outlives a deploy, purge it once from the Cloudflare dashboard
-(Caching → Configuration → Purge). This should not recur.
+Cloudflare was observed rewriting `/sw.js` to `Cache-Control: max-age=14400`.
+Origin headers cannot override a matching Cache Rule. In the Cloudflare zone,
+configure rules for `nuicpp.micutu.com` so Browser Cache TTL respects the origin,
+Edge Cache TTL respects origin cache control, and `/sw.js` bypasses cache. Purge
+the hostname's existing cached assets once after changing the rules. Then verify:
 
-The service worker (`public/sw.js`) caches six shell assets under a `VERSION`
-key. **If you change what the shell needs, bump `VERSION`** — the activate
-handler deletes every cache whose key does not match, which is the only way old
-entries are cleared from visitors' browsers.
+```bash
+curl -sSI https://nuicpp.micutu.com/sw.js | grep -Ei 'cache-control|cf-cache-status'
+# expect Cache-Control: no-store, max-age=0 and DYNAMIC/BYPASS (never a 4h TTL)
+```
+
+Cloudflare documents that Cache Response Rules and Edge/Browser TTL settings can
+override origin `Cache-Control` and CDN-specific headers. Keep this dashboard
+control in the release checklist; the repository cannot enforce account-level
+rules. See Cloudflare's current
+[CDN-Cache-Control precedence](https://developers.cloudflare.com/cache/concepts/cdn-cache-control/)
+and [Origin Cache Control](https://developers.cloudflare.com/cache/concepts/cache-control/)
+documentation before changing the rule.
+
+The service worker caches eight shell/offline assets under a `VERSION` key.
+**If you change what the shell needs, bump `VERSION`** — the activate handler
+deletes every cache whose key does not match, which is the only way old entries
+are cleared from visitors' browsers.
 
 ## Rollback
 
@@ -235,7 +250,7 @@ was the point of the migration.
 | 429 during normal use | Edge zones in `nuicpp-rate-limit.conf`, then the app limits in `ensureWriteRateLimit` |
 | Blank editor page | `ls public/nui/index.wasm`; re-run `scripts/build_nui_frontend.sh` |
 | "storage unavailable" | `journalctl` has the real `pqxx` message; the client is deliberately told nothing |
-| CSS or JS looks stale | Hard-reload; then check `curl -I` shows `etag` and `cache-control: no-cache` |
+| CSS or JS looks stale | Check the Cloudflare Cache Rule above, purge once, then confirm the origin revalidation headers |
 | Guest lost edit rights | Expected after 7 days or a cookie clear; ownership is session-bound by design |
 
 ```bash

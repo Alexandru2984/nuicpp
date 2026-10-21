@@ -191,8 +191,37 @@ do
   fi
 done
 
-if grep -qi "^content-security-policy:.*unsafe-inline" <<<"$(grep -i '^content-security-policy:' <<<"$headers" | sed 's/style-src[^;]*;//')"; then
-  echo "script policy must not allow unsafe-inline" >&2
+if grep -qi "^content-security-policy:.*unsafe-inline" <<<"$headers"; then
+  echo "content security policy must not allow unsafe-inline" >&2
+  exit 1
+fi
+
+sw_headers="$(curl --noproxy '*' -sS -D - -o /dev/null "http://127.0.0.1:${PORT}/sw.js")"
+for expected in \
+  "cache-control: no-store" \
+  "cdn-cache-control: no-store" \
+  "cloudflare-cdn-cache-control: no-store"
+do
+  if ! grep -qi "^${expected}" <<<"$sw_headers"; then
+    echo "expected $expected on the service worker" >&2
+    exit 1
+  fi
+done
+
+asset_headers="$(curl --noproxy '*' -sS -D - -o /dev/null "http://127.0.0.1:${PORT}/styles.css")"
+for expected in \
+  "cache-control: public, no-cache, must-revalidate" \
+  "cdn-cache-control: no-cache" \
+  "cloudflare-cdn-cache-control: no-cache"
+do
+  if ! grep -qi "^${expected}" <<<"$asset_headers"; then
+    echo "expected $expected on revalidated static assets" >&2
+    exit 1
+  fi
+done
+
+if ! curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/offline.js" >/dev/null; then
+  echo "offline script is not served" >&2
   exit 1
 fi
 

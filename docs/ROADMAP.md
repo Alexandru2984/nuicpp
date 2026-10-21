@@ -19,12 +19,13 @@ rollback notes where applicable.
   scheduled restore drill with measured RPO/RTO.
 - Reconcile the checked-in and live nginx vhost, including ACME handling. Add
   `nginx -t` against the candidate config before installation.
-- Correct Cloudflare cache rules, version static asset URLs and make service-
-  worker updates deterministic.
+- Correct the account-level Cloudflare cache rule and version static asset URLs;
+  origin headers and service-worker updates are now deterministic unless a Cache
+  Rule overrides them.
 - Ship the actual WASM artifact or formally remove it from the primary path; fail
   release assembly when the chosen shell is incomplete.
-- Remove the unnecessary inline-style CSP allowance, fix the offline action and
-  test CSP behaviour in a real browser.
+- Add a real-browser regression test for CSP, offline navigation and worker
+  replacement.
 - Add monitoring/alerts for readiness, 5xx, latency, DB pool timeouts, create
   rates, disk growth, auth failures, restarts, certificate expiry and backups.
 - Perform and record the first incident-response tabletop.
