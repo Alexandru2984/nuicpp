@@ -134,6 +134,11 @@ local prerequisites appear as **Not Run**, not as false passes; deployment sets
 `NUIGRAPH_REQUIRE_LIVE_TESTS=1`, so there they fail closed instead of skipping.
 See the deploy runbook for the isolated test-database setup.
 
+GitHub Actions runs the full build and all live suites against a disposable
+PostgreSQL database, plus ShellCheck, Cppcheck, npm audit, and CodeQL. Workflow
+actions and the PostgreSQL service image are pinned to immutable revisions;
+Dependabot proposes weekly action and frontend dependency updates.
+
 ## Run
 
 ```bash

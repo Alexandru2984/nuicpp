@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Build, test and audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:18-bookworm@sha256:bbf83594798e144bff365a9c191c5d779f181fb3135902064ab8ff11918020fc
+        env:
+          POSTGRES_DB: nuigraph_studio_test
+          POSTGRES_USER: nuigraph_test
+          POSTGRES_PASSWORD: test-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nuigraph_test -d nuigraph_studio_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af6772620 # v4.4.0
+
+      - name: Install native tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cppcheck \
+            libcpp-httplib-dev \
+            libpq-dev \
+            libpqxx-dev \
+            nlohmann-json3-dev \
+            postgresql-client \
+            shellcheck
+
+      - name: Select Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: nui-frontend/package-lock.json
+
+      - name: Audit shell scripts
+        run: shellcheck scripts/*.sh tests/*.sh
+
+      - name: Audit C++ sources
+        run: >-
+          cppcheck
+          --enable=warning,performance,portability
+          --error-exitcode=1
+          --inline-suppr
+          --std=c++20
+          --suppress=missingIncludeSystem
+          -Isrc
+          src
+          tests/test_validation.cpp
+
+      - name: Audit frontend dependencies
+        run: |
+          npm ci --prefix nui-frontend --ignore-scripts
+          npm audit --prefix nui-frontend --audit-level=high
+
+      - name: Configure and build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release --parallel 2
+
+      - name: Create isolated test configuration
+        env:
+          TEST_ENV_FILE: ${{ runner.temp }}/nuigraph-test.env
+        run: |
+          umask 077
+          printf '%s\n' \
+            'APP_ENV=test' \
+            'APP_HOST=127.0.0.1' \
+            'APP_PORT=18150' \
+            'APP_BASE_URL=http://127.0.0.1:18150' \
+            'DATABASE_URL=postgresql://nuigraph_test:test-password@127.0.0.1:5432/nuigraph_studio_test' \
+            'AUTH_USERNAME=ci_admin' \
+            'AUTH_PASSWORD_HASH=pbkdf2_sha256$100000$0123456789abcdef0123456789abcdef$0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \
+            'SESSION_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \
+            'PUBLIC_ACCESS=true' \
+            'MAX_NODES_PER_DIAGRAM=1000' \
+            'MAX_EDGES_PER_DIAGRAM=2000' \
+            'MAX_VERSIONS_PER_DIAGRAM=30' \
+            'MAX_IMPORT_BYTES=2097152' \
+            'MAX_DIAGRAMS_PER_GUEST=20' \
+            'DB_POOL_SIZE=4' \
+            "PROJECT_ROOT=$GITHUB_WORKSPACE" > "$TEST_ENV_FILE"
+          echo "ENV_FILE=$TEST_ENV_FILE" >> "$GITHUB_ENV"
+
+      - name: Apply migrations
+        run: scripts/migrate.sh
+
+      - name: Run all test suites
+        env:
+          NUIGRAPH_REQUIRE_LIVE_TESTS: "1"
+        run: ctest --test-dir build --output-on-failure --timeout 90

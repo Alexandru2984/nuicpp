@@ -1,0 +1,67 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "23 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+  security-events: write
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-cpp:
+    name: Analyze C++
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af6772620 # v4.4.0
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libcpp-httplib-dev \
+            libpq-dev \
+            libpqxx-dev \
+            nlohmann-json3-dev
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@ce5e7eeac396d720fe2d802714996c8ce561e311 # v3.39.0
+        with:
+          languages: c-cpp
+          build-mode: manual
+
+      - name: Build analyzed target
+        run: |
+          cmake -S . -B build-codeql -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build build-codeql --config RelWithDebInfo --parallel 2
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@ce5e7eeac396d720fe2d802714996c8ce561e311 # v3.39.0
+
+  analyze-javascript:
+    name: Analyze JavaScript
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af6772620 # v4.4.0
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@ce5e7eeac396d720fe2d802714996c8ce561e311 # v3.39.0
+        with:
+          languages: javascript-typescript
+          build-mode: none
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@ce5e7eeac396d720fe2d802714996c8ce561e311 # v3.39.0
