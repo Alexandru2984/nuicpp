@@ -132,9 +132,7 @@ costs.
 8. **One secret serves three purposes.** Session signing, CSRF derivation and guest
    ownership share `SESSION_SECRET`. Rotation logs everyone out and permanently
    orphans guest diagrams.
-9. **No migration ledger.** Every SQL file runs on every deploy. This relies on
-    perfect idempotence and provides no checksum or applied-version evidence.
-10. **Supply-chain visibility is incomplete.** No SBOM, continuous scanner, or
+9. **Supply-chain visibility is incomplete.** No SBOM, continuous scanner, or
     immutable Nui revision is present.
 
 ### Low

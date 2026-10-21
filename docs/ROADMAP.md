@@ -45,8 +45,8 @@ rollback notes where applicable.
   policy.
 - GDPR data export/delete, privacy notice, retention controls, subprocessor list
   and audit-log access policy.
-- Versioned migrations with an applied ledger and checksums; immutable dependency
-  pins, SBOM, CI security scans and signed/reproducible release metadata.
+- Immutable dependency pins, SBOM, CI security scans and signed/reproducible
+  release metadata.
 
 ## P2 — editor quality and responsive UX
 

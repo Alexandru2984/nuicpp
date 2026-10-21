@@ -74,6 +74,14 @@ the deploy must both migrate it and delete fixtures. Never grant it access to
 PostgreSQL 13+. `pgcrypto` is **not** installed on this host, so do not add
 migrations that call `gen_random_bytes()`.
 
+`scripts/migrate.sh` serialises deployers with a PostgreSQL advisory lock and
+applies each pending file in one transaction. It records the filename, SHA-256
+checksum and timestamp in `nuigraph_meta.schema_migrations`, a schema the app
+role cannot access. **Applied migration files are immutable.** A checksum change
+is a deploy failure; create the next numbered migration instead. On the first
+deploy after introducing the ledger, the existing idempotent migrations run once
+and become the baseline.
+
 ### 2. Environment
 
 Production has three root-owned mode-`0600` files under
@@ -240,7 +248,8 @@ Migrations are forward-only and additive; none of them drop or rewrite columns,
 so an older binary runs against a newer schema. The exception is
 `003_randomize_legacy_slugs.sql`, which rewrote slug values — rolling the code
 back does not restore old slugs, and old share links stay dead either way. That
-was the point of the migration.
+was the point of the migration. Rolling back code never deletes ledger rows or
+reverts SQL; use a new forward migration for any schema correction.
 
 ## Troubleshooting
 
@@ -251,6 +260,7 @@ was the point of the migration.
 | 429 during normal use | Edge zones in `nuicpp-rate-limit.conf`, then the app limits in `ensureWriteRateLimit` |
 | Blank editor page | `ls public/nui/index.wasm`; re-run `scripts/build_nui_frontend.sh` |
 | "storage unavailable" | `journalctl` has the real `pqxx` message; the client is deliberately told nothing |
+| Migration checksum mismatch | Restore the committed historical file; put the intended change in a new numbered migration |
 | CSS or JS looks stale | Check the Cloudflare Cache Rule above, purge once, then confirm the origin revalidation headers |
 | Guest lost edit rights | Expected after 7 days or a cookie clear; ownership is session-bound by design |
 

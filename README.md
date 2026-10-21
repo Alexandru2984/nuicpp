@@ -126,12 +126,11 @@ The build is clean under `-Wall -Wextra -Wpedantic`.
 ctest --test-dir build --output-on-failure
 ```
 
-Five suites: unit tests for validation and rate-limiter behaviour, a frontend
-asset check, a live security smoke test, an API integration test, and a rate
-limit test. The three live suites start a throwaway instance on a free port and
-will only mutate a database whose config says `APP_ENV=test` and whose actual
-PostgreSQL database and login-role names both end in `_test`. Missing local
-prerequisites appear as **Not Run**, not as false passes; deployment sets
+Six suites: unit tests for validation and rate-limiter behaviour, a frontend
+asset check, live security/API/rate-limit tests, and migration-ledger integrity.
+The four database-backed suites only use a config with `APP_ENV=test` whose
+actual PostgreSQL database and login-role names both end in `_test`. Missing
+local prerequisites appear as **Not Run**, not as false passes; deployment sets
 `NUIGRAPH_REQUIRE_LIVE_TESTS=1`, so there they fail closed instead of skipping.
 See the deploy runbook for the isolated test-database setup.
 
@@ -161,7 +160,10 @@ Never commit `.env`, `.initial_admin_password`, or generated secrets.
 ## Database
 
 Database `nuigraph_studio`, user `nuigraph_user`. Schema lives in `migrations/`
-and is applied by `scripts/migrate.sh`. Runtime grants are least-privilege:
+and is applied transactionally by `scripts/migrate.sh`. Applied filenames,
+SHA-256 checksums and timestamps live in the owner-only
+`nuigraph_meta.schema_migrations` ledger. Never edit an applied migration; add a
+new numbered file. Runtime grants are least-privilege:
 
 ```bash
 psql -d nuigraph_studio -f deploy/postgres/runtime_privileges.sql

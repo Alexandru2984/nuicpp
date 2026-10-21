@@ -268,6 +268,9 @@ edge rule is an operator control documented in `DEPLOY.md`.
   Deploy makes unavailable tests fatal; local CTest reports them as skipped.
   Migration files parse `DATABASE_URL` as data instead of executing environment
   files as shell.
+- Schema migrations are serialised and transactional. An owner-only ledger
+  records each filename and SHA-256 checksum; an applied file that changes makes
+  deploy fail rather than silently rewriting schema history.
 - The Ubuntu `libpqxx 7.10` header documents a shared-library double-free on
   normal exit for its header-defined type-name strings. The service links the
   package-provided static `libpqxx.a` so these objects have one owner; OpenSSL,
