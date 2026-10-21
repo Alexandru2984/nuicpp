@@ -10,7 +10,7 @@ find_package(PkgConfig REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(PostgreSQL REQUIRED)
 find_package(nlohmann_json REQUIRED)
-pkg_check_modules(PQXX REQUIRED libpqxx)
+pkg_check_modules(PQXX REQUIRED "libpqxx>=7.10")
 pkg_check_modules(CPPHTTPLIB REQUIRED IMPORTED_TARGET cpp-httplib)
 
 # libpqxx 7.10 documents a shared-library double-free involving its header-

@@ -95,7 +95,7 @@ Summarised here, detailed in [`docs/SECURITY.md`](docs/SECURITY.md).
 - C++20, CMake
 - Nui C++ frontend compiled with Emscripten to WebAssembly
 - cpp-httplib for HTTP serving
-- libpqxx/libpq for PostgreSQL
+- libpqxx 7.10+ / libpq for PostgreSQL
 - nlohmann/json
 - OpenSSL for PBKDF2, HMAC-SHA256, SHA-256, and CSPRNG
 - PostgreSQL 18

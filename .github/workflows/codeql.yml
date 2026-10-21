@@ -25,6 +25,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af6772620 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Install native dependencies
         run: |
@@ -32,8 +34,27 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libcpp-httplib-dev \
             libpq-dev \
-            libpqxx-dev \
             nlohmann-json3-dev
+
+      - name: Check out pinned libpqxx
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af6772620 # v4.4.0
+        with:
+          repository: jtv/libpqxx
+          ref: 8e6fab35069eee92ce6729f8a4f775df31342b75 # 7.10.2
+          path: .ci/libpqxx
+          persist-credentials: false
+
+      - name: Build pinned libpqxx
+        run: |
+          cmake -S .ci/libpqxx -B "${RUNNER_TEMP}/libpqxx-build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${RUNNER_TEMP}/libpqxx-install" \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DSKIP_BUILD_TEST=ON
+          cmake --build "${RUNNER_TEMP}/libpqxx-build" --config Release --parallel 2
+          cmake --install "${RUNNER_TEMP}/libpqxx-build" --config Release
+          echo "CMAKE_PREFIX_PATH=${RUNNER_TEMP}/libpqxx-install" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=${RUNNER_TEMP}/libpqxx-install/lib/pkgconfig:${RUNNER_TEMP}/libpqxx-install/lib/x86_64-linux-gnu/pkgconfig" >> "$GITHUB_ENV"
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@ce5e7eeac396d720fe2d802714996c8ce561e311 # v3.39.0
@@ -56,6 +77,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af6772620 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@ce5e7eeac396d720fe2d802714996c8ce561e311 # v3.39.0

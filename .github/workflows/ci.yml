@@ -37,6 +37,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af6772620 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Install native tooling
         run: |
@@ -45,10 +47,29 @@ jobs:
             cppcheck \
             libcpp-httplib-dev \
             libpq-dev \
-            libpqxx-dev \
             nlohmann-json3-dev \
             postgresql-client \
             shellcheck
+
+      - name: Check out pinned libpqxx
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af6772620 # v4.4.0
+        with:
+          repository: jtv/libpqxx
+          ref: 8e6fab35069eee92ce6729f8a4f775df31342b75 # 7.10.2
+          path: .ci/libpqxx
+          persist-credentials: false
+
+      - name: Build pinned libpqxx
+        run: |
+          cmake -S .ci/libpqxx -B "${RUNNER_TEMP}/libpqxx-build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${RUNNER_TEMP}/libpqxx-install" \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DSKIP_BUILD_TEST=ON
+          cmake --build "${RUNNER_TEMP}/libpqxx-build" --config Release --parallel 2
+          cmake --install "${RUNNER_TEMP}/libpqxx-build" --config Release
+          echo "CMAKE_PREFIX_PATH=${RUNNER_TEMP}/libpqxx-install" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=${RUNNER_TEMP}/libpqxx-install/lib/pkgconfig:${RUNNER_TEMP}/libpqxx-install/lib/x86_64-linux-gnu/pkgconfig" >> "$GITHUB_ENV"
 
       - name: Select Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -87,6 +108,9 @@ jobs:
           TEST_ENV_FILE: ${{ runner.temp }}/nuigraph-test.env
         run: |
           umask 077
+          test_auth_salt="$(openssl rand -hex 16)"
+          test_auth_digest="$(openssl rand -hex 32)"
+          test_session_secret="$(openssl rand -hex 32)"
           printf '%s\n' \
             'APP_ENV=test' \
             'APP_HOST=127.0.0.1' \
@@ -94,8 +118,8 @@ jobs:
             'APP_BASE_URL=http://127.0.0.1:18150' \
             'DATABASE_URL=postgresql://nuigraph_test:test-password@127.0.0.1:5432/nuigraph_studio_test' \
             'AUTH_USERNAME=ci_admin' \
-            'AUTH_PASSWORD_HASH=pbkdf2_sha256$100000$0123456789abcdef0123456789abcdef$0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \
-            'SESSION_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \
+            "AUTH_PASSWORD_HASH=pbkdf2_sha256\$100000\$${test_auth_salt}\$${test_auth_digest}" \
+            "SESSION_SECRET=${test_session_secret}" \
             'PUBLIC_ACCESS=true' \
             'MAX_NODES_PER_DIAGRAM=1000' \
             'MAX_EDGES_PER_DIAGRAM=2000' \

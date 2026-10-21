@@ -54,11 +54,11 @@ std::string tmpEnvPath() {
     return "/tmp/nuigraph-test-" + std::to_string(getpid()) + ".env";
 }
 
+// Keep syntactically valid fixtures without embedding token-shaped, high-entropy
+// literals that secret scanners cannot distinguish from real credentials.
 const std::string kValidPasswordHash =
-    "pbkdf2_sha256$150000$00112233445566778899aabbccddeeff$"
-    "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
-const std::string kValidSessionSecret =
-    "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+    "pbkdf2_sha256$150000$" + std::string(32, 'a') + "$" + std::string(64, 'b');
+const std::string kValidSessionSecret(64, 'c');
 
 std::string validConfig(const std::string& extra = "") {
     return "APP_ENV=test\n"
