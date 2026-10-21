@@ -17,8 +17,9 @@ git pull                                   # if deploying from a remote
 ./scripts/deploy.sh
 ```
 
-The deploy refuses a dirty tree, builds and tests the committed source, audits
-the frontend dependency lock, validates the root-only runtime config, applies
+The deploy refuses a dirty tree, builds the committed source, validates both
+runtime and test configs, migrates an isolated `_test` database, requires every
+live test to run, audits the frontend dependency lock, applies production
 migrations with the owner role, reapplies the DML-only runtime grants, and then
 publishes a root-owned release under `/opt/nuigraph-studio/releases/`. The
 `current` symlink changes atomically. A failed restart or health check restores
@@ -52,10 +53,12 @@ a failed build.
 sudo -u postgres createuser nuigraph_user --pwprompt
 sudo -u postgres createdb nuigraph_studio -O nuigraph_user
 sudo -u postgres createuser nuigraph_app --pwprompt
+sudo -u postgres createuser nuigraph_test --pwprompt
 sudo env ENV_FILE=/etc/nuigraph-studio/migrate.env scripts/migrate.sh
 sudo -u postgres psql -v ON_ERROR_STOP=1 -d nuigraph_studio \
   -v app_user=nuigraph_app -v migration_owner=nuigraph_user \
   -f deploy/postgres/runtime_privileges.sql
+sudo -u postgres createdb nuigraph_studio_test -O nuigraph_test
 ```
 
 `nuigraph_user` owns the database, schema, tables and sequences and is used only
@@ -63,6 +66,9 @@ by the root-run migration step. `nuigraph_app` owns nothing, belongs to no role,
 and receives only connect, schema usage, table DML and sequence usage/select.
 The privilege script refuses to continue if those ownership and role-attribute
 invariants are not true; revoking `CREATE` from an owner does not constrain it.
+`nuigraph_test` owns only the disposable `nuigraph_studio_test` database because
+the deploy must both migrate it and delete fixtures. Never grant it access to
+`nuigraph_studio` and never reuse a production credential in the test config.
 
 `003_randomize_legacy_slugs.sql` uses `gen_random_uuid()`, which is built into
 PostgreSQL 13+. `pgcrypto` is **not** installed on this host, so do not add
@@ -70,11 +76,30 @@ migrations that call `gen_random_bytes()`.
 
 ### 2. Environment
 
-Production has two root-owned mode-`0600` files under
+Production has three root-owned mode-`0600` files under
 `/etc/nuigraph-studio/`. `app.env` is copied into a private systemd credential
-mount visible only to the service. `migrate.env` contains only the owner
-`DATABASE_URL` and is read by the root-run migration step. The source `.env`
-is for local development only and must not remain on the production checkout.
+mount visible only to the service. `migrate.env` contains only the production
+owner `DATABASE_URL`. `test.env` is a full app config that points to the isolated
+`nuigraph_studio_test` database. The source `.env` is for local development only
+and must not remain on the production checkout.
+
+Create the test config from the checked-in placeholder, then replace every
+placeholder before the first deploy:
+
+```bash
+sudo install -o root -g root -m 0600 deploy/test.env.example \
+  /etc/nuigraph-studio/test.env
+sudoedit /etc/nuigraph-studio/test.env
+sudo ./build/nuigraph-studio check-config /etc/nuigraph-studio/test.env
+```
+
+The test guard checks the connected database and login role, not just the URL.
+It requires `APP_ENV=test` and both PostgreSQL names to end in `_test`. Missing
+or unavailable test infrastructure fails a deploy; a normal local CTest run
+reports those suites as **Not Run**. Migration config is parsed as data and is
+never sourced as shell code. Root-run validation, migration and test commands
+also start with a clean environment and a fixed system executable path, so an
+operator's exported variables cannot override the files being checked.
 
 | Variable | Production value | Notes |
 | --- | --- | --- |

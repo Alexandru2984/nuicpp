@@ -10,6 +10,8 @@ RELEASES="$DEPLOY_ROOT/releases"
 CURRENT="$DEPLOY_ROOT/current"
 APP_CONFIG=/etc/nuigraph-studio/app.env
 MIGRATION_CONFIG=/etc/nuigraph-studio/migrate.env
+TEST_CONFIG=/etc/nuigraph-studio/test.env
+DEPLOY_COMMAND_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 STAGED_LINK=""
 PREVIOUS=""
 
@@ -26,24 +28,26 @@ if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
   exit 1
 fi
 
-for required in "$APP_CONFIG" "$MIGRATION_CONFIG"; do
+for required in "$APP_CONFIG" "$MIGRATION_CONFIG" "$TEST_CONFIG"; do
   if ! sudo test -f "$required"; then
-    echo "missing production configuration: $required" >&2
+    echo "missing deployment configuration: $required" >&2
     exit 1
   fi
 done
 
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release -j "$(nproc)"
-# The production config is root-only. Running the test harness through sudo
-# keeps it out of the checkout while ensuring DB-backed suites cannot silently
-# skip after the legacy development .env is quarantined.
-sudo env ENV_FILE="$APP_CONFIG" ctest --test-dir build --output-on-failure
+sudo env -i PATH="$DEPLOY_COMMAND_PATH" ./build/nuigraph-studio check-config "$APP_CONFIG"
+sudo env -i PATH="$DEPLOY_COMMAND_PATH" ./build/nuigraph-studio check-config "$TEST_CONFIG"
+
+# Live suites mutate data. Migrate and use only the dedicated test database;
+# REQUIRE turns missing/unavailable prerequisites into a deploy failure.
+sudo env -i PATH="$DEPLOY_COMMAND_PATH" ENV_FILE="$TEST_CONFIG" ./scripts/migrate.sh
+sudo env -i PATH="$DEPLOY_COMMAND_PATH" ENV_FILE="$TEST_CONFIG" NUIGRAPH_REQUIRE_LIVE_TESTS=1 \
+  ctest --test-dir build --output-on-failure
 npm audit --prefix nui-frontend --audit-level=high
 
-sudo ./build/nuigraph-studio check-config "$APP_CONFIG"
-
-sudo env ENV_FILE="$MIGRATION_CONFIG" ./scripts/migrate.sh
+sudo env -i PATH="$DEPLOY_COMMAND_PATH" ENV_FILE="$MIGRATION_CONFIG" ./scripts/migrate.sh
 sudo -u postgres psql -v ON_ERROR_STOP=1 -d nuigraph_studio \
   -v app_user=nuigraph_app -v migration_owner=nuigraph_user \
   -f deploy/postgres/runtime_privileges.sql

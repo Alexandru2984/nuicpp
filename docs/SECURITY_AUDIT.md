@@ -16,9 +16,8 @@ public ingress, and a heavily sandboxed systemd unit.
 The largest residual risks are operational and architectural rather than a single
 critical exploit. Anonymous sessions can be renewed indefinitely, historical and
 error logs may retain bearer share identifiers, there is no alerting or
-NuiGraph-specific backup/restore evidence, and the deploy tests exercise the
-production database. Do not expand public usage until the P0 controls in
-`ROADMAP.md` are complete.
+NuiGraph-specific backup/restore evidence, and sharing is always-on. Do not
+expand public usage until the P0 controls in `ROADMAP.md` are complete.
 
 ## Evidence snapshot
 
@@ -27,10 +26,10 @@ production database. Do not expand public usage until the P0 controls in
   passed. Cppcheck found style findings only.
 - `npm audit --package-lock-only --audit-level=low` reported zero known
   vulnerabilities.
-- The three database-backed CTest entries reported as passed locally but their
-  scripts actually skipped because no development `.env` was present. The deploy
-  path supplies the production config, so those tests currently mutate the live
-  database during a release.
+- The initial audit found three database-backed CTest entries falsely reported
+  as passed after skipping, while deploy pointed them at production. They now
+  report **Not Run** locally, fail closed during deploy, and require both
+  `APP_ENV=test` and connected database/role names ending in `_test`.
 - No private key, credential URL, or production secret was found in tracked files
   or Git history. Fixed test hashes produced the only secret-pattern matches.
 - The production process runs as `nuigraph:nuigraph`, listens on
@@ -61,7 +60,7 @@ production database. Do not expand public usage until the P0 controls in
 
 | Rank | STRIDE | Scenario | Likelihood | Impact | Existing controls | Required treatment |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Denial of service | An attacker rotates guest cookies and source addresses, creates large diagrams and snapshots, or saturates DB workers/storage. The owner quota is non-atomic and app limits reset on restart. | High | Medium | Cloudflare/nginx/app limits, payload caps, pool cap, per-session quota | Atomic quota; global storage budget; persistent/distributed limiting; Turnstile for suspicious creation; storage and latency alerts |
+| 1 | Denial of service | An attacker rotates guest cookies and source addresses, creates large diagrams and snapshots, or saturates DB workers/storage. App limits reset on restart and there is no global retained-data ceiling. | High | Medium | Cloudflare/nginx/app limits, payload caps, pool cap, atomic per-session quota | Global storage budget; persistent/distributed limiting; Turnstile for suspicious creation; storage and latency alerts |
 | 2 | Information disclosure | App, DB, backups, journals, or bearer-link logs expose private diagram content. Every diagram receives a share capability even before its owner intentionally shares it. | Medium | High | Random slugs, owner checks, least-privilege DB role, CSP, origin guard | Opt-in sharing with rotate/revoke; 128-bit tokens; redact tokens; encrypted and access-controlled backups; retention policy |
 | 3 | Spoofing / elevation | Theft or forgery of the single admin session grants access to all diagrams. Stateless sessions have no individual revocation and one secret also derives guest ownership. | Low | High | HMAC cookies, Secure/HttpOnly/SameSite, PBKDF2, login throttles | `__Host-` cookie; server-side admin session revocation; MFA/passkey; split signing and ownership keys; alert on admin login |
 | 4 | Tampering | Concurrent saves overwrite one another or collide while assigning `MAX(version)+1`; no optimistic revision check warns the user. | Medium | Medium | Transactions and bounded version history | Row locking now; later add revision/ETag conflict detection and recovery UI |
@@ -100,11 +99,7 @@ costs.
    restore drill was found. A database or operator failure can permanently remove
    every diagram. Add encrypted backups, retention, off-host replication, restore
    tests and ownership for failed jobs.
-2. **Production data is used by release tests.** `scripts/deploy.sh` passes the
-   production config to integration/security/rate tests. Fixtures are cleaned up,
-   but a test or cleanup defect can corrupt real data. Provision an isolated test
-   database and make any production URL fail closed in test mode.
-3. **Sharing is always-on and bearer-only.** Every diagram gets a share slug on
+2. **Sharing is always-on and bearer-only.** Every diagram gets a share slug on
    creation. There is no explicit publish state, revocation or token rotation.
    Make diagrams private by default and expose a deliberate share lifecycle.
 
@@ -124,8 +119,9 @@ costs.
 4. **Detection gap.** Nearly 20,000 journal lines were present, but there are no
    alert rules or on-call target. A quiet disclosure has an effectively unlimited
    MTTD.
-5. **Configuration drift.** The live ACME locations are absent from the checked-in
-   vhost. The repository is not a safe, complete rebuild source for nginx.
+5. **Configuration drift.** The checked-in vhost now contains the live ACME
+   handling, but production remains drifted until that candidate is validated and
+   installed through an explicit nginx configuration release.
 6. **CDN cache drift.** Live static responses contradict the documented caching
    contract. Fixed asset URLs and an old service worker can remain stale for four
    hours.

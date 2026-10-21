@@ -73,6 +73,11 @@ add_test(NAME nuigraph-security-smoke COMMAND bash ${CMAKE_SOURCE_DIR}/tests/che
 add_test(NAME nuigraph-api-integration COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_api_integration.sh)
 add_test(NAME nuigraph-rate-limits COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_rate_limits.sh)
 set_tests_properties(nuigraph-frontend PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_tests_properties(nuigraph-security-smoke PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_tests_properties(nuigraph-api-integration PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_tests_properties(nuigraph-rate-limits PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(
+    nuigraph-security-smoke
+    nuigraph-api-integration
+    nuigraph-rate-limits
+    PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        SKIP_RETURN_CODE 77
+)

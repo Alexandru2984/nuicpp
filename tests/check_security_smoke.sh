@@ -5,28 +5,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 BINARY="$ROOT_DIR/build/nuigraph-studio"
 
-if [[ ! -f "$ENV_FILE" || ! -x "$BINARY" ]]; then
-  echo "security smoke skipped: missing configured environment file or binary"
-  exit 0
-fi
-
-env_value() {
-  local key="$1"
-  local value
-  value="$(sed -n "s/^${key}=//p" "$ENV_FILE" | tail -n 1)"
-  value="${value%\"}"
-  value="${value#\"}"
-  value="${value%\'}"
-  value="${value#\'}"
-  printf '%s' "$value"
-}
-
-DATABASE_URL="$(env_value DATABASE_URL)"
-
-if ! psql "$DATABASE_URL" -tAc "select 1" >/dev/null 2>&1; then
-  echo "security smoke skipped: database unavailable"
-  exit 0
-fi
+# shellcheck source=tests/live_test_helpers.sh
+source "$ROOT_DIR/tests/live_test_helpers.sh"
+require_isolated_live_test_database "security smoke"
 
 PORT="$("$ROOT_DIR/scripts/find_free_port.sh" 18151 18250)"
 TMP_DIR="$(mktemp -d)"
@@ -48,10 +29,10 @@ cleanup() {
     wait "$PID" >/dev/null 2>&1 || true
   fi
   if [[ -n "$TEST_OWNER_HASH" ]]; then
-    psql "$DATABASE_URL" -tAc \
+    psql --dbname="$DATABASE_URL" -X -tAc \
       "DELETE FROM diagrams WHERE owner_token_hash = '${TEST_OWNER_HASH}'" >/dev/null 2>&1 || true
   fi
-  psql "$DATABASE_URL" -tAc \
+  psql --dbname="$DATABASE_URL" -X -tAc \
     "DELETE FROM diagrams WHERE title LIKE '${TEST_TITLE_PREFIX}%'" >/dev/null 2>&1 || true
   rm -rf "$TMP_DIR"
 }
@@ -63,7 +44,7 @@ awk -v port="$PORT" '
   { print }
 ' "$ENV_FILE" > "$TMP_ENV"
 
-env -i PATH="$PATH" HOME="$HOME" "$BINARY" "$TMP_ENV" >"$LOG_FILE" 2>&1 &
+env -i PATH="$PATH" "$BINARY" "$TMP_ENV" >"$LOG_FILE" 2>&1 &
 PID="$!"
 
 healthy=0
@@ -89,7 +70,7 @@ session_json="$(curl --noproxy '*' -fsS -c "$COOKIE_JAR" "http://127.0.0.1:${POR
 guest_user="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["username"])' "$session_json")"
 # Same derivation as ownerHashForRequest(): HMAC-SHA256(SESSION_SECRET, "owner:" + username).
 TEST_OWNER_HASH="$(printf 'owner:%s' "$guest_user" \
-  | openssl dgst -sha256 -hmac "$(env_value SESSION_SECRET)" -r | cut -d' ' -f1)"
+  | openssl dgst -sha256 -hmac "$(live_test_env_value SESSION_SECRET)" -r | cut -d' ' -f1)"
 
 diagrams_json="$(curl --noproxy '*' -fsS -b "$COOKIE_JAR" "http://127.0.0.1:${PORT}/api/diagrams")"
 python3 - "$diagrams_json" <<'PY'
@@ -124,7 +105,7 @@ if [[ "$status" != "200" && "$status" != "201" ]]; then
   exit 1
 fi
 
-existing_id="$(psql "$DATABASE_URL" -tAc "select min(id) from diagrams where title not like '${TEST_TITLE_PREFIX}%'" | tr -d '[:space:]')"
+existing_id="$(psql --dbname="$DATABASE_URL" -X -tAc "select min(id) from diagrams where title not like '${TEST_TITLE_PREFIX}%'" | tr -d '[:space:]')"
 if [[ -n "$existing_id" ]]; then
   status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" "http://127.0.0.1:${PORT}/api/diagrams/${existing_id}")"
   if [[ "$status" != "403" ]]; then

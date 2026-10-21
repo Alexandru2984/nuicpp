@@ -127,8 +127,12 @@ ctest --test-dir build --output-on-failure
 
 Five suites: unit tests for validation and rate-limiter behaviour, a frontend
 asset check, a live security smoke test, an API integration test, and a rate
-limit test. The three live suites start a throwaway instance on a free port,
-skip cleanly if the database is unavailable, and delete their own rows on exit.
+limit test. The three live suites start a throwaway instance on a free port and
+will only mutate a database whose config says `APP_ENV=test` and whose actual
+PostgreSQL database and login-role names both end in `_test`. Missing local
+prerequisites appear as **Not Run**, not as false passes; deployment sets
+`NUIGRAPH_REQUIRE_LIVE_TESTS=1`, so there they fail closed instead of skipping.
+See the deploy runbook for the isolated test-database setup.
 
 ## Run
 

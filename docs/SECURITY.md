@@ -258,6 +258,11 @@ deploy could take hours to reach visitors.
   systemd copies the runtime file into a private per-service credential mount;
   the service UID cannot read the source file. The database owner credential is
   separate and available only to the root-run migration step.
+- Database-backed release tests require `APP_ENV=test` and verify through
+  PostgreSQL that both the connected database and role names end in `_test`.
+  Deploy makes unavailable tests fatal; local CTest reports them as skipped.
+  Migration files parse `DATABASE_URL` as data instead of executing environment
+  files as shell.
 - The Ubuntu `libpqxx 7.10` header documents a shared-library double-free on
   normal exit for its header-defined type-name strings. The service links the
   package-provided static `libpqxx.a` so these objects have one owner; OpenSSL,

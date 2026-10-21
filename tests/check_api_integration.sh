@@ -5,34 +5,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 BINARY="$ROOT_DIR/build/nuigraph-studio"
 
-if [[ ! -x "$BINARY" ]]; then
-  echo "api integration skipped: missing build/nuigraph-studio"
-  exit 0
-fi
-
-env_value() {
-  local key="$1"
-  if [[ -f "$ENV_FILE" ]]; then
-    local value
-    value="$(sed -n "s/^${key}=//p" "$ENV_FILE" | tail -n 1)"
-    value="${value%\"}"
-    value="${value#\"}"
-    value="${value%\'}"
-    value="${value#\'}"
-    printf '%s' "$value"
-  fi
-}
-
-DATABASE_URL="$(env_value DATABASE_URL || echo '')"
-if [[ -z "$DATABASE_URL" ]]; then
-  echo "api integration skipped: no DATABASE_URL in configured environment file"
-  exit 0
-fi
-
-if ! psql "$DATABASE_URL" -tAc "select 1" >/dev/null 2>&1; then
-  echo "api integration skipped: database unavailable"
-  exit 0
-fi
+# shellcheck source=tests/live_test_helpers.sh
+source "$ROOT_DIR/tests/live_test_helpers.sh"
+require_isolated_live_test_database "api integration"
 
 PORT="$("$ROOT_DIR/scripts/find_free_port.sh" 18251 18350)"
 TMP_DIR="$(mktemp -d)"
@@ -50,7 +25,7 @@ cleanup() {
   # These tests run against DATABASE_URL from .env, which is a real database.
   # Remove the rows this run created so repeated runs do not accumulate.
   if [[ -n "${TEST_TITLE_PREFIX:-}" ]]; then
-    psql "$DATABASE_URL" -qtAc \
+    psql --dbname="$DATABASE_URL" -X -qtAc \
       "DELETE FROM diagrams WHERE title LIKE '${TEST_TITLE_PREFIX}%'" >/dev/null 2>&1 || true
   fi
   rm -rf "$TMP_DIR"
@@ -58,8 +33,10 @@ cleanup() {
 trap cleanup EXIT
 
 cat > "$TMP_ENV" <<ENV_EOF
+APP_ENV=test
 APP_HOST=127.0.0.1
 APP_PORT=$PORT
+APP_BASE_URL=http://127.0.0.1:$PORT
 DATABASE_URL=$DATABASE_URL
 AUTH_USERNAME=admin
 AUTH_PASSWORD_HASH=pbkdf2_sha256\$150000\$00112233445566778899aabbccddeeff\$00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff
@@ -68,7 +45,7 @@ PUBLIC_ACCESS=true
 PROJECT_ROOT=$ROOT_DIR
 ENV_EOF
 
-env -i PATH="$PATH" HOME="$HOME" "$BINARY" "$TMP_ENV" >"$LOG_FILE" 2>&1 &
+env -i PATH="$PATH" "$BINARY" "$TMP_ENV" >"$LOG_FILE" 2>&1 &
 PID="$!"
 
 BASE="http://127.0.0.1:${PORT}"

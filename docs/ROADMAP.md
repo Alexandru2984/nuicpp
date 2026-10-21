@@ -15,8 +15,6 @@ rollback notes where applicable.
   login/share/security events without storing secret values.
 - Add `/live` and database-backed `/ready`; make deploy and monitoring use the
   correct endpoint.
-- Create an isolated integration database. Refuse to run destructive tests when
-  the target matches the production database or runtime role.
 - Add encrypted off-host PostgreSQL backups, retention, failure alerts and a
   scheduled restore drill with measured RPO/RTO.
 - Reconcile the checked-in and live nginx vhost, including ACME handling. Add
