@@ -182,7 +182,8 @@ still match what certbot expects before reloading.
 ```bash
 scripts/deploy_check.sh
 sudo /opt/nuigraph-studio/current/nuigraph-studio check-config /etc/nuigraph-studio/app.env
-curl -fsS https://nuicpp.micutu.com/health
+curl -fsS https://nuicpp.micutu.com/live
+curl -fsS https://nuicpp.micutu.com/ready
 curl -sS -o /dev/null -w '%{http_code}\n' https://nuicpp.micutu.com/         # 200
 sudo journalctl -u nuigraph-studio.service -n 50 --no-pager
 ```
@@ -192,7 +193,7 @@ keeps the Cloudflare WAF from being bypassed):
 
 ```bash
 curl -sS -o /dev/null -w '%{http_code}\n' --resolve nuicpp.micutu.com:443:<origin-ip> \
-  https://nuicpp.micutu.com/health     # expect 403
+  https://nuicpp.micutu.com/ready     # expect 403
 ```
 
 ## Static assets and caching
@@ -232,7 +233,7 @@ are cleared from visitors' browsers.
 sudo ln -s /opt/nuigraph-studio/releases/<good-release> /opt/nuigraph-studio/.rollback
 sudo mv -Tf /opt/nuigraph-studio/.rollback /opt/nuigraph-studio/current
 sudo systemctl restart nuigraph-studio.service
-curl -fsS http://127.0.0.1:18081/health
+curl -fsS http://127.0.0.1:18081/ready
 ```
 
 Migrations are forward-only and additive; none of them drop or rewrite columns,

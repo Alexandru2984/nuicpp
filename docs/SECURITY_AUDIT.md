@@ -126,17 +126,15 @@ costs.
    contract. The origin now sends explicit CDN revalidation headers and
    `no-store` for the worker, but the observed Cloudflare rule can override them;
    correct that account-level rule and purge existing objects.
-7. **Application readiness is shallow.** `/health` returns 200 without checking
-   PostgreSQL; deployment can declare a broken data path healthy.
-8. **Login limiting remains process-local.** Capacity exhaustion no longer makes
+7. **Login limiting remains process-local.** Capacity exhaustion no longer makes
    new addresses untracked, but counters still reset on restart and are not shared
    by multiple app instances. Edge limits reduce distributed attempts.
-9. **One secret serves three purposes.** Session signing, CSRF derivation and guest
+8. **One secret serves three purposes.** Session signing, CSRF derivation and guest
    ownership share `SESSION_SECRET`. Rotation logs everyone out and permanently
    orphans guest diagrams.
-10. **No migration ledger.** Every SQL file runs on every deploy. This relies on
+9. **No migration ledger.** Every SQL file runs on every deploy. This relies on
     perfect idempotence and provides no checksum or applied-version evidence.
-11. **Supply-chain visibility is incomplete.** No SBOM, continuous scanner, or
+10. **Supply-chain visibility is incomplete.** No SBOM, continuous scanner, or
     immutable Nui revision is present.
 
 ### Low

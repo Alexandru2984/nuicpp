@@ -54,8 +54,8 @@ admin account for maintenance.
 - Installable as a PWA (`manifest.webmanifest`, maskable icon).
 - Service worker caches the static shell for offline loads and serves
   `/offline.html` when a navigation cannot reach the network. It never caches
-  `/api/`, `/login`, `/logout`, or `/health` — see the caching section of
-  [`docs/SECURITY.md`](docs/SECURITY.md) for why that matters.
+  `/api/`, authentication, liveness or readiness responses — see the caching
+  section of [`docs/SECURITY.md`](docs/SECURITY.md) for why that matters.
 
 ### Operations
 
@@ -65,7 +65,8 @@ admin account for maintenance.
 - Structured access logging with ISO 8601 timestamps.
 - Static assets use `ETag` and mandatory revalidation; the service-worker script
   is never stored and its registration bypasses the HTTP cache for updates.
-- Public `/health` endpoint returning only service status.
+- Separate `/live` process and PostgreSQL-backed `/ready` probes; `/health`
+  remains a compatibility alias for liveness. Dependency errors are not exposed.
 
 ### Security
 
@@ -189,6 +190,8 @@ sites, so never restart nginx.
 | Method | Path |
 | --- | --- |
 | `GET` | `/health` |
+| `GET` | `/live` |
+| `GET` | `/ready` |
 | `GET` | `/` |
 | `GET` | `/docs` |
 | `GET` | `/d/{slug}` |

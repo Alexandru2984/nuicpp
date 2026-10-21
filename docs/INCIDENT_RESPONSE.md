@@ -55,8 +55,8 @@ is the VPS operator until another named owner takes over in the incident record.
 3. Restore only from a verified backup into an isolated database, validate schema
    and counts, and test read/write/version flows before cutover.
 4. Run build, unit, isolated integration, security smoke, rate-limit, migration,
-   nginx-config and external health checks. Do not run destructive tests against
-   production data.
+   nginx-config and external `/live` plus `/ready` checks. Do not run destructive
+   tests against production data.
 5. Monitor at heightened sensitivity for at least 24 hours after recovery.
 
 ## Communication and regulation
@@ -82,4 +82,3 @@ diagram bodies in status updates. Use stable incident IDs and aggregate counts.
   change. Record the date and outcomes here or in the operations system.
 
 **Last tabletop:** not yet performed.
-

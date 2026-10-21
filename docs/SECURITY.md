@@ -234,10 +234,10 @@ Two rules that are security-relevant, not just performance:
 
 - JSON responses carry `Cache-Control: no-store`. They are per-session data.
 - The service worker (`public/sw.js`) never touches `/api/`, `/login`,
-  `/logout`, or `/health`. The Cache API is origin-wide and outlives the session
-  cookie, so caching those would hand one visitor's diagrams to the next person
-  using the same browser profile. Only eight static shell/offline assets are
-  cached.
+  `/logout`, `/health`, `/live`, or `/ready`. The Cache API is origin-wide and
+  outlives the session cookie, so caching those would hand one visitor's diagrams
+  to the next person using the same browser profile. Only eight static
+  shell/offline assets are cached.
 
 Static assets use `ETag` plus `Cache-Control: public, no-cache,
 must-revalidate`, meaning "store, but revalidate". `CDN-Cache-Control` and
@@ -311,6 +311,6 @@ hand after touching the vhost:
 
 ```bash
 curl -sS -o /dev/null -w '%{http_code}\n' --resolve nuicpp.micutu.com:443:<origin-ip> \
-  https://nuicpp.micutu.com/health   # expect 403
-curl -sS -o /dev/null -w '%{http_code}\n' https://nuicpp.micutu.com/health   # expect 200
+  https://nuicpp.micutu.com/ready   # expect 403
+curl -sS -o /dev/null -w '%{http_code}\n' https://nuicpp.micutu.com/ready   # expect 200
 ```

@@ -49,7 +49,7 @@ PID="$!"
 
 healthy=0
 for _ in $(seq 1 150); do
-  if curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
+  if curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/ready" >/dev/null 2>&1; then
     healthy=1
     break
   fi
@@ -175,7 +175,12 @@ fi
 
 # The app sets these itself rather than depending on the vhost staying correct,
 # so they must be present even when nginx is not in the path.
-headers="$(curl --noproxy '*' -sS -D - -o /dev/null "http://127.0.0.1:${PORT}/health")"
+for probe in health live ready; do
+  probe_json="$(curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/${probe}")"
+  python3 -c 'import json,sys; assert json.loads(sys.argv[1])["status"] in {"live", "ready"}' "$probe_json"
+done
+
+headers="$(curl --noproxy '*' -sS -D - -o /dev/null "http://127.0.0.1:${PORT}/live")"
 for header in \
   "content-security-policy" \
   "x-frame-options" \

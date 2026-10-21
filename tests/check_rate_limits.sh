@@ -52,7 +52,7 @@ BASE="http://127.0.0.1:${PORT}"
 
 healthy=0
 for _ in $(seq 1 150); do
-  if curl --noproxy '*' -fsS "${BASE}/health" >/dev/null 2>&1; then
+  if curl --noproxy '*' -fsS "${BASE}/ready" >/dev/null 2>&1; then
     healthy=1
     break
   fi

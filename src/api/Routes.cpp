@@ -593,7 +593,24 @@ void Routes::registerRoutes(httplib::Server& server) {
     });
 
     server.Get("/health", [this](const httplib::Request&, httplib::Response& res) {
-        sendJson(res, 200, {{"status", "ok"}, {"service", "nuigraph-studio"}});
+        sendJson(res, 200, {{"status", "live"}, {"service", "nuigraph-studio"}});
+    });
+
+    server.Get("/live", [this](const httplib::Request&, httplib::Response& res) {
+        sendJson(res, 200, {{"status", "live"}, {"service", "nuigraph-studio"}});
+    });
+
+    server.Get("/ready", [this](const httplib::Request&, httplib::Response& res) {
+        try {
+            if (storage_.ping()) {
+                sendJson(res, 200, {{"status", "ready"}, {"service", "nuigraph-studio"}});
+                return;
+            }
+        } catch (const std::exception&) {
+            // A dependency failure is expected operational state, not a reason
+            // to disclose connection details or SQL errors to a public probe.
+        }
+        sendJson(res, 503, {{"status", "unavailable"}, {"service", "nuigraph-studio"}});
     });
 
     server.Get("/styles.css", [this](const httplib::Request& req, httplib::Response& res) {

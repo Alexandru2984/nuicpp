@@ -47,7 +47,9 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/api/") ||
       url.pathname === "/login" ||
       url.pathname === "/logout" ||
-      url.pathname === "/health") {
+      url.pathname === "/health" ||
+      url.pathname === "/live" ||
+      url.pathname === "/ready") {
     return;
   }
 

@@ -13,8 +13,6 @@ rollback notes where applicable.
   to a persistent/shared enforcement point.
 - Redact bearer share slugs from app/nginx logs; add request IDs and explicit
   login/share/security events without storing secret values.
-- Add `/live` and database-backed `/ready`; make deploy and monitoring use the
-  correct endpoint.
 - Add encrypted off-host PostgreSQL backups, retention, failure alerts and a
   scheduled restore drill with measured RPO/RTO.
 - Reconcile the checked-in and live nginx vhost, including ACME handling. Add

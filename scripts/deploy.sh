@@ -72,7 +72,7 @@ STAGED_LINK=""
 healthy=0
 if sudo systemctl restart nuigraph-studio.service; then
   for _ in $(seq 1 40); do
-    if [[ "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:18081/health || true)" == 200 ]]; then
+    if [[ "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:18081/ready || true)" == 200 ]]; then
       healthy=1
       break
     fi
@@ -80,7 +80,7 @@ if sudo systemctl restart nuigraph-studio.service; then
   done
 fi
 
-if [[ "$healthy" == 1 ]] && ! curl -fsS https://nuicpp.micutu.com/health >/dev/null; then
+if [[ "$healthy" == 1 ]] && ! curl -fsS https://nuicpp.micutu.com/ready >/dev/null; then
   healthy=0
 fi
 if [[ "$healthy" == 1 ]] && ! ./scripts/deploy_check.sh; then

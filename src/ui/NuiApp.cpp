@@ -173,6 +173,8 @@ std::string renderDocsPage() {
 }</pre>
     <h2>API</h2>
     <pre>GET /health
+GET /live
+GET /ready
 GET /api/templates
 POST /api/templates/{key}/create
 GET /api/diagrams
