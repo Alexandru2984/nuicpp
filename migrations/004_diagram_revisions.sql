@@ -1,0 +1,3 @@
+ALTER TABLE diagrams
+    ADD COLUMN IF NOT EXISTS revision BIGINT NOT NULL DEFAULT 1
+    CHECK (revision > 0);

@@ -233,13 +233,13 @@ POST /api/diagrams/{id}/restore/{versionId}
 GET /api/diagrams/{id}/export.json
 POST /api/diagrams/import</pre>
     <h2>Storage And Versioning</h2>
-    <p>PostgreSQL stores diagrams, nodes, edges, and bounded version snapshots. Each save creates a snapshot and old versions are pruned by MAX_VERSIONS_PER_DIAGRAM. Diff on a version lists what was added, removed and changed between that snapshot and the diagram currently open in the editor, including unsaved edits.</p>
+    <p>PostgreSQL stores diagrams, nodes, edges, and bounded version snapshots. Each save creates a snapshot and old versions are pruned by MAX_VERSIONS_PER_DIAGRAM. Saves and restores use revision ETags, so a stale tab is rejected instead of overwriting newer work; its browser draft remains available. Diff on a version lists what was added, removed and changed between that snapshot and the diagram currently open in the editor, including unsaved edits.</p>
     <h2>Security</h2>
     <p>Public editing uses signed guest sessions, CSRF tokens, owner checks, input validation, and IP-based write/create rate limits. Admin login remains available for full access.</p>
     <h2>Templates</h2>
     <p>The app includes built-in cloud architecture, incident-response, and data-pipeline templates. Creating from a template stores a normal versioned diagram owned by the current guest session or admin.</p>
     <h2>Limitations</h2>
-    <p>v1 is single-user at a time with immediate browser updates, not WebSocket collaboration. Guest ownership is session based rather than full account identity. The authenticated editor shell and toolbar are rendered by Nui C++ compiled with Emscripten/WASM; detailed canvas gestures use a small JavaScript bridge. Mutating API calls require CSRF tokens.</p>
+    <p>v1 is not WebSocket collaboration: concurrent saves are detected but require manual reload and draft reconciliation. Guest ownership is session based rather than full account identity. The authenticated editor shell and toolbar are rendered by Nui C++ compiled with Emscripten/WASM; detailed canvas gestures use a small JavaScript bridge. Mutating API calls require CSRF tokens.</p>
   </main>
 </body>
 </html>)HTML";

@@ -254,8 +254,10 @@ Migrations are forward-only and additive; none of them drop or rewrite columns,
 so an older binary runs against a newer schema. The exception is
 `003_randomize_legacy_slugs.sql`, which rewrote slug values — rolling the code
 back does not restore old slugs, and old share links stay dead either way. That
-was the point of the migration. Rolling back code never deletes ledger rows or
-reverts SQL; use a new forward migration for any schema correction.
+was the point of the migration. `004_diagram_revisions.sql` only adds a defaulted
+column, so an older binary ignores it during rollback, but the stale-write guard
+is absent until the revised binary is restored. Rolling back code never deletes
+ledger rows or reverts SQL; use a new forward migration for any schema correction.
 
 ## Troubleshooting
 
@@ -266,6 +268,8 @@ reverts SQL; use a new forward migration for any schema correction.
 | 429 during normal use | Edge zones in `nuicpp-rate-limit.conf`, then the app limits in `ensureWriteRateLimit` |
 | Blank editor page | `ls public/nui/index.wasm`; re-run `scripts/build_nui_frontend.sh` |
 | "storage unavailable" | `journalctl` has the real `pqxx` message; the client is deliberately told nothing |
+| Save/delete/restore returns 412 | Another client won the revision; reopen or refresh, then retry deliberately |
+| Save/delete/restore returns 428 | Client omitted the latest diagram ETag in `If-Match` |
 | Migration checksum mismatch | Restore the committed historical file; put the intended change in a new numbered migration |
 | CSS or JS looks stale | Check the Cloudflare Cache Rule above, purge once, then confirm the origin revalidation headers |
 | Guest lost edit rights | Expected after 7 days or a cookie clear; ownership is session-bound by design |

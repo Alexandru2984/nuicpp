@@ -23,6 +23,17 @@ public:
     using std::runtime_error::runtime_error;
 };
 
+class DiagramRevisionConflict final : public std::runtime_error {
+public:
+    DiagramRevisionConflict(long currentRevision, const std::string& message)
+        : std::runtime_error(message), currentRevision_(currentRevision) {}
+
+    long currentRevision() const noexcept { return currentRevision_; }
+
+private:
+    long currentRevision_;
+};
+
 class PostgresStorage {
 public:
     PostgresStorage(const Config& cfg, const DiagramValidator& validator);
@@ -36,13 +47,14 @@ public:
     long countDiagrams();
     long countDiagramsForOwner(const std::string& ownerTokenHash);
     Diagram createDiagram(const Diagram& input, bool importMode, const std::string& ownerTokenHash = "");
-    Diagram updateDiagram(long id, const Diagram& input, const std::string& note, bool importMode);
-    void deleteDiagram(long id);
+    Diagram updateDiagram(long id, const Diagram& input, const std::string& note,
+                          bool importMode, long expectedRevision);
+    void deleteDiagram(long id, long expectedRevision);
     Diagram duplicateDiagram(long id, const std::string& ownerTokenHash = "");
     std::vector<VersionInfo> listVersions(long diagramId);
     VersionInfo createVersion(long diagramId, const std::string& note);
     Diagram getVersion(long diagramId, long versionId);
-    Diagram restoreVersion(long diagramId, long versionId);
+    Diagram restoreVersion(long diagramId, long versionId, long expectedRevision);
 
 private:
     ConnectionPool pool_;

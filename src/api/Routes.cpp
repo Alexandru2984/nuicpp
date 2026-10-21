@@ -319,6 +319,35 @@ bool parseIdParam(const httplib::Request& req, int index, long& out) {
     }
 }
 
+std::string diagramEtag(const Diagram& diagram) {
+    return "\"diagram-" + std::to_string(diagram.id) + "-r" +
+           std::to_string(diagram.revision) + "\"";
+}
+
+bool parseDiagramEtag(const std::string& raw, long diagramId, long& revision) {
+    const auto value = trimHeaderValue(raw);
+    const auto prefix = "\"diagram-" + std::to_string(diagramId) + "-r";
+    if (!value.starts_with(prefix) || value.size() <= prefix.size() + 1 || value.back() != '"') {
+        return false;
+    }
+    const auto number = value.substr(prefix.size(), value.size() - prefix.size() - 1);
+    if (number.empty() || number.size() > 18 ||
+        !std::all_of(number.begin(), number.end(), [](unsigned char c) { return std::isdigit(c) != 0; })) {
+        return false;
+    }
+    try {
+        std::size_t consumed = 0;
+        const auto parsed = std::stol(number, &consumed);
+        if (consumed != number.size() || parsed <= 0) {
+            return false;
+        }
+        revision = parsed;
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
 Diagram defaultDiagram() {
     Diagram d;
     d.title = "Untitled diagram";
@@ -560,6 +589,20 @@ bool Routes::ensureId(const httplib::Request& req, httplib::Response& res, int i
     return false;
 }
 
+bool Routes::ensureExpectedRevision(const httplib::Request& req, httplib::Response& res,
+                                    long diagramId, long& out) const {
+    const auto value = req.get_header_value("If-Match");
+    if (value.empty()) {
+        sendJson(res, 428, errorJson("If-Match is required for this operation"));
+        return false;
+    }
+    if (!parseDiagramEtag(value, diagramId, out)) {
+        sendJson(res, 400, errorJson("If-Match must contain this diagram's current ETag"));
+        return false;
+    }
+    return true;
+}
+
 bool Routes::ensureCanRead(const httplib::Request& req, httplib::Response& res, long diagramId, const char* what) {
     if (canReadDiagramById(req, diagramId)) {
         return true;
@@ -580,6 +623,13 @@ bool Routes::ensureCanEdit(const httplib::Request& req, httplib::Response& res, 
 // storage layer may embed SQL text or connection strings, so it is logged and
 // replaced with a generic message.
 void Routes::sendStorageError(httplib::Response& res, const std::exception& e, int status) const {
+    if (const auto* conflict = dynamic_cast<const DiagramRevisionConflict*>(&e)) {
+        sendJson(res, 412, {
+            {"error", e.what()},
+            {"current_revision", conflict->currentRevision()}
+        });
+        return;
+    }
     if (dynamic_cast<const DiagramCapacityExceeded*>(&e) != nullptr) {
         sendJson(res, 503, errorJson(e.what()));
         return;
@@ -605,6 +655,12 @@ nlohmann::json Routes::diagramResponse(const httplib::Request& req, const Diagra
     body["can_edit"] = canEditDiagram(req, diagram.id);
     body["share_url"] = cfg_.baseUrl + "/d/" + diagram.slug;
     return body;
+}
+
+void Routes::sendDiagramJson(const httplib::Request& req, httplib::Response& res,
+                             int status, const Diagram& diagram) {
+    res.set_header("ETag", diagramEtag(diagram));
+    sendJson(res, status, diagramResponse(req, diagram));
 }
 
 bool Routes::ensureAuthenticated(const httplib::Request& req, httplib::Response& res, bool htmlResponse) {
@@ -865,7 +921,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         }
         try {
             auto created = storage_.createDiagram(item->diagram, true, ownerHashForRequest(req));
-            sendJson(res, 201, diagramResponse(req, created));
+            sendDiagramJson(req, res, 201, created);
         } catch (const std::exception& e) {
             sendStorageError(res, e, 400);
         }
@@ -878,7 +934,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         try {
             Diagram d = req.body.empty() ? defaultDiagram() : diagramFromJson(nlohmann::json::parse(req.body));
             auto created = storage_.createDiagram(d, false, ownerHashForRequest(req));
-            sendJson(res, 201, diagramResponse(req, created));
+            sendDiagramJson(req, res, 201, created);
         } catch (const std::exception& e) {
             sendStorageError(res, e, 400);
         }
@@ -890,7 +946,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         if (!ensureId(req, res, 1, id)) return;
         if (!ensureCanRead(req, res, id, "diagram")) return;
         try {
-            sendJson(res, 200, diagramResponse(req, storage_.getDiagram(id)));
+            sendDiagramJson(req, res, 200, storage_.getDiagram(id));
         } catch (const std::exception& e) {
             sendStorageError(res, e, 404);
         }
@@ -905,7 +961,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         }
         try {
             auto diagram = storage_.getDiagramBySlug(slug);
-            sendJson(res, 200, diagramResponse(req, diagram));
+            sendDiagramJson(req, res, 200, diagram);
         } catch (const std::exception& e) {
             sendStorageError(res, e, 404);
         }
@@ -918,11 +974,14 @@ void Routes::registerRoutes(httplib::Server& server) {
         long id = 0;
         if (!ensureId(req, res, 1, id)) return;
         if (!ensureCanEdit(req, res, id)) return;
+        long expectedRevision = 0;
+        if (!ensureExpectedRevision(req, res, id, expectedRevision)) return;
         try {
             auto body = nlohmann::json::parse(req.body);
             auto d = diagramFromJson(body);
             auto note = body.value("note", "saved snapshot");
-            sendJson(res, 200, diagramResponse(req, storage_.updateDiagram(id, d, note, false)));
+            sendDiagramJson(req, res, 200,
+                            storage_.updateDiagram(id, d, note, false, expectedRevision));
         } catch (const std::exception& e) {
             sendStorageError(res, e, 400);
         }
@@ -935,8 +994,10 @@ void Routes::registerRoutes(httplib::Server& server) {
         long id = 0;
         if (!ensureId(req, res, 1, id)) return;
         if (!ensureCanEdit(req, res, id)) return;
+        long expectedRevision = 0;
+        if (!ensureExpectedRevision(req, res, id, expectedRevision)) return;
         try {
-            storage_.deleteDiagram(id);
+            storage_.deleteDiagram(id, expectedRevision);
             sendJson(res, 200, {{"ok", true}});
         } catch (const std::exception& e) {
             sendStorageError(res, e, 400);
@@ -954,7 +1015,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         if (!ensureCanRead(req, res, id, "diagram")) return;
         try {
             auto copy = storage_.duplicateDiagram(id, ownerHashForRequest(req));
-            sendJson(res, 201, diagramResponse(req, copy));
+            sendDiagramJson(req, res, 201, copy);
         } catch (const std::exception& e) {
             sendStorageError(res, e, 404);
         }
@@ -1018,8 +1079,11 @@ void Routes::registerRoutes(httplib::Server& server) {
         long versionId = 0;
         if (!ensureId(req, res, 1, id) || !ensureId(req, res, 2, versionId)) return;
         if (!ensureCanEdit(req, res, id)) return;
+        long expectedRevision = 0;
+        if (!ensureExpectedRevision(req, res, id, expectedRevision)) return;
         try {
-            sendJson(res, 200, diagramResponse(req, storage_.restoreVersion(id, versionId)));
+            sendDiagramJson(req, res, 200,
+                            storage_.restoreVersion(id, versionId, expectedRevision));
         } catch (const std::exception& e) {
             sendStorageError(res, e, 404);
         }
@@ -1049,7 +1113,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         }
         try {
             auto imported = storage_.createDiagram(diagramFromJson(nlohmann::json::parse(req.body)), true, ownerHashForRequest(req));
-            sendJson(res, 201, diagramResponse(req, imported));
+            sendDiagramJson(req, res, 201, imported);
         } catch (const std::exception& e) {
             sendStorageError(res, e, 400);
         }

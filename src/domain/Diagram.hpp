@@ -35,6 +35,7 @@ struct Diagram {
     std::string description;
     std::string createdAt;
     std::string updatedAt;
+    long revision = 0;
     std::vector<Node> nodes;
     std::vector<Edge> edges;
 };

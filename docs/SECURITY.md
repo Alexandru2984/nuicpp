@@ -178,6 +178,21 @@ client that is currently being throttled. `tests/test_validation.cpp` covers
 both the expiry sweep and this property; if you change the eviction policy, that
 second test is the one that matters.
 
+## Optimistic concurrency
+
+Every diagram row has a positive, monotonically increasing `revision`. Responses
+that contain the live diagram also expose a strong ETag in the form
+`"diagram-<id>-r<revision>"`. Save, delete and restore require that exact value
+in `If-Match`; a missing precondition returns `428`, while a stale revision
+returns `412` plus the current revision without changing the diagram, nodes,
+edges or version history.
+
+The database update increments the revision in the same conditional `UPDATE`
+that checks it, so two requests presenting one revision cannot both win. The
+browser preserves the losing tab as a local draft and tells the user to reopen
+before applying it. This prevents silent overwrite; it is not an automatic merge
+or a real-time collaboration protocol.
+
 ## Input validation
 
 Enforced in the validation layer before anything reaches SQL:

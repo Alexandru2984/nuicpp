@@ -39,6 +39,8 @@ admin account for maintenance.
 - Version history with automatic snapshots on save, manual snapshots, restore,
   and a diff view listing what changed between a snapshot and the open diagram.
   Retention is bounded by `MAX_VERSIONS_PER_DIAGRAM`.
+- Optimistic revisions with strong ETags: stale saves/restores are rejected and
+  the browser keeps the losing tab's draft for recovery.
 - Export to JSON, SVG, PNG, and Mermaid.
 - Template gallery: architecture, incident-response, and data-pipeline diagrams.
 - Public share links at `/d/{slug}` with read-only viewing and one-click fork.
@@ -228,6 +230,12 @@ sites, so never restart nginx.
 Mutating endpoints require `X-CSRF-Token` from `/api/session`. Template keys:
 `cloud-architecture`, `incident-response`, `data-pipeline`.
 
+`PUT /api/diagrams/{id}`, `DELETE /api/diagrams/{id}` and version restore also
+require the exact `ETag` from the latest diagram response in `If-Match`. Missing
+preconditions return `428`; stale revisions return `412` with
+`current_revision` and do not mutate storage. The JSON response includes the
+monotonically increasing `revision` value.
+
 `GET /api/diagrams` is paged: `?limit=` (default 100, max 200) and `?offset=`
 (max 100000). Out-of-range or unparseable values are clamped rather than
 rejected. The response carries `total`, `limit`, `offset`, and `has_more`
@@ -275,7 +283,8 @@ view ever pages.
 - No collaboration or WebSocket editing.
 - Undo/redo is browser-local and coarse; there is no persisted command history.
 - Draft autosave is browser-local and is not a substitute for Save.
+- Revision conflicts preserve the local draft but do not merge it automatically;
+  reopen the diagram and deliberately restore/reapply the draft.
 - Rate limits are per process; running a second instance would double them.
-- The admin diagram list is unpaginated, which will not scale indefinitely.
 - Never retain `.initial_admin_password` on the production checkout; move any
   recovery copy to root-only incident storage after the password is recorded.

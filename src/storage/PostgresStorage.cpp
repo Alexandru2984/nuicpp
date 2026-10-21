@@ -58,6 +58,7 @@ nlohmann::json diagramSummaryJson(const pqxx::row& row) {
         {"description", rowString(row, "description")},
         {"created_at", rowString(row, "created_at")},
         {"updated_at", rowString(row, "updated_at")},
+        {"revision", row["revision"].as<long>()},
         {"node_count", row["node_count"].as<int>()},
         {"edge_count", row["edge_count"].as<int>()}
     };
@@ -97,7 +98,7 @@ std::vector<nlohmann::json> PostgresStorage::listDiagrams(long limit, long offse
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
     auto rows = tx.exec(R"SQL(
-        SELECT d.id, d.title, d.slug, d.description,
+        SELECT d.id, d.title, d.slug, d.description, d.revision,
                to_char(d.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
                to_char(d.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS updated_at,
                (SELECT count(*) FROM nodes n WHERE n.diagram_id=d.id) AS node_count,
@@ -121,7 +122,7 @@ std::vector<nlohmann::json> PostgresStorage::listDiagramsForOwner(const std::str
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
     auto rows = tx.exec(R"SQL(
-        SELECT d.id, d.title, d.slug, d.description,
+        SELECT d.id, d.title, d.slug, d.description, d.revision,
                to_char(d.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
                to_char(d.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS updated_at,
                (SELECT count(*) FROM nodes n WHERE n.diagram_id=d.id) AS node_count,
@@ -194,7 +195,7 @@ long PostgresStorage::countDiagramsForOwner(const std::string& ownerTokenHash) {
 
 Diagram PostgresStorage::getDiagram(pqxx::work& tx, long id) {
     auto rows = tx.exec(R"SQL(
-        SELECT id, title, slug, description,
+        SELECT id, title, slug, description, revision,
                to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
                to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS updated_at
         FROM diagrams WHERE id=$1
@@ -210,6 +211,7 @@ Diagram PostgresStorage::getDiagram(pqxx::work& tx, long id) {
     diagram.description = rowString(d, "description");
     diagram.createdAt = rowString(d, "created_at");
     diagram.updatedAt = rowString(d, "updated_at");
+    diagram.revision = d["revision"].as<long>();
 
     auto nodeRows = tx.exec(R"SQL(
         SELECT node_key, type, title, x, y, width, height, color, metadata_json::text
@@ -315,7 +317,8 @@ Diagram PostgresStorage::createDiagram(const Diagram& input, bool importMode, co
     return getDiagram(id);
 }
 
-Diagram PostgresStorage::updateDiagram(long id, const Diagram& input, const std::string& note, bool importMode) {
+Diagram PostgresStorage::updateDiagram(long id, const Diagram& input, const std::string& note,
+                                       bool importMode, long expectedRevision) {
     Diagram diagram = input;
     diagram.id = id;
     auto validation = validator_.validate(diagram, importMode);
@@ -324,21 +327,42 @@ Diagram PostgresStorage::updateDiagram(long id, const Diagram& input, const std:
     }
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
-    auto exists = tx.exec("SELECT 1 FROM diagrams WHERE id=$1", pqxx::params{id});
-    if (exists.empty()) {
-        throw std::runtime_error("diagram not found");
+    auto updated = tx.exec(R"SQL(
+        UPDATE diagrams
+        SET title=$1, description=$2, updated_at=now(), revision=revision+1
+        WHERE id=$3 AND revision=$4
+        RETURNING revision
+    )SQL", pqxx::params{diagram.title, diagram.description, id, expectedRevision});
+    if (updated.empty()) {
+        auto current = tx.exec("SELECT revision FROM diagrams WHERE id=$1", pqxx::params{id});
+        if (current.empty()) {
+            throw std::runtime_error("diagram not found");
+        }
+        throw DiagramRevisionConflict(
+            current[0]["revision"].as<long>(),
+            "diagram changed since it was opened; reload before saving");
     }
-    tx.exec("UPDATE diagrams SET title=$1, description=$2, updated_at=now() WHERE id=$3", pqxx::params{diagram.title, diagram.description, id});
     replaceNodesAndEdges(tx, id, diagram);
     createVersion(tx, id, note.empty() ? "saved snapshot" : note);
     tx.commit();
     return getDiagram(id);
 }
 
-void PostgresStorage::deleteDiagram(long id) {
+void PostgresStorage::deleteDiagram(long id, long expectedRevision) {
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
-    tx.exec("DELETE FROM diagrams WHERE id=$1", pqxx::params{id});
+    auto deleted = tx.exec(
+        "DELETE FROM diagrams WHERE id=$1 AND revision=$2 RETURNING id",
+        pqxx::params{id, expectedRevision});
+    if (deleted.empty()) {
+        auto current = tx.exec("SELECT revision FROM diagrams WHERE id=$1", pqxx::params{id});
+        if (current.empty()) {
+            throw std::runtime_error("diagram not found");
+        }
+        throw DiagramRevisionConflict(
+            current[0]["revision"].as<long>(),
+            "diagram changed since it was opened; reload before deleting");
+    }
     tx.commit();
 }
 
@@ -443,7 +467,7 @@ Diagram PostgresStorage::getVersion(long diagramId, long versionId) {
     return diagram;
 }
 
-Diagram PostgresStorage::restoreVersion(long diagramId, long versionId) {
+Diagram PostgresStorage::restoreVersion(long diagramId, long versionId, long expectedRevision) {
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
     auto rows = tx.exec("SELECT snapshot_json::text FROM diagram_versions WHERE diagram_id=$1 AND id=$2", pqxx::params{diagramId, versionId});
@@ -457,7 +481,21 @@ Diagram PostgresStorage::restoreVersion(long diagramId, long versionId) {
     if (!validation.ok) {
         throw std::runtime_error(validation.errors.front());
     }
-    tx.exec("UPDATE diagrams SET title=$1, description=$2, updated_at=now() WHERE id=$3", pqxx::params{diagram.title, diagram.description, diagramId});
+    auto updated = tx.exec(R"SQL(
+        UPDATE diagrams
+        SET title=$1, description=$2, updated_at=now(), revision=revision+1
+        WHERE id=$3 AND revision=$4
+        RETURNING revision
+    )SQL", pqxx::params{diagram.title, diagram.description, diagramId, expectedRevision});
+    if (updated.empty()) {
+        auto current = tx.exec("SELECT revision FROM diagrams WHERE id=$1", pqxx::params{diagramId});
+        if (current.empty()) {
+            throw std::runtime_error("diagram not found");
+        }
+        throw DiagramRevisionConflict(
+            current[0]["revision"].as<long>(),
+            "diagram changed since it was opened; reload before restoring");
+    }
     replaceNodesAndEdges(tx, diagramId, diagram);
     createVersion(tx, diagramId, "restored version " + std::to_string(versionId));
     tx.commit();

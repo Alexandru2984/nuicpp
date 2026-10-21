@@ -4,7 +4,7 @@ Order matters: reliability and privacy foundations come before collaboration and
 growth. Each item should ship as a small reviewed commit with tests, migration and
 rollback notes where applicable.
 
-## Completed locally on 2026-10-21
+## Completed locally through 2026-10-22
 
 - GitHub Actions build and all live integration/security suites against a
   disposable PostgreSQL 18 database; ShellCheck, Cppcheck and npm audit run in
@@ -20,15 +20,16 @@ rollback notes where applicable.
 - Atomic global diagram ceiling across all owners and creation paths, with a
   concurrent multi-session PostgreSQL integration test and distinct `503`
   capacity response.
+- Conditional save, delete and restore with monotonic revisions, strong ETags,
+  `428` for missing preconditions, `412` for stale clients and browser-draft
+  preservation.
 
-These application commits are still local until explicitly pushed and deployed.
+The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
 High risk remain open.
 
 ## P0 — contain current production risk
 
-- Add revision/ETag conflict responses on top of serialized per-diagram version
-  assignment so stale editors cannot overwrite newer saves.
 - Replace the login limiter's capacity fail-open behaviour and move abuse limits
   to a persistent/shared enforcement point.
 - Redact bearer share slugs from app/nginx logs; add request IDs and explicit

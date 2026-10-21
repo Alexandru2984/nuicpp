@@ -92,6 +92,7 @@ CREATE_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" \
 
 DIAGRAM_ID="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['id'])" "$CREATE_RESP")"
 SLUG="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['slug'])" "$CREATE_RESP")"
+REVISION="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['revision'])" "$CREATE_RESP")"
 
 # Verify listing includes the created diagram
 LIST_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" "${BASE}/api/diagrams")"
@@ -103,19 +104,59 @@ assert int(sys.argv[2]) in ids, f'diagram {sys.argv[2]} not in list: {ids}'
 " "$LIST_RESP" "$DIAGRAM_ID"
 
 # Verify GET by id
-GET_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" "${BASE}/api/diagrams/$DIAGRAM_ID")"
+curl --noproxy '*' -sS -b "$COOKIE_JAR" -D "$TMP_DIR/get.headers" \
+  -o "$TMP_DIR/get.json" "${BASE}/api/diagrams/$DIAGRAM_ID"
+GET_RESP="$(<"$TMP_DIR/get.json")"
 python3 -c "import sys,json;assert json.loads(sys.argv[1])['title']=='ngs-integration-create'" "$GET_RESP"
+if ! tr -d '\r' <"$TMP_DIR/get.headers" | grep -Fqx "ETag: \"diagram-${DIAGRAM_ID}-r${REVISION}\""; then
+  echo "api integration failed: GET response did not expose the current diagram ETag" >&2
+  exit 1
+fi
 
-# Update diagram
-curl --noproxy '*' -sS -b "$COOKIE_JAR" \
+# A mutating client must prove which revision it edited.
+status="$(curl --noproxy '*' -sS -o "$TMP_DIR/missing-precondition.json" -w '%{http_code}' \
+  -b "$COOKIE_JAR" \
   -H "X-CSRF-Token: $CSRF_TOKEN" \
   -H "Content-Type: application/json" \
+  -X PUT -d '{"title":"ngs-integration-missing-precondition","description":"","nodes":[],"edges":[]}' \
+  "${BASE}/api/diagrams/$DIAGRAM_ID")"
+if [[ "$status" != "428" ]]; then
+  echo "api integration failed: update without If-Match returned $status instead of 428" >&2
+  exit 1
+fi
+
+# Update diagram
+UPDATE_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" \
+  -H "X-CSRF-Token: $CSRF_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "If-Match: \"diagram-${DIAGRAM_ID}-r${REVISION}\"" \
   -X PUT -d '{"title":"ngs-integration-updated","description":"updated","nodes":[{"key":"n1","type":"process","title":"Node 1","x":10,"y":10,"width":160,"height":80,"color":"#38bdf8","metadata":{}}],"edges":[]}' \
-  "${BASE}/api/diagrams/$DIAGRAM_ID" >/dev/null
+  "${BASE}/api/diagrams/$DIAGRAM_ID")"
+UPDATED_REVISION="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['revision'])" "$UPDATE_RESP")"
+if [[ "$UPDATED_REVISION" != "$((REVISION + 1))" ]]; then
+  echo "api integration failed: update did not increment the diagram revision" >&2
+  exit 1
+fi
+
+# Reusing the old ETag must not overwrite the winning update.
+status="$(curl --noproxy '*' -sS -o "$TMP_DIR/stale-update.json" -w '%{http_code}' \
+  -b "$COOKIE_JAR" \
+  -H "X-CSRF-Token: $CSRF_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "If-Match: \"diagram-${DIAGRAM_ID}-r${REVISION}\"" \
+  -X PUT -d '{"title":"ngs-integration-stale","description":"","nodes":[],"edges":[]}' \
+  "${BASE}/api/diagrams/$DIAGRAM_ID")"
+if [[ "$status" != "412" ]]; then
+  echo "api integration failed: stale update returned $status instead of 412" >&2
+  exit 1
+fi
+python3 -c "import sys,json; assert json.load(open(sys.argv[1]))['current_revision'] == int(sys.argv[2])" \
+  "$TMP_DIR/stale-update.json" "$UPDATED_REVISION"
 
 # Verify update
 GET_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" "${BASE}/api/diagrams/$DIAGRAM_ID")"
-python3 -c "import sys,json;assert json.loads(sys.argv[1])['title']=='ngs-integration-updated'" "$GET_RESP"
+python3 -c "import sys,json; data=json.loads(sys.argv[1]); assert data['title']=='ngs-integration-updated'; assert data['revision']==int(sys.argv[2])" \
+  "$GET_RESP" "$UPDATED_REVISION"
 
 # Create version snapshot
 curl --noproxy '*' -fsS -b "$COOKIE_JAR" \
@@ -127,6 +168,49 @@ curl --noproxy '*' -fsS -b "$COOKIE_JAR" \
 # List versions
 VER_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" "${BASE}/api/diagrams/$DIAGRAM_ID/versions")"
 python3 -c "import sys,json;assert len(json.loads(sys.argv[1])['versions'])>0" "$VER_RESP"
+MANUAL_VERSION_ID="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['versions'][0]['id'])" "$VER_RESP")"
+
+# Save once more, restore the snapshot with the current ETag, then prove the
+# old restore precondition cannot be replayed.
+SECOND_UPDATE_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" \
+  -H "X-CSRF-Token: $CSRF_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "If-Match: \"diagram-${DIAGRAM_ID}-r${UPDATED_REVISION}\"" \
+  -X PUT -d '{"title":"ngs-integration-after-snapshot","description":"updated","nodes":[],"edges":[]}' \
+  "${BASE}/api/diagrams/$DIAGRAM_ID")"
+SECOND_REVISION="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['revision'])" "$SECOND_UPDATE_RESP")"
+
+RESTORE_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" \
+  -H "X-CSRF-Token: $CSRF_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "If-Match: \"diagram-${DIAGRAM_ID}-r${SECOND_REVISION}\"" \
+  -X POST -d '{}' "${BASE}/api/diagrams/$DIAGRAM_ID/restore/$MANUAL_VERSION_ID")"
+RESTORED_REVISION="$(python3 -c "import sys,json; data=json.loads(sys.argv[1]); assert data['title']=='ngs-integration-updated'; print(data['revision'])" "$RESTORE_RESP")"
+if [[ "$RESTORED_REVISION" != "$((SECOND_REVISION + 1))" ]]; then
+  echo "api integration failed: restore did not increment the diagram revision" >&2
+  exit 1
+fi
+
+status="$(curl --noproxy '*' -sS -o "$TMP_DIR/stale-restore.json" -w '%{http_code}' \
+  -b "$COOKIE_JAR" \
+  -H "X-CSRF-Token: $CSRF_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "If-Match: \"diagram-${DIAGRAM_ID}-r${SECOND_REVISION}\"" \
+  -X POST -d '{}' "${BASE}/api/diagrams/$DIAGRAM_ID/restore/$MANUAL_VERSION_ID")"
+if [[ "$status" != "412" ]]; then
+  echo "api integration failed: stale restore returned $status instead of 412" >&2
+  exit 1
+fi
+
+status="$(curl --noproxy '*' -sS -o "$TMP_DIR/stale-delete.json" -w '%{http_code}' \
+  -b "$COOKIE_JAR" \
+  -H "X-CSRF-Token: $CSRF_TOKEN" \
+  -H "If-Match: \"diagram-${DIAGRAM_ID}-r${SECOND_REVISION}\"" \
+  -X DELETE "${BASE}/api/diagrams/$DIAGRAM_ID")"
+if [[ "$status" != "412" ]]; then
+  echo "api integration failed: stale delete returned $status instead of 412" >&2
+  exit 1
+fi
 
 # Duplicate diagram
 DUP_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" \
@@ -134,6 +218,7 @@ DUP_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" \
   -H "Content-Type: application/json" \
   -X POST -d '{}' "${BASE}/api/diagrams/$DIAGRAM_ID/duplicate")"
 DUP_ID="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['id'])" "$DUP_RESP")"
+DUP_REVISION="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['revision'])" "$DUP_RESP")"
 python3 -c "import sys,json;assert json.loads(sys.argv[1])['title']=='ngs-integration-updated Copy'" "$DUP_RESP"
 
 # Export JSON
@@ -147,16 +232,23 @@ IMP_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" \
   -X POST -d '{"title":"ngs-integration-imported","description":"","nodes":[],"edges":[]}' \
   "${BASE}/api/diagrams/import")"
 IMP_ID="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['id'])" "$IMP_RESP")"
+IMP_REVISION="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['revision'])" "$IMP_RESP")"
 
 # Slug-based lookup
 SLUG_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" "${BASE}/api/diagrams/slug/$SLUG")"
 python3 -c "import sys,json;assert json.loads(sys.argv[1])['title']=='ngs-integration-updated'" "$SLUG_RESP"
 
-# Delete all created diagrams
-for did in "$DIAGRAM_ID" "$DUP_ID" "$IMP_ID"; do
+# Delete all created diagrams with their latest revisions.
+delete_diagram() {
+  local did="$1"
+  local revision="$2"
   curl --noproxy '*' -sS -b "$COOKIE_JAR" \
     -H "X-CSRF-Token: $CSRF_TOKEN" \
+    -H "If-Match: \"diagram-${did}-r${revision}\"" \
     -X DELETE "${BASE}/api/diagrams/$did" >/dev/null
-done
+}
+delete_diagram "$DIAGRAM_ID" "$RESTORED_REVISION"
+delete_diagram "$DUP_ID" "$DUP_REVISION"
+delete_diagram "$IMP_ID" "$IMP_REVISION"
 
 echo "api integration passed"

@@ -29,9 +29,13 @@ private:
     bool canEditDiagram(const httplib::Request& req, long diagramId);
     bool canReadDiagramById(const httplib::Request& req, long diagramId);
     bool ensureId(const httplib::Request& req, httplib::Response& res, int index, long& out);
+    bool ensureExpectedRevision(const httplib::Request& req, httplib::Response& res,
+                                long diagramId, long& out) const;
     bool ensureCanRead(const httplib::Request& req, httplib::Response& res, long diagramId, const char* what);
     bool ensureCanEdit(const httplib::Request& req, httplib::Response& res, long diagramId);
     nlohmann::json diagramResponse(const httplib::Request& req, const Diagram& diagram);
+    void sendDiagramJson(const httplib::Request& req, httplib::Response& res,
+                         int status, const Diagram& diagram);
     void serveStatic(const httplib::Request& req, httplib::Response& res,
                      const std::string& path, bool noStore = false) const;
     void sendJson(httplib::Response& res, int status, const nlohmann::json& body) const;

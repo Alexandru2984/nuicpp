@@ -76,14 +76,15 @@
 
   async function api(path, options = {}) {
     const method = (options.method || "GET").toUpperCase();
-    const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+    const { headers: requestedHeaders = {}, ...fetchOptions } = options;
+    const headers = { "Content-Type": "application/json", ...requestedHeaders };
     if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
       headers["X-CSRF-Token"] = await ensureCsrfToken();
     }
     return fetch(path, {
+      ...fetchOptions,
       credentials: "same-origin",
-      headers,
-      ...options
+      headers
     }).then(async (res) => {
       if (res.status === 401) {
         location.href = "/login";
@@ -91,9 +92,36 @@
       }
       const text = await res.text();
       const data = text ? JSON.parse(text) : {};
-      if (!res.ok) throw new Error(data.error || res.statusText);
+      if (!res.ok) {
+        const error = new Error(data.error || res.statusText);
+        error.status = res.status;
+        error.data = data;
+        throw error;
+      }
       return data;
     });
+  }
+
+  function diagramEtag(diagram) {
+    if (!Number.isSafeInteger(diagram?.id) || diagram.id <= 0 ||
+        !Number.isSafeInteger(diagram?.revision) || diagram.revision <= 0) {
+      throw new Error("Diagram revision is unavailable; reopen the diagram before changing it.");
+    }
+    return `"diagram-${diagram.id}-r${diagram.revision}"`;
+  }
+
+  function handleRevisionConflict(error, preserveCurrentDraft = true) {
+    if (error?.status !== 412) return false;
+    if (preserveCurrentDraft) {
+      state.dirty = true;
+      saveDraftNow();
+      setDraftStatus("Conflict - reopen required", true);
+    }
+    const message = preserveCurrentDraft
+      ? "A newer revision was saved elsewhere. Reopen the diagram before saving again; this browser draft was preserved."
+      : "A newer revision was saved elsewhere. Refresh the diagram list before deleting it.";
+    toast(message, "error");
+    return true;
   }
 
 
@@ -472,6 +500,7 @@
           slug: state.current.slug,
           created_at: state.current.created_at,
           updated_at: state.current.updated_at,
+          revision: state.current.revision,
           can_edit: state.current.can_edit,
           share_url: state.current.share_url
         };
@@ -1270,7 +1299,7 @@
       item.querySelector(".diagram-name").textContent = d.title;
       item.querySelector('[data-act="open"]').onclick = () => openDiagram(d.id);
       item.querySelector('[data-act="dup"]').onclick = () => duplicateDiagram(d.id);
-      item.querySelector('[data-act="del"]').onclick = () => deleteDiagram(d.id);
+      item.querySelector('[data-act="del"]').onclick = () => deleteDiagram(d);
       list.appendChild(item);
     }
 
@@ -1404,13 +1433,23 @@
     if (!state.current || state.readOnly) return;
     const draftId = state.current.id;
     state.current.title = el("diagram-title").value.trim() || "Untitled diagram";
-    state.current = await api(`/api/diagrams/${state.current.id}`, { method: "PUT", body: JSON.stringify(state.current) });
-    clearDraft(draftId);
-    state.history = [];
-    state.future = [];
-    await loadDiagrams();
-    await loadVersions();
-    render();
+    try {
+      state.current = await api(`/api/diagrams/${state.current.id}`, {
+        method: "PUT",
+        headers: { "If-Match": diagramEtag(state.current) },
+        body: JSON.stringify(state.current)
+      });
+      clearDraft(draftId);
+      state.history = [];
+      state.future = [];
+      await loadDiagrams();
+      await loadVersions();
+      render();
+    } catch (error) {
+      if (!handleRevisionConflict(error)) {
+        toast(error.message || "Could not save the diagram.", "error");
+      }
+    }
   }
 
   async function duplicateDiagram(id) {
@@ -1419,13 +1458,23 @@
     await openDiagram(created.id);
   }
 
-  async function deleteDiagram(id) {
-    if (state.readOnly && state.current?.id === id) return;
+  async function deleteDiagram(diagram) {
+    const id = diagram?.id;
+    if (!id || (state.readOnly && state.current?.id === id)) return;
     if (!confirm("Delete this diagram?")) return;
-    await api(`/api/diagrams/${id}`, { method: "DELETE" });
-    if (state.current?.id === id) state.current = null;
-    await loadDiagrams();
-    render();
+    try {
+      await api(`/api/diagrams/${id}`, {
+        method: "DELETE",
+        headers: { "If-Match": diagramEtag(diagram) }
+      });
+      if (state.current?.id === id) state.current = null;
+      await loadDiagrams();
+      render();
+    } catch (error) {
+      if (!handleRevisionConflict(error, state.current?.id === id)) {
+        toast(error.message || "Could not delete the diagram.", "error");
+      }
+    }
   }
 
   async function loadVersions() {
@@ -1453,9 +1502,24 @@
       item.querySelector('[data-act="restore"]').onclick = async () => {
         if (!confirm(`Restore version ${v.version_number}?`)) return;
         if (state.readOnly) return;
-        state.current = await api(`/api/diagrams/${state.current.id}/restore/${v.id}`, { method: "POST", body: "{}" });
-        await loadVersions();
-        render();
+        const diagramId = state.current.id;
+        try {
+          state.current = await api(`/api/diagrams/${diagramId}/restore/${v.id}`, {
+            method: "POST",
+            headers: { "If-Match": diagramEtag(state.current) },
+            body: "{}"
+          });
+          clearDraft(diagramId);
+          state.history = [];
+          state.future = [];
+          await loadDiagrams();
+          await loadVersions();
+          render();
+        } catch (error) {
+          if (!handleRevisionConflict(error)) {
+            toast(error.message || "Could not restore the version.", "error");
+          }
+        }
       };
       list.appendChild(item);
     }
