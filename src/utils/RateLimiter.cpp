@@ -75,6 +75,11 @@ void RateLimiter::clear() {
     hits_.clear();
 }
 
+void RateLimiter::clear(const std::string& key) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    hits_.erase(key);
+}
+
 std::size_t RateLimiter::trackedKeys() {
     std::lock_guard<std::mutex> lock(mutex_);
     return hits_.size();

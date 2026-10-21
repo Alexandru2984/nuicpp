@@ -18,8 +18,6 @@
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
-#include <mutex>
-#include <unordered_map>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
@@ -160,16 +158,6 @@ std::string sessionCookie(const httplib::Request& req, const std::string& value,
     return cookie;
 }
 
-std::unordered_map<std::string, std::vector<long long>>& loginFailures() {
-    static std::unordered_map<std::string, std::vector<long long>> failures;
-    return failures;
-}
-
-std::mutex& loginFailuresMutex() {
-    static std::mutex mutex;
-    return mutex;
-}
-
 long long epochSeconds() {
     return std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
@@ -185,8 +173,12 @@ RateLimiter& createRateLimiter() {
     return limiter;
 }
 
+RateLimiter& loginRateLimiter() {
+    static RateLimiter limiter;
+    return limiter;
+}
+
 constexpr long long kLoginFailureWindow = 10 * 60;
-constexpr std::size_t kMaxLoginFailureKeys = 10000;
 constexpr int kGuestSessionSeconds = 7 * 24 * 60 * 60;
 
 // A page comfortably exceeds MAX_DIAGRAMS_PER_GUEST, so a guest still gets its
@@ -218,49 +210,6 @@ long clampQueryParam(const httplib::Request& req, const char* name, long fallbac
     } catch (...) {
         return fallback;
     }
-}
-
-// Caller must hold loginFailuresMutex(). Entries are only pruned when the map
-// they live in is touched, so a sweep is needed to stop addresses that never
-// come back from accumulating for the process lifetime.
-void pruneLoginFailuresLocked(long long now) {
-    auto& failures = loginFailures();
-    for (auto it = failures.begin(); it != failures.end();) {
-        auto& items = it->second;
-        items.erase(std::remove_if(items.begin(), items.end(), [now](long long t) {
-            return now - t > kLoginFailureWindow;
-        }), items.end());
-        if (items.empty()) {
-            it = failures.erase(it);
-        } else {
-            ++it;
-        }
-    }
-}
-
-bool loginBlocked(const std::string& ip) {
-    auto now = epochSeconds();
-    std::lock_guard<std::mutex> lock(loginFailuresMutex());
-    pruneLoginFailuresLocked(now);
-    auto it = loginFailures().find(ip);
-    return it != loginFailures().end() && it->second.size() >= 8;
-}
-
-void recordLoginFailure(const std::string& ip) {
-    auto now = epochSeconds();
-    std::lock_guard<std::mutex> lock(loginFailuresMutex());
-    pruneLoginFailuresLocked(now);
-    if (loginFailures().size() >= kMaxLoginFailureKeys && !loginFailures().contains(ip)) {
-        // Every tracked address is inside the window already; refuse to grow
-        // rather than let a spray of addresses drive memory use.
-        return;
-    }
-    loginFailures()[ip].push_back(now);
-}
-
-void clearLoginFailures(const std::string& ip) {
-    std::lock_guard<std::mutex> lock(loginFailuresMutex());
-    loginFailures().erase(ip);
 }
 
 std::string sha256Hex(const std::string& data) {
@@ -704,7 +653,8 @@ void Routes::registerRoutes(httplib::Server& server) {
     });
     server.Post("/login", [this](const httplib::Request& req, httplib::Response& res) {
         auto ip = clientIp(req);
-        if (loginBlocked(ip)) {
+        const auto limiterKey = "login:" + ip;
+        if (!loginRateLimiter().allow(limiterKey, 8, kLoginFailureWindow, epochSeconds())) {
             res.status = 429;
             res.set_content(renderLoginPage("Too many login attempts. Try again later."), "text/html; charset=utf-8");
             return;
@@ -712,12 +662,11 @@ void Routes::registerRoutes(httplib::Server& server) {
         auto username = formValue(req.body, "username");
         auto password = formValue(req.body, "password");
         if (username == cfg_.authUsername && verifyPassword(password)) {
-            clearLoginFailures(ip);
+            loginRateLimiter().clear(limiterKey);
             res.status = 302;
             res.set_header("Set-Cookie", makeSessionCookie(req, username));
             res.set_header("Location", "/");
         } else {
-            recordLoginFailure(ip);
             res.status = 401;
             res.set_content(renderLoginPage("Invalid credentials"), "text/html; charset=utf-8");
         }

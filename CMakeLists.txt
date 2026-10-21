@@ -36,6 +36,7 @@ add_executable(nuigraph-studio
     src/ui/NuiApp.cpp
     src/utils/Json.cpp
     src/utils/RateLimiter.cpp
+    src/utils/Security.cpp
 )
 
 target_include_directories(nuigraph-studio PRIVATE src ${PQXX_INCLUDE_DIRS})
@@ -59,6 +60,7 @@ add_executable(nuigraph-tests
     src/validation/DiagramValidator.cpp
     src/utils/Json.cpp
     src/utils/RateLimiter.cpp
+    src/utils/Security.cpp
 )
 
 target_include_directories(nuigraph-tests PRIVATE src)

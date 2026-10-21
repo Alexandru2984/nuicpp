@@ -70,11 +70,18 @@ because owner hashes are derived from it. Rotate only deliberately.
 
 - The admin password is stored as `pbkdf2_sha256$<iterations>$<salt>$<hash>`
   and verified with `PKCS5_PBKDF2_HMAC` plus a constant-time compare.
-- Failed logins are tracked per IP: 8 failures in 10 minutes blocks further
-  attempts. nginx additionally caps `/login` at 10 requests/minute.
-- The failure map is pruned on every touch and hard-capped at
-  `kMaxLoginFailureKeys = 10000`. Once full it refuses to grow rather than let a
-  spray of source addresses drive memory use.
+- Login attempts are tracked per IP: the ninth attempt in 10 minutes is blocked.
+  A successful login clears that address's bucket. nginx additionally caps
+  `/login` at 10 requests/minute.
+- The bounded limiter preferentially retains keys closest to their limit when a
+  source-address flood fills it. New addresses therefore cannot make login
+  tracking fail open merely by exhausting the key map.
+
+Share slugs are bearer capabilities. The application logger and the dedicated
+nginx access format replace values in `/d/{slug}` and
+`/api/diagrams/slug/{slug}` with `<redacted>` before writing them. Do not switch
+the vhost back to the default `$request` access format, which contains the raw
+path, or add the raw `Referer`, which can contain the share page URL.
 
 ## Authorization
 

@@ -3,6 +3,7 @@
 #include "domain/Templates.hpp"
 #include "utils/Json.hpp"
 #include "utils/RateLimiter.hpp"
+#include "utils/Security.hpp"
 #include "validation/DiagramValidator.hpp"
 
 #include <cmath>
@@ -519,6 +520,28 @@ void testRateLimiterClear() {
     require(limiter.allow("ip", 1, 60, 1002), "after clear, should allow again");
 }
 
+void testRateLimiterClearsOneKey() {
+    RateLimiter limiter;
+    limiter.allow("login:a", 1, 60, 1000);
+    limiter.allow("login:b", 1, 60, 1000);
+    limiter.clear("login:a");
+    require(limiter.allow("login:a", 1, 60, 1001), "cleared key should be allowed again");
+    require(!limiter.allow("login:b", 1, 60, 1001), "other key must remain limited");
+}
+
+void testSensitivePathsAreRedacted() {
+    require(redactRequestPath("/d/private-capability-123") == "/d/<redacted>",
+            "public share capability should be redacted");
+    require(redactRequestPath("/api/diagrams/slug/private-capability-123") ==
+                "/api/diagrams/slug/<redacted>",
+            "API share capability should be redacted");
+    require(redactRequestPath("/api/diagrams/42") == "/api/diagrams/42",
+            "ordinary route should be preserved");
+    require(redactRequestPath("/d/") == "/d/", "empty share route should be preserved");
+    require(redactRequestPath("/d/token/extra") == "/d/token/extra",
+            "non-matching nested path should be preserved");
+}
+
 void testRateLimiterSlidingWindow() {
     RateLimiter limiter;
     limiter.allow("ip", 3, 10, 100);
@@ -620,14 +643,16 @@ int main() {
         testJsonRoundTripPreservesMetadata();
         // rate limiter tests
         testRateLimiterClear();
+        testRateLimiterClearsOneKey();
         testRateLimiterSlidingWindow();
         testRateLimiterMultipleKeys();
         testRateLimiterEvictsExpiredKeys();
         testRateLimiterEvictionKeepsThrottledKeys();
+        testSensitivePathsAreRedacted();
     } catch (const std::exception& e) {
         std::cerr << "test failed: " << e.what() << '\n';
         return EXIT_FAILURE;
     }
-    std::cout << "nuigraph validation tests passed (42 tests)\n";
+    std::cout << "nuigraph validation tests passed (46 tests)\n";
     return EXIT_SUCCESS;
 }

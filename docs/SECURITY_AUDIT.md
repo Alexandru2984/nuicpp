@@ -116,9 +116,11 @@ costs.
 2. **Version and save concurrency.** `MAX(version_number)+1` is not protected by a
    diagram row lock. Concurrent writes can collide or overwrite changes without a
    conflict response.
-3. **Bearer capabilities in logs.** Both the app and normal proxy access logs
-   record paths containing `/d/{slug}` or `/api/diagrams/slug/{slug}`. Redact or
-   hash the capability while preserving route-level metrics.
+3. **Bearer capabilities in historical/error logs.** Application and dedicated
+   nginx access logging now redact `/d/{slug}` and
+   `/api/diagrams/slug/{slug}`. Historical records and nginx error messages may
+   still contain capabilities; restrict retention/access and rotate exposed
+   links after the share-lifecycle feature lands.
 4. **Detection gap.** Nearly 20,000 journal lines were present, but there are no
    alert rules or on-call target. A quiet disclosure has an effectively unlimited
    MTTD.
@@ -129,9 +131,9 @@ costs.
    hours.
 7. **Application readiness is shallow.** `/health` returns 200 without checking
    PostgreSQL; deployment can declare a broken data path healthy.
-8. **Login limiter can fail open at capacity.** Once 10,000 current source keys are
-   retained, failures from a new address are not recorded. Edge limits reduce but
-   do not eliminate distributed attempts.
+8. **Login limiting remains process-local.** Capacity exhaustion no longer makes
+   new addresses untracked, but counters still reset on restart and are not shared
+   by multiple app instances. Edge limits reduce distributed attempts.
 9. **One secret serves three purposes.** Session signing, CSRF derivation and guest
    ownership share `SESSION_SECRET`. Rotation logs everyone out and permanently
    orphans guest diagrams.
@@ -193,4 +195,3 @@ chain dependencies.
 - Keep the root-owned atomic release, least-privilege runtime DB role, systemd
   sandbox and rollback-on-failed-health design.
 - Continue avoiding user-controlled file paths and shell execution.
-

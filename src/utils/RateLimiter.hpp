@@ -20,6 +20,7 @@ class RateLimiter {
     static constexpr std::size_t kMaxTrackedKeys = 20000;
 
     bool allow(const std::string& key, std::size_t maxRequests, long long windowSeconds, long long nowSeconds);
+    void clear(const std::string& key);
     void clear();
     std::size_t trackedKeys();
 

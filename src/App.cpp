@@ -1,4 +1,5 @@
 #include "App.hpp"
+#include "utils/Security.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -61,7 +62,8 @@ int App::run() {
             what = e.what();
         } catch (...) {
         }
-        std::cerr << nowIso8601() << " level=error method=" << req.method << " path=" << req.path
+        std::cerr << nowIso8601() << " level=error method=" << req.method
+                  << " path=" << redactRequestPath(req.path)
                   << " error=\"" << what << "\"\n";
         res.status = 500;
         res.set_header("Cache-Control", "no-store");
@@ -79,7 +81,7 @@ int App::run() {
         }
         std::cout << nowIso8601()
                   << " level=info method=" << req.method
-                  << " path=" << req.path
+                  << " path=" << redactRequestPath(req.path)
                   << " status=" << res.status
                   << " ip=" << ip
                   << " len=" << res.body.size() << "\n";
