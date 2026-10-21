@@ -14,11 +14,11 @@ bounded request sizes, a dedicated runtime user and database role, Cloudflare-on
 public ingress, and a heavily sandboxed systemd unit.
 
 The largest residual risks are operational and architectural rather than a single
-critical exploit. Anonymous sessions can be renewed indefinitely, the per-owner
-quota has a concurrency race, bearer share identifiers are written to access
-logs, there is no alerting or NuiGraph-specific backup/restore evidence, and the
-deploy tests exercise the production database. Do not expand public usage until
-the P0 controls in `ROADMAP.md` are complete.
+critical exploit. Anonymous sessions can be renewed indefinitely, historical and
+error logs may retain bearer share identifiers, there is no alerting or
+NuiGraph-specific backup/restore evidence, and the deploy tests exercise the
+production database. Do not expand public usage until the P0 controls in
+`ROADMAP.md` are complete.
 
 ## Evidence snapshot
 
@@ -110,12 +110,12 @@ costs.
 
 ### Medium
 
-1. **Quota race and renewable anonymous identity.** Count and insert occur in
-   separate transactions; concurrent creates can cross the configured ceiling.
-   Clearing the cookie creates a fresh owner and quota.
-2. **Version and save concurrency.** `MAX(version_number)+1` is not protected by a
-   diagram row lock. Concurrent writes can collide or overwrite changes without a
-   conflict response.
+1. **Renewable anonymous identity.** Quota enforcement is now atomic per owner,
+   but clearing the cookie creates a fresh owner and quota. There is no global
+   retained-data ceiling.
+2. **Last-write-wins saves.** Version assignment and mutations now serialize on
+   the diagram row, preventing version collisions, but a stale editor can still
+   overwrite a newer save without a revision-conflict response.
 3. **Bearer capabilities in historical/error logs.** Application and dedicated
    nginx access logging now redact `/d/{slug}` and
    `/api/diagrams/slug/{slug}`. Historical records and nginx error messages may

@@ -7,10 +7,16 @@
 
 #include <nlohmann/json.hpp>
 #include <pqxx/pqxx>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace nuigraph {
+
+class DiagramQuotaExceeded final : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
 
 class PostgresStorage {
 public:

@@ -6,10 +6,9 @@ rollback notes where applicable.
 
 ## P0 — contain current production risk
 
-- Make guest quota enforcement atomic in the diagram-creation transaction and
-  add a global storage/diagram ceiling.
-- Serialize version assignment and saves per diagram; return conflict responses
-  rather than losing concurrent edits.
+- Add a global storage/diagram ceiling on top of the atomic per-owner quota.
+- Add revision/ETag conflict responses on top of serialized per-diagram version
+  assignment so stale editors cannot overwrite newer saves.
 - Replace the login limiter's capacity fail-open behaviour and move abuse limits
   to a persistent/shared enforcement point.
 - Redact bearer share slugs from app/nginx logs; add request IDs and explicit
@@ -120,4 +119,3 @@ rollback notes where applicable.
 - Metrics, alerts, logs and privacy impact are defined.
 - Documentation and runbooks match the deployed configuration.
 - Commit contains no secrets and no unrelated working-tree changes.
-

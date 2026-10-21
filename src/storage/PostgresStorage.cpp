@@ -79,10 +79,12 @@ bool PostgresStorage::ping() {
 
 std::string PostgresStorage::uniqueSlug(pqxx::work& tx, const std::string& title) {
     auto base = slugBase(title);
-    std::string slug = base + "-" + randomHex(8);
+    // Share slugs are bearer capabilities. Use 128 random bits so their margin
+    // remains strong even with many diagrams and long-lived public links.
+    std::string slug = base + "-" + randomHex(16);
     int i = 2;
     while (!tx.exec("SELECT 1 FROM diagrams WHERE slug=$1", pqxx::params{slug}).empty()) {
-        slug = base + "-" + randomHex(8) + "-" + std::to_string(i++);
+        slug = base + "-" + randomHex(16) + "-" + std::to_string(i++);
     }
     return slug;
 }
@@ -270,6 +272,24 @@ Diagram PostgresStorage::createDiagram(const Diagram& input, bool importMode, co
     }
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
+
+    if (!ownerTokenHash.empty()) {
+        // Count-and-insert must be one serial operation per owner. The old route
+        // pre-check ran in a different transaction, so parallel requests could
+        // all observe one remaining slot and cross the configured ceiling.
+        // A transaction-scoped advisory lock avoids a durable lock table and is
+        // released automatically on commit or rollback.
+        tx.exec("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+                pqxx::params{ownerTokenHash});
+        const auto owned = tx.exec(
+            "SELECT count(*) AS n FROM diagrams WHERE owner_token_hash=$1",
+            pqxx::params{ownerTokenHash})[0]["n"].as<long>();
+        if (owned >= cfg_.maxDiagramsPerGuest) {
+            throw DiagramQuotaExceeded(
+                "diagram limit reached for this session; delete one to make room");
+        }
+    }
+
     auto slug = uniqueSlug(tx, diagram.title);
     auto rows = tx.exec(R"SQL(
         INSERT INTO diagrams (title, slug, description, owner_token_hash)
@@ -346,6 +366,20 @@ VersionInfo PostgresStorage::createVersion(long diagramId, const std::string& no
 }
 
 VersionInfo PostgresStorage::createVersion(pqxx::work& tx, long diagramId, const std::string& note) {
+    if (note.size() > 240) {
+        throw std::invalid_argument("version note is too long");
+    }
+
+    // MAX(version_number)+1 is safe only while one transaction at a time may
+    // assign a version for this diagram. Locking its parent row also serializes
+    // saves/restores with manual snapshots and turns the unique constraint into
+    // a final invariant rather than normal concurrency control.
+    auto locked = tx.exec("SELECT 1 FROM diagrams WHERE id=$1 FOR UPDATE",
+                          pqxx::params{diagramId});
+    if (locked.empty()) {
+        throw std::runtime_error("diagram not found");
+    }
+
     auto diagram = getDiagram(tx, diagramId);
     auto next = tx.exec("SELECT COALESCE(MAX(version_number),0)+1 AS n FROM diagram_versions WHERE diagram_id=$1", pqxx::params{diagramId})[0]["n"].as<int>();
     auto rows = tx.exec(R"SQL(

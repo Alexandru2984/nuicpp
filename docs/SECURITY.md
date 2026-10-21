@@ -119,7 +119,8 @@ Two subtleties worth preserving:
    `GET /api/diagrams/slug/{slug}` serve a read-only view to non-owners. Slugs
    are the capability, so they must be unguessable: `003_randomize_legacy_slugs.sql`
    replaced the old sequential `-<timestamp>` suffix with 16 hex characters from
-   `gen_random_uuid()`. Do not reintroduce a predictable suffix.
+   `gen_random_uuid()`. New links use a 32-hex-character, 128-bit random suffix;
+   older 64-bit links remain valid. Do not reintroduce a predictable suffix.
 
 ## CSRF
 
@@ -152,13 +153,15 @@ Three independent layers, because each has a different failure mode:
 | Edge | 24 concurrent connections per IP | `nuicpp-rate-limit.conf` |
 | App | 240 writes / 10 min per IP | `ensureWriteRateLimit` |
 | App | 40 creates / 10 min per IP | `ensureWriteRateLimit` |
-| App | 8 login failures / 10 min per IP | `loginBlocked` |
-| App | `MAX_DIAGRAMS_PER_GUEST` rows per owner hash | `ensureCreateQuota` |
+| App | 8 login attempts / 10 min per IP | `loginRateLimiter` |
+| App | `MAX_DIAGRAMS_PER_GUEST` rows per owner hash | `PostgresStorage::createDiagram` |
 
 The per-owner quota exists because per-IP limits only slow storage growth; they
 do not bound it. A visitor who waits between bursts could otherwise fill the
-disk. The quota gives a hard ceiling per session and returns `403` with a
-message telling the visitor to delete something.
+disk. Creation obtains a transaction-scoped PostgreSQL advisory lock for the
+owner hash, then counts and inserts in that same transaction. Parallel requests
+therefore cannot race past the ceiling. The API returns `403` with a message
+telling the visitor to delete something.
 
 `RateLimiter` itself is bounded at `kMaxTrackedKeys = 20000`. When full it
 evicts by **hit count first, recency second** — deliberately, so that flooding
