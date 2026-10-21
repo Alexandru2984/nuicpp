@@ -9,6 +9,9 @@ whatever they create in it, and can share read-only links. There is a single
 admin account for maintenance.
 
 - **Security model:** [`docs/SECURITY.md`](docs/SECURITY.md)
+- **Security audit and threat model:** [`docs/SECURITY_AUDIT.md`](docs/SECURITY_AUDIT.md)
+- **Incident response:** [`docs/INCIDENT_RESPONSE.md`](docs/INCIDENT_RESPONSE.md)
+- **Delivery roadmap:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - **Deploy runbook:** [`docs/DEPLOY.md`](docs/DEPLOY.md)
 
 ## Features
