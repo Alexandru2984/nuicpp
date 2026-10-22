@@ -32,7 +32,7 @@ complete.
 ## Evidence snapshot
 
 - `main` was clean and three commits ahead of `origin/main` at assessment start.
-- Release build and 48 C++ tests passed. All seven CTest suites, including the five
+- Release build and 48 C++ tests passed. All eight CTest suites, including the five
   live suites, passed against a disposable PostgreSQL 18 database with isolated
   `_test` identities. JavaScript syntax checks, ShellCheck and Cppcheck passed.
 - `npm audit --package-lock-only --audit-level=low` reported zero known
@@ -139,9 +139,10 @@ costs.
 3. **Detection gap.** Nearly 20,000 journal lines were present, but there are no
    alert rules or on-call target. A quiet disclosure has an effectively unlimited
    MTTD.
-4. **Configuration drift.** The checked-in vhost now contains the live ACME
-   handling, but production remains drifted until that candidate is validated and
-   installed through an explicit nginx configuration release.
+4. **Configuration drift.** The checked-in vhost contains the live ACME handling
+   and now passes a self-contained `nginx -t` plus static security invariants in
+   CTest/CI. Production remains drifted until that candidate is installed and
+   passes the host-wide final test before reload.
 5. **CDN cache drift.** Live static responses contradict the documented caching
    contract. The origin now sends explicit CDN revalidation headers and
    `no-store` for the worker, but the observed Cloudflare rule can override them;

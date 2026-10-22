@@ -47,6 +47,7 @@ jobs:
             cppcheck \
             libcpp-httplib-dev \
             libpq-dev \
+            nginx-core \
             nlohmann-json3-dev \
             postgresql-client \
             shellcheck

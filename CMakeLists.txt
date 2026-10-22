@@ -70,12 +70,17 @@ target_compile_options(nuigraph-tests PRIVATE -Wall -Wextra -Wpedantic)
 
 add_test(NAME nuigraph-validation COMMAND nuigraph-tests)
 add_test(NAME nuigraph-frontend COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_frontend.sh)
+add_test(NAME nuigraph-nginx-config COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_nginx_config.sh)
 add_test(NAME nuigraph-security-smoke COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_security_smoke.sh)
 add_test(NAME nuigraph-api-integration COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_api_integration.sh)
 add_test(NAME nuigraph-rate-limits COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_rate_limits.sh)
 add_test(NAME nuigraph-global-quota COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_global_quota.sh)
 add_test(NAME nuigraph-migrations COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_migrations.sh)
-set_tests_properties(nuigraph-frontend PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(
+    nuigraph-frontend
+    nuigraph-nginx-config
+    PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
 set_tests_properties(
     nuigraph-security-smoke
     nuigraph-api-integration

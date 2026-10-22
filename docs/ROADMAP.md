@@ -29,6 +29,9 @@ rollback notes where applicable.
 - PostgreSQL-backed GCRA limits for login, writes and creation, using
   pseudonymous bounded keys; counters are atomic across instances, survive
   restart and fail closed when their decision cannot be persisted.
+- Self-contained nginx candidate validation in CTest/CI, covering syntax, ACME,
+  origin guard, request correlation, redacted capability logs and restrictive
+  CSP before the production files can be copied.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -38,8 +41,10 @@ High risk remain open.
 
 - Add encrypted off-host PostgreSQL backups, retention, failure alerts and a
   scheduled restore drill with measured RPO/RTO.
-- Reconcile the checked-in and live nginx vhost, including ACME handling. Add
-  `nginx -t` against the candidate config before installation.
+- Install the checked-in nginx candidate to reconcile production drift. ACME,
+  origin-guard, correlation and redacted-log invariants now pass an isolated
+  `nginx -t` in CTest/CI before either live file can be copied; the final live
+  `nginx -t` and reload remain an explicit operator step.
 - Correct the account-level Cloudflare cache rule and version static asset URLs;
   origin headers and service-worker updates are now deterministic unless a Cache
   Rule overrides them.

@@ -167,6 +167,7 @@ loosening `ProtectSystem`.
 Two files, both versioned in this repo:
 
 ```bash
+tests/check_nginx_config.sh
 sudo cp deploy/nginx/nuicpp-rate-limit.conf /etc/nginx/conf.d/nuicpp-rate-limit.conf
 sudo cp deploy/nginx/nuicpp.micutu.com.conf /etc/nginx/sites-available/nuicpp.micutu.com
 sudo ln -sf /etc/nginx/sites-available/nuicpp.micutu.com /etc/nginx/sites-enabled/nuicpp.micutu.com
@@ -176,6 +177,13 @@ sudo nginx -t && sudo systemctl reload nginx
 `nuicpp-rate-limit.conf` must be in `conf.d/` because `limit_req_zone` is only
 valid at `http` level; the vhost only references the zones. Copying the vhost
 without it makes `nginx -t` fail with "unknown limit_req_zone".
+
+The candidate test builds a self-contained nginx configuration, substitutes
+only ephemeral certificate/log paths, and runs `nginx -t` before either live
+file is copied. It also asserts the ACME locations, Cloudflare origin guard,
+request-ID forwarding and bearer-safe log format. The final live `nginx -t`
+remains mandatory because shared Cloudflare/Certbot files are host state that CI
+cannot reproduce. A failed final test must never be followed by reload.
 
 The vhost depends on `$from_cloudflare_origin`, defined in the shared
 `/etc/nginx/conf.d/cloudflare-origin-guard.conf`. That file already exists and

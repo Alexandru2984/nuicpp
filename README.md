@@ -133,10 +133,10 @@ The build is clean under `-Wall -Wextra -Wpedantic`.
 ctest --test-dir build --output-on-failure
 ```
 
-Seven suites cover unit validation, frontend assets, live security/API behavior,
-shared persistent rate limits, concurrent global quota enforcement, and
-migration-ledger integrity. The five database-backed suites only use a config
-with `APP_ENV=test` whose
+Eight suites cover unit validation, frontend assets, the nginx candidate, live
+security/API behavior, shared persistent rate limits, concurrent global quota
+enforcement, and migration-ledger integrity. The five database-backed suites use
+a config with `APP_ENV=test` whose
 actual PostgreSQL database and login-role names both end in `_test`. Missing
 local prerequisites appear as **Not Run**, not as false passes; deployment sets
 `NUIGRAPH_REQUIRE_LIVE_TESTS=1`, so there they fail closed instead of skipping.
