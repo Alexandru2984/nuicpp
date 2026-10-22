@@ -12,6 +12,8 @@
 namespace nuigraph {
 namespace {
 
+constexpr long kMaxPersistentRateLimitKeys = 20000;
+
 std::string slugBase(const std::string& title) {
     std::string out;
     for (char c : title) {
@@ -191,6 +193,78 @@ long PostgresStorage::countDiagramsForOwner(const std::string& ownerTokenHash) {
     auto count = rows[0]["n"].as<long>();
     tx.commit();
     return count;
+}
+
+bool PostgresStorage::consumeRateLimit(const std::string& bucketKey,
+                                       std::size_t maxRequests,
+                                       long long windowSeconds) {
+    if (bucketKey.size() != 64 || maxRequests == 0 || windowSeconds <= 0) {
+        throw std::invalid_argument("invalid persistent rate-limit parameters");
+    }
+
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
+
+    // Only new identities take this advisory lock. It serialises bounded-table
+    // admission across app instances without blocking updates to existing
+    // buckets. Expired rows are removed before capacity is evaluated so a
+    // rotating-address flood cannot grow storage indefinitely.
+    auto known = tx.exec("SELECT 1 FROM rate_limit_buckets WHERE bucket_key=$1",
+                         pqxx::params{bucketKey});
+    if (known.empty()) {
+        tx.exec("SELECT pg_advisory_xact_lock("
+                "hashtextextended('nuigraph:rate-limit-admission:v1', 0))");
+        tx.exec("DELETE FROM rate_limit_buckets WHERE expires_at <= statement_timestamp()");
+        known = tx.exec("SELECT 1 FROM rate_limit_buckets WHERE bucket_key=$1",
+                        pqxx::params{bucketKey});
+        if (known.empty()) {
+            const auto tracked = tx.exec(
+                "SELECT count(*) AS n FROM rate_limit_buckets")[0]["n"].as<long>();
+            if (tracked >= kMaxPersistentRateLimitKeys) {
+                tx.commit();
+                return false;
+            }
+        }
+    }
+
+    // Generic Cell Rate Algorithm (GCRA): the row stores the theoretical next
+    // arrival. PostgreSQL's statement clock and ON CONFLICT row lock make one
+    // decision atomic across threads, processes and hosts. Rejected attempts do
+    // not extend the lockout; capacity refills smoothly over the configured
+    // window rather than doubling at a fixed-window boundary.
+    const double intervalSeconds =
+        static_cast<double>(windowSeconds) / static_cast<double>(maxRequests);
+    const double burstSeconds = intervalSeconds * static_cast<double>(maxRequests - 1);
+    auto accepted = tx.exec(R"SQL(
+        INSERT INTO rate_limit_buckets
+            (bucket_key, theoretical_arrival_at, expires_at)
+        VALUES
+            ($1,
+             statement_timestamp() + ($2 * interval '1 second'),
+             statement_timestamp() + ($3 * interval '1 second'))
+        ON CONFLICT (bucket_key) DO UPDATE
+        SET theoretical_arrival_at =
+                GREATEST(statement_timestamp(), rate_limit_buckets.theoretical_arrival_at)
+                + ($2 * interval '1 second'),
+            expires_at = statement_timestamp() + ($3 * interval '1 second')
+        WHERE statement_timestamp() >=
+              rate_limit_buckets.theoretical_arrival_at
+              - ($4 * interval '1 second')
+        RETURNING bucket_key
+    )SQL", pqxx::params{bucketKey, intervalSeconds, windowSeconds, burstSeconds});
+    tx.commit();
+    return !accepted.empty();
+}
+
+void PostgresStorage::clearRateLimit(const std::string& bucketKey) {
+    if (bucketKey.size() != 64) {
+        throw std::invalid_argument("invalid persistent rate-limit key");
+    }
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
+    tx.exec("DELETE FROM rate_limit_buckets WHERE bucket_key=$1",
+            pqxx::params{bucketKey});
+    tx.commit();
 }
 
 Diagram PostgresStorage::getDiagram(pqxx::work& tx, long id) {

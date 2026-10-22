@@ -26,6 +26,9 @@ rollback notes where applicable.
 - End-to-end request IDs in nginx and the app plus redacted structured events for
   login, logout, share views, authorization, CSRF, throttling, quotas, revision
   conflicts and storage failures.
+- PostgreSQL-backed GCRA limits for login, writes and creation, using
+  pseudonymous bounded keys; counters are atomic across instances, survive
+  restart and fail closed when their decision cannot be persisted.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -33,7 +36,6 @@ High risk remain open.
 
 ## P0 — contain current production risk
 
-- Move process-local abuse limits to a persistent/shared enforcement point.
 - Add encrypted off-host PostgreSQL backups, retention, failure alerts and a
   scheduled restore drill with measured RPO/RTO.
 - Reconcile the checked-in and live nginx vhost, including ACME handling. Add

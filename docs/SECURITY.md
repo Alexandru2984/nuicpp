@@ -165,9 +165,9 @@ Three independent layers, because each has a different failure mode:
 | Edge | 120 req/min per IP on `/api/`, burst 40 | `nuicpp-rate-limit.conf` |
 | Edge | 10 req/min per IP on `/login`, burst 5 | `nuicpp-rate-limit.conf` |
 | Edge | 24 concurrent connections per IP | `nuicpp-rate-limit.conf` |
-| App | 240 writes / 10 min per IP | `ensureWriteRateLimit` |
-| App | 40 creates / 10 min per IP | `ensureWriteRateLimit` |
-| App | 8 login attempts / 10 min per IP | `loginRateLimiter` |
+| App/DB | 240 writes / 10 min per pseudonymous IP key | `ensureWriteRateLimit` |
+| App/DB | 40 creates / 10 min per pseudonymous IP key | `ensureWriteRateLimit` |
+| App/DB | 8 login attempts / 10 min per pseudonymous IP key | `/login` |
 | App | `MAX_DIAGRAMS_PER_GUEST` rows per owner hash | `PostgresStorage::createDiagram` |
 | App | `MAX_DIAGRAMS_TOTAL` rows across all owners | `PostgresStorage::createDiagram` |
 
@@ -185,12 +185,15 @@ diagram rows rather than bytes, and an attacker could deliberately fill it to
 deny new creations. Disk alerts, a retention policy, cleanup tooling and a
 logical-byte budget are still required.
 
-`RateLimiter` itself is bounded at `kMaxTrackedKeys = 20000`. When full it
-evicts by **hit count first, recency second** — deliberately, so that flooding
-the limiter with fresh keys cannot evict and thereby reset the counter of a
-client that is currently being throttled. `tests/test_validation.cpp` covers
-both the expiry sweep and this property; if you change the eviction policy, that
-second test is the one that matters.
+Application buckets are PostgreSQL-backed GCRA counters. They survive restarts,
+are atomic across multiple app instances, refill gradually, and fail closed with
+`503` if their database decision cannot be made. Bucket keys are HMAC-SHA256
+digests derived from the category and client address, so the table does not
+contain raw IP addresses. It is hard-capped at 20,000 active keys; admission of a
+new key serialises cleanup and capacity checking so a rotating-address flood
+cannot make the table grow without bound. At capacity, previously unseen keys
+are rejected until an existing bucket expires. Cloudflare and nginx remain the
+cheaper first line of defence, because a database limiter is not a DDoS sink.
 
 ## Optimistic concurrency
 
@@ -326,8 +329,9 @@ These are accepted, not overlooked:
 - **No collaboration/WebSocket layer**, so no real-time authorization model is
   needed yet. Adding one will require re-deriving authorization per message, not
   per connection.
-- **Rate limiting is per process.** The service is single-instance; running two
-  copies would double every app-level limit. The nginx limits would still hold.
+- **Rate limiting depends on PostgreSQL.** A database outage deliberately blocks
+  login and writes instead of silently disabling abuse controls; reads may still
+  work if their required database operations are available.
 - **Admin is a single shared credential.** There is no MFA or tamper-resistant,
   per-action audit trail. Security events identify the admin actor class but not
   an individual person.
@@ -341,11 +345,10 @@ snapshots, gets `400` rather than a crash on an out-of-range id, is refused
 without a CSRF token, receives a request ID and emits redacted share/CSRF
 security events. Each `403` has a
 matching positive control on the visitor's own diagram, so a pass cannot come
-from a route that is simply broken. `tests/check_rate_limits.sh` exercises the
-limiter, `tests/check_global_quota.sh` launches six distinct guest sessions
-concurrently against one remaining global slot, and
-`tests/test_validation.cpp` covers the configuration, validation and eviction
-logic.
+from a route that is simply broken. `tests/check_rate_limits.sh` exercises
+shared counters across two app instances and verifies that throttling survives
+their restart; `tests/check_global_quota.sh` launches six distinct guest
+sessions concurrently against one remaining global slot.
 
 ```bash
 ctest --test-dir build --output-on-failure

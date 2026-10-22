@@ -46,6 +46,9 @@ public:
     std::string ownerHashForDiagram(long id);
     long countDiagrams();
     long countDiagramsForOwner(const std::string& ownerTokenHash);
+    bool consumeRateLimit(const std::string& bucketKey, std::size_t maxRequests,
+                          long long windowSeconds);
+    void clearRateLimit(const std::string& bucketKey);
     Diagram createDiagram(const Diagram& input, bool importMode, const std::string& ownerTokenHash = "");
     Diagram updateDiagram(long id, const Diagram& input, const std::string& note,
                           bool importMode, long expectedRevision);

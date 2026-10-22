@@ -4,7 +4,6 @@
 #include "domain/Templates.hpp"
 #include "ui/NuiApp.hpp"
 #include "utils/Json.hpp"
-#include "utils/RateLimiter.hpp"
 #include "utils/Security.hpp"
 
 #include <openssl/evp.h>
@@ -157,26 +156,6 @@ std::string sessionCookie(const httplib::Request& req, const std::string& value,
         cookie += "; Secure";
     }
     return cookie;
-}
-
-long long epochSeconds() {
-    return std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count();
-}
-
-RateLimiter& writeRateLimiter() {
-    static RateLimiter limiter;
-    return limiter;
-}
-
-RateLimiter& createRateLimiter() {
-    static RateLimiter limiter;
-    return limiter;
-}
-
-RateLimiter& loginRateLimiter() {
-    static RateLimiter limiter;
-    return limiter;
 }
 
 constexpr long long kLoginFailureWindow = 10 * 60;
@@ -529,15 +508,24 @@ bool Routes::ensureCsrf(const httplib::Request& req, httplib::Response& res) {
 
 bool Routes::ensureWriteRateLimit(const httplib::Request& req, httplib::Response& res, bool creation) {
     const auto ip = clientIp(req);
-    const auto now = epochSeconds();
-    if (!writeRateLimiter().allow("write:" + ip, 240, 10 * 60, now)) {
-        logSecurityEvent(req, res, "write_rate_limited", "blocked");
-        sendJson(res, 429, errorJson("too many write requests"));
-        return false;
-    }
-    if (creation && !createRateLimiter().allow("create:" + ip, 40, 10 * 60, now)) {
-        logSecurityEvent(req, res, "create_rate_limited", "blocked");
-        sendJson(res, 429, errorJson("too many create requests"));
+    try {
+        const auto writeKey = hmacHex(cfg_.sessionSecret, "rate-limit:v1:write:" + ip);
+        if (!storage_.consumeRateLimit(writeKey, 240, 10 * 60)) {
+            logSecurityEvent(req, res, "write_rate_limited", "blocked");
+            sendJson(res, 429, errorJson("too many write requests"));
+            return false;
+        }
+        if (creation) {
+            const auto createKey = hmacHex(cfg_.sessionSecret, "rate-limit:v1:create:" + ip);
+            if (!storage_.consumeRateLimit(createKey, 40, 10 * 60)) {
+                logSecurityEvent(req, res, "create_rate_limited", "blocked");
+                sendJson(res, 429, errorJson("too many create requests"));
+                return false;
+            }
+        }
+    } catch (const std::exception&) {
+        logSecurityEvent(req, res, "rate_limit_storage", "error");
+        sendJson(res, 503, errorJson("write validation temporarily unavailable"));
         return false;
     }
     return true;
@@ -831,21 +819,32 @@ void Routes::registerRoutes(httplib::Server& server) {
     server.Post("/login", [this](const httplib::Request& req, httplib::Response& res) {
         res.set_header("X-Robots-Tag", "noindex, nofollow, noarchive");
         auto ip = clientIp(req);
-        const auto limiterKey = "login:" + ip;
-        if (!loginRateLimiter().allow(limiterKey, 8, kLoginFailureWindow, epochSeconds())) {
-            res.status = 429;
-            res.set_content(renderLoginPage("Too many login attempts. Try again later."), "text/html; charset=utf-8");
-            logSecurityEvent(req, res, "admin_login", "rate_limited");
+        const auto limiterKey = hmacHex(cfg_.sessionSecret, "rate-limit:v1:login:" + ip);
+        try {
+            if (!storage_.consumeRateLimit(limiterKey, 8, kLoginFailureWindow)) {
+                res.status = 429;
+                res.set_content(renderLoginPage("Too many login attempts. Try again later."), "text/html; charset=utf-8");
+                logSecurityEvent(req, res, "admin_login", "rate_limited");
+                return;
+            }
+        } catch (const std::exception&) {
+            res.status = 503;
+            res.set_content(renderLoginPage("Sign-in validation is temporarily unavailable."), "text/html; charset=utf-8");
+            logSecurityEvent(req, res, "rate_limit_storage", "error");
             return;
         }
         auto username = formValue(req.body, "username");
         auto password = formValue(req.body, "password");
         if (username == cfg_.authUsername && verifyPassword(password)) {
-            loginRateLimiter().clear(limiterKey);
             res.status = 302;
             res.set_header("Set-Cookie", makeSessionCookie(req, username));
             res.set_header("Location", "/");
             logSecurityEvent(req, res, "admin_login", "succeeded");
+            try {
+                storage_.clearRateLimit(limiterKey);
+            } catch (const std::exception&) {
+                logSecurityEvent(req, res, "rate_limit_storage", "clear_error");
+            }
         } else {
             res.status = 401;
             res.set_content(renderLoginPage("Invalid credentials"), "text/html; charset=utf-8");

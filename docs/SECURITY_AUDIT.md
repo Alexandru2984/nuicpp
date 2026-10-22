@@ -11,6 +11,8 @@ passed. Later hardening remains local until pushed and deployed. The operator
 explicitly deferred offsite backup work, so the corresponding High finding
 remains open. The host's official Ubuntu PHP security backport was applied and
 verified independently of the app deploy.
+Application login/write/create limits are now PostgreSQL-backed, bounded and
+tested across two processes and a full restart; deployment is still pending.
 
 ## Executive verdict
 
@@ -76,7 +78,7 @@ complete.
 
 | Rank | STRIDE | Scenario | Likelihood | Impact | Existing controls | Required treatment |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Denial of service | An attacker rotates guest cookies and source addresses, fills the global row allowance, creates large diagrams/snapshots, or saturates DB workers/storage. App limits reset on restart and the row ceiling does not bound bytes. | High | Medium | Cloudflare/nginx/app limits, payload caps, pool cap, atomic per-session and global row quotas | Logical-byte budget and cleanup; persistent/distributed limiting; Turnstile for suspicious creation; storage and latency alerts |
+| 1 | Denial of service | An attacker rotates guest cookies and source addresses, fills the global row or active limiter-key allowance, creates large diagrams/snapshots, or saturates DB workers/storage. The row ceiling does not bound bytes. | High | Medium | Cloudflare/nginx limits, bounded shared GCRA buckets, payload caps, pool cap, atomic per-session and global row quotas | Logical-byte budget and cleanup; Turnstile for suspicious creation; storage, limiter-capacity and latency alerts |
 | 2 | Information disclosure | App, DB, backups, journals, or bearer-link logs expose private diagram content. Every diagram receives a share capability even before its owner intentionally shares it. | Medium | High | Random slugs, owner checks, least-privilege DB role, CSP, origin guard | Opt-in sharing with rotate/revoke; 128-bit tokens; redact tokens; encrypted and access-controlled backups; retention policy |
 | 3 | Spoofing / elevation | Theft or forgery of the single admin session grants access to all diagrams. Stateless sessions have no individual revocation and one secret also derives guest ownership. | Low | High | HMAC cookies, Secure/HttpOnly/SameSite, PBKDF2, login throttles | `__Host-` cookie; server-side admin session revocation; MFA/passkey; split signing and ownership keys; alert on admin login |
 | 4 | Tampering | Concurrent editors attempt to overwrite, delete or restore over newer work. | Low | Medium | Atomic revision increments, strong ETags, mandatory `If-Match`, `412` rejection, bounded history and local draft preservation | Add a merge/recovery UI before real-time collaboration |
@@ -144,12 +146,14 @@ costs.
    contract. The origin now sends explicit CDN revalidation headers and
    `no-store` for the worker, but the observed Cloudflare rule can override them;
    correct that account-level rule and purge existing objects.
-6. **Login limiting remains process-local.** Capacity exhaustion no longer makes
-   new addresses untracked, but counters still reset on restart and are not shared
-   by multiple app instances. Edge limits reduce distributed attempts.
-7. **One secret serves three purposes.** Session signing, CSRF derivation and guest
-   ownership share `SESSION_SECRET`. Rotation logs everyone out and permanently
-   orphans guest diagrams.
+6. **One secret serves four purposes.** Session signing, CSRF derivation, guest
+   ownership and rate-limit pseudonymisation share `SESSION_SECRET`. Rotation
+   logs everyone out, permanently orphans guest diagrams and resets active
+   rate-limit identities.
+7. **Rate limiting adds a database dependency.** Shared GCRA buckets now survive
+   restarts and are bounded at 20,000 active pseudonymous keys, but a distributed
+   source flood can fill that allowance and make new identities fail closed.
+   Cloudflare/nginx enforcement and database latency alerts remain necessary.
 8. **Supply-chain visibility is incomplete.** CI and continuous scanners use
    immutable action/image revisions and their first remote runs passed. No SBOM,
    immutable Nui revision or signed release provenance exists.

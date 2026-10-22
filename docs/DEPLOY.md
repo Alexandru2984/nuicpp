@@ -256,7 +256,10 @@ so an older binary runs against a newer schema. The exception is
 back does not restore old slugs, and old share links stay dead either way. That
 was the point of the migration. `004_diagram_revisions.sql` only adds a defaulted
 column, so an older binary ignores it during rollback, but the stale-write guard
-is absent until the revised binary is restored. Rolling back code never deletes
+is absent until the revised binary is restored. `005_persistent_rate_limits.sql`
+adds an independent table; an older binary ignores it and falls back to its
+process-local counters. Do not drop the table during rollback: doing so destroys
+active throttling state and is unnecessary. Rolling back code never deletes
 ledger rows or reverts SQL; use a new forward migration for any schema correction.
 
 ## Troubleshooting
@@ -265,7 +268,8 @@ ledger rows or reverts SQL; use a new forward migration for any schema correctio
 | --- | --- |
 | 502 from nginx | `systemctl status nuigraph-studio`; the app is probably down or on the wrong port |
 | 403 on everything | Origin guard: traffic did not arrive via Cloudflare, or CF is in DNS-only mode |
-| 429 during normal use | Edge zones in `nuicpp-rate-limit.conf`, then the app limits in `ensureWriteRateLimit` |
+| 429 during normal use | Edge zones in `nuicpp-rate-limit.conf`, then active pseudonymous rows in `rate_limit_buckets`; do not clear a production bucket without confirming the caller and abuse signal |
+| Login/write returns 503 | Check PostgreSQL readiness, pool saturation and the `rate_limit_storage` event; the abuse control deliberately fails closed |
 | Blank editor page | `ls public/nui/index.wasm`; re-run `scripts/build_nui_frontend.sh` |
 | "storage unavailable" | Correlate the response `X-Request-ID` with the generic `storage_failure` journal event and PostgreSQL logs; raw connection errors are deliberately not journaled |
 | Save/delete/restore returns 412 | Another client won the revision; reopen or refresh, then retry deliberately |

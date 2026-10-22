@@ -133,9 +133,10 @@ The build is clean under `-Wall -Wextra -Wpedantic`.
 ctest --test-dir build --output-on-failure
 ```
 
-Six suites: unit tests for validation and rate-limiter behaviour, a frontend
-asset check, live security/API/rate-limit tests, and migration-ledger integrity.
-The four database-backed suites only use a config with `APP_ENV=test` whose
+Seven suites cover unit validation, frontend assets, live security/API behavior,
+shared persistent rate limits, concurrent global quota enforcement, and
+migration-ledger integrity. The five database-backed suites only use a config
+with `APP_ENV=test` whose
 actual PostgreSQL database and login-role names both end in `_test`. Missing
 local prerequisites appear as **Not Run**, not as false passes; deployment sets
 `NUIGRAPH_REQUIRE_LIVE_TESTS=1`, so there they fail closed instead of skipping.
@@ -287,6 +288,8 @@ view ever pages.
 - Draft autosave is browser-local and is not a substitute for Save.
 - Revision conflicts preserve the local draft but do not merge it automatically;
   reopen the diagram and deliberately restore/reapply the draft.
-- Rate limits are per process; running a second instance would double them.
+- Application rate limits are shared in PostgreSQL and fail closed for login and
+  writes if their decision cannot be persisted; Cloudflare/nginx still provide
+  the cheaper edge layer.
 - Never retain `.initial_admin_password` on the production checkout; move any
   recovery copy to root-only incident storage after the password is recorded.
