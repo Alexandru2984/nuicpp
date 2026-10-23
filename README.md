@@ -134,14 +134,20 @@ The build is clean under `-Wall -Wextra -Wpedantic`.
 ctest --test-dir build --output-on-failure
 ```
 
-Eight suites cover unit validation, frontend assets, the nginx candidate, live
-security/API behavior, shared persistent rate limits, concurrent global quota
-enforcement, and migration-ledger integrity. The five database-backed suites use
+Nine suites cover unit validation, frontend assets, the nginx candidate, real
+Chromium behavior, live security/API behavior, shared persistent rate limits,
+concurrent global quota enforcement, and migration-ledger integrity. The six
+database-backed suites use
 a config with `APP_ENV=test` whose
 actual PostgreSQL database and login-role names both end in `_test`. Missing
 local prerequisites appear as **Not Run**, not as false passes; deployment sets
 `NUIGRAPH_REQUIRE_LIVE_TESTS=1`, so there they fail closed instead of skipping.
 See the deploy runbook for the isolated test-database setup.
+
+The Chromium suite exercises desktop and phone layouts, CSP enforcement,
+service-worker replacement, cache isolation from authenticated APIs, and a real
+offline navigation. CI installs its pinned browser runtime; locally run
+`nui-frontend/node_modules/.bin/playwright install chromium` after `npm ci`.
 
 GitHub Actions runs the full build and all live suites against a disposable
 PostgreSQL database, plus ShellCheck, Cppcheck, npm audit, and CodeQL. Workflow

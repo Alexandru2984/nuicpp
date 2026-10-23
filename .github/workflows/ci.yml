@@ -99,6 +99,9 @@ jobs:
           npm ci --prefix nui-frontend --ignore-scripts
           npm audit --prefix nui-frontend --audit-level=high
 
+      - name: Install browser test runtime
+        run: nui-frontend/node_modules/.bin/playwright install --with-deps chromium
+
       - name: Configure and build
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release

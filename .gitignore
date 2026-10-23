@@ -1,6 +1,7 @@
 /build/
 /nui-frontend/build/
 /nui-frontend/node_modules/
+/nui-frontend/test-results/
 /cmake-build-*/
 /.env
 /.initial_admin_password

@@ -13,6 +13,8 @@ remains open. The host's official Ubuntu PHP security backport was applied and
 verified independently of the app deploy.
 Application login/write/create limits are now PostgreSQL-backed, bounded and
 tested across two processes and a full restart; deployment is still pending.
+The browser shell now has a pinned Chromium gate covering CSP, offline fallback,
+worker replacement, cache isolation and responsive phone geometry.
 
 ## Executive verdict
 
@@ -32,7 +34,7 @@ complete.
 ## Evidence snapshot
 
 - `main` was clean and three commits ahead of `origin/main` at assessment start.
-- Release build and 49 C++ tests passed. All eight CTest suites, including the five
+- Release build and 49 C++ tests passed. All nine CTest suites, including the six
   live suites, passed against a disposable PostgreSQL 18 database with isolated
   `_test` identities. JavaScript syntax checks, ShellCheck and Cppcheck passed.
 - `npm audit --package-lock-only --audit-level=low` reported zero known

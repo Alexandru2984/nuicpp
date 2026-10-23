@@ -311,6 +311,11 @@ documented in `DEPLOY.md`.
   Deploy makes unavailable tests fatal; local CTest reports them as skipped.
   Migration files parse `DATABASE_URL` as data instead of executing environment
   files as shell.
+- A pinned Chromium end-to-end gate observes actual CSP violations, proves that
+  service-worker activation removes obsolete release caches, checks that no API
+  response enters Cache Storage, performs an offline navigation, and exercises
+  both desktop and coarse-pointer phone layouts. It uses the same isolated-test
+  database guard as the live API suites.
 - Schema migrations are serialised and transactional. An owner-only ledger
   records each filename and SHA-256 checksum; an applied file that changes makes
   deploy fail rather than silently rewriting schema history.

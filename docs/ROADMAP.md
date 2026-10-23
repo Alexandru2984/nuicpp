@@ -34,6 +34,9 @@ rollback notes where applicable.
   CSP before the production files can be copied.
 - Content-derived release URLs and service-worker cache names across both editor
   shells, with immutable caching only for the exact current asset digest.
+- Real Chromium regression coverage for CSP enforcement, offline navigation,
+  service-worker cache replacement, API cache isolation and phone/desktop
+  layout geometry.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -52,8 +55,6 @@ High risk remain open.
   deterministic unless a Cache Rule overrides them.
 - Ship the actual WASM artifact or formally remove it from the primary path; fail
   release assembly when the chosen shell is incomplete.
-- Add a real-browser regression test for CSP, offline navigation and worker
-  replacement.
 - Add monitoring/alerts for readiness, 5xx, latency, DB pool timeouts, create
   rates, disk growth, auth failures, restarts, certificate expiry and backups.
 - Perform and record the first incident-response tabletop.

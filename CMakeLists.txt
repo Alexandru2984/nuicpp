@@ -70,6 +70,7 @@ target_compile_options(nuigraph-tests PRIVATE -Wall -Wextra -Wpedantic)
 
 add_test(NAME nuigraph-validation COMMAND nuigraph-tests)
 add_test(NAME nuigraph-frontend COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_frontend.sh)
+add_test(NAME nuigraph-browser-e2e COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_browser_e2e.sh)
 add_test(NAME nuigraph-nginx-config COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_nginx_config.sh)
 add_test(NAME nuigraph-security-smoke COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_security_smoke.sh)
 add_test(NAME nuigraph-api-integration COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_api_integration.sh)
@@ -83,6 +84,7 @@ set_tests_properties(
 )
 set_tests_properties(
     nuigraph-security-smoke
+    nuigraph-browser-e2e
     nuigraph-api-integration
     nuigraph-rate-limits
     nuigraph-global-quota
