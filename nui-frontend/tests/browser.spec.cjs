@@ -273,6 +273,13 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(batchInspector).toBeVisible();
       await expect(page.locator("#multi-node-count")).toHaveText("2 nodes selected");
       await expect(page.locator("#multi-node-summary")).toContainText("bounds");
+      await page.locator("#zoom-out").click();
+      await page.locator("#zoom-out").click();
+      const zoomBeforeFrame = Number.parseInt(await page.locator("#zoom-label").textContent(), 10);
+      await page.locator("#canvas").focus();
+      await page.keyboard.press("Shift+2");
+      const zoomAfterFrame = Number.parseInt(await page.locator("#zoom-label").textContent(), 10);
+      expect(zoomAfterFrame).toBeGreaterThan(zoomBeforeFrame);
       await page.locator("#batch-type").selectOption("api");
       await page.locator("#batch-color-enabled").check();
       await page.locator("#batch-color").fill("#123456");
@@ -453,6 +460,7 @@ test.describe("phone layout", () => {
     await expect(customizer).toBeVisible();
     await expect(customizer.getByLabel("Find and focus node", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Edit selected label", { exact: true })).toBeVisible();
+    await expect(customizer.getByLabel("Frame selection", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Align selected nodes left", { exact: true })).toBeVisible();
     await customizer.getByLabel("Add node", { exact: true }).uncheck();
     await customizer.getByLabel("Zoom to fit", { exact: true }).check();

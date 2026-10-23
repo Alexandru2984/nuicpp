@@ -91,6 +91,8 @@ rollback notes where applicable.
 - Multi-selection inspector with type/colour counts and geometric bounds, plus
   batch type, colour, width and height updates committed as one undoable draft
   operation. The same property sheet is available in the phone layout.
+- Selection framing for one or many nodes and edge endpoints via `Shift+2`, the
+  command palette or a customisable mobile action, with phone-safe padding.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -132,7 +134,7 @@ High risk remain open.
 
 ## P2 — editor quality and responsive UX
 
-- Rulers, configurable grid and selection framing.
+- Rulers and configurable grid.
 - Orthogonal/smart edge routing, ports/anchors, curved connectors, waypoints and
   collision avoidance.
 - Groups, frames, layers, lock/hide controls, reusable components and multiple

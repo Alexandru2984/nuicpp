@@ -343,6 +343,7 @@
       { id: "distribute-vertical", label: "Distribute selected nodes vertically", shortLabel: "Space V", category: "Arrange", keywords: "multi selection equal spacing", mobile: true, enabled: () => canArrangeSelection(3), run: () => arrangeSelection("distribute-vertical") },
       { id: "review", label: "Review diagram quality", shortLabel: "Review", category: "Analyze", keywords: "lint cycle orphan duplicate missing label", mobile: true, enabled: () => Boolean(state.current), run: showDiagramReview },
       { id: "find-node", label: "Find and focus node", shortLabel: "Find", category: "Analyze", keywords: "navigate search locate jump", shortcut: "/", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: openNodeNavigator },
+      { id: "frame-selection", label: "Frame selection", shortLabel: "Frame", category: "View", keywords: "zoom center focus selected nodes edge", shortcut: "Shift + 2", mobile: true, enabled: () => selectedFrameNodes().length > 0, run: frameSelection },
       { id: "fit", label: "Zoom to fit", shortLabel: "Fit", category: "View", keywords: "frame center canvas", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: zoomToFit },
       { id: "tool-select", label: "Use select tool", shortLabel: "Select", category: "Tools", keywords: "pointer", mobile: true, run: () => triggerTool("select") },
       { id: "tool-pan", label: "Use pan tool", shortLabel: "Pan", category: "Tools", keywords: "move canvas hand", mobile: true, run: () => triggerTool("pan") },
@@ -1055,6 +1056,7 @@
     ["Ctrl / Cmd + K", "Open command palette"],
     ["/", "Find and focus a node"],
     ["F2 / Enter", "Edit selected node or edge label"],
+    ["Shift + 2", "Frame the current selection"],
     ["Ctrl / Cmd + S", "Save diagram"],
     ["Ctrl / Cmd + Z", "Undo"],
     ["Ctrl / Cmd + Y", "Redo"],
@@ -1376,13 +1378,13 @@
     state.pan.y = clientY - rect.top - worldY * zoom;
   }
 
-  function zoomToFit() {
-    if (!state.current?.nodes?.length) return;
+  function frameNodes(nodes, maximumZoom) {
+    if (!nodes.length) return;
     const rect = canvas.getBoundingClientRect();
-    const minX = Math.min(...state.current.nodes.map((node) => node.x));
-    const minY = Math.min(...state.current.nodes.map((node) => node.y));
-    const maxX = Math.max(...state.current.nodes.map((node) => node.x + node.width));
-    const maxY = Math.max(...state.current.nodes.map((node) => node.y + node.height));
+    const minX = Math.min(...nodes.map((node) => node.x));
+    const minY = Math.min(...nodes.map((node) => node.y));
+    const maxX = Math.max(...nodes.map((node) => node.x + node.width));
+    const maxY = Math.max(...nodes.map((node) => node.y + node.height));
     const width = Math.max(1, maxX - minX);
     const height = Math.max(1, maxY - minY);
     const mobile = window.matchMedia("(max-width: 760px)").matches;
@@ -1391,10 +1393,29 @@
     const bottomPadding = mobile ? 84 : 64;
     const availableWidth = Math.max(1, rect.width - horizontalPadding * 2);
     const availableHeight = Math.max(1, rect.height - topPadding - bottomPadding);
-    state.zoom = Math.min(1, clampZoom(Math.min(availableWidth / width, availableHeight / height)));
+    state.zoom = Math.min(maximumZoom, clampZoom(Math.min(availableWidth / width, availableHeight / height)));
     state.pan.x = horizontalPadding + (availableWidth - width * state.zoom) / 2 - minX * state.zoom;
     state.pan.y = topPadding + (availableHeight - height * state.zoom) / 2 - minY * state.zoom;
     render();
+  }
+
+  function zoomToFit() {
+    frameNodes(state.current?.nodes || [], 1);
+  }
+
+  function selectedFrameNodes() {
+    if (!state.current || !state.selected) return [];
+    let keys = selectedNodeKeys();
+    if (state.selected.type === "edge") {
+      const edge = state.current.edges.find((candidate) => candidate.key === state.selected.key);
+      keys = edge ? [edge.source, edge.target] : [];
+    }
+    const selected = new Set(keys);
+    return state.current.nodes.filter((node) => selected.has(node.key));
+  }
+
+  function frameSelection() {
+    frameNodes(selectedFrameNodes(), 1.75);
   }
 
   const LONG_PRESS_MS = 450;
@@ -3304,6 +3325,12 @@
         return;
       }
       if (evt.target.matches("input, textarea, select") || evt.target.isContentEditable) return;
+      if (evt.shiftKey && evt.code === "Digit2" && !evt.ctrlKey && !evt.metaKey && !evt.altKey &&
+          !document.querySelector('[role="dialog"]') && selectedFrameNodes().length) {
+        evt.preventDefault();
+        frameSelection();
+        return;
+      }
       const editWithEnter = evt.key === "Enter" && (evt.target === canvas || evt.target === document.body);
       if ((evt.key === "F2" || editWithEnter) && !evt.ctrlKey && !evt.metaKey && !evt.altKey &&
           !document.querySelector('[role="dialog"]') && editableSelectedLabelTarget() && !state.readOnly) {
