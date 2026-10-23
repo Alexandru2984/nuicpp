@@ -151,45 +151,70 @@
 
   // ------------------------------------------------------- mobile sheets --
   // Below the phone breakpoint the diagram list and properties panel are
-  // off-canvas sheets. The buttons and scrim are built here so the server
-  // rendered markup stays the same for every viewport.
+  // off-canvas sheets. The scrim and close controls are built here so the
+  // server-rendered and Nui shells keep the same minimal markup.
+  let sheetControls = {
+    open: () => {},
+    closeAll: () => {}
+  };
+
   function initSheets() {
     const panels = {
       diagrams: document.querySelector(".project-panel"),
       properties: document.querySelector(".properties")
     };
+    let lastTrigger = null;
 
     const scrim = document.createElement("button");
     scrim.className = "sheet-scrim hidden";
     scrim.setAttribute("aria-label", "Close panel");
     document.body.appendChild(scrim);
 
-    const toggles = document.createElement("div");
-    toggles.className = "sheet-toggles";
-    document.body.appendChild(toggles);
-
-    const closeAll = () => {
-      Object.values(panels).forEach((panel) => panel?.classList.remove("sheet-open"));
+    const closeAll = (restoreFocus = true) => {
+      Object.values(panels).forEach((panel) => {
+        panel?.classList.remove("sheet-open");
+        panel?.removeAttribute("aria-modal");
+        panel?.removeAttribute("role");
+        panel?.removeAttribute("aria-label");
+      });
+      document.querySelectorAll(".mobile-action-bar [aria-expanded]").forEach((button) => {
+        button.setAttribute("aria-expanded", "false");
+      });
       scrim.classList.add("hidden");
+      if (restoreFocus && lastTrigger?.isConnected) lastTrigger.focus();
+      lastTrigger = null;
     };
 
-    const open = (name) => {
+    const open = (name, trigger = null) => {
       const panel = panels[name];
       if (!panel) return;
+      if (!window.matchMedia("(max-width: 760px)").matches) {
+        const target = [...panel.querySelectorAll("input, button, select")]
+          .find((node) => node.offsetParent !== null);
+        (target || panel).focus();
+        return;
+      }
       const alreadyOpen = panel.classList.contains("sheet-open");
-      closeAll();
-      if (alreadyOpen) return;
+      closeAll(false);
+      if (alreadyOpen) {
+        trigger?.focus();
+        return;
+      }
+      lastTrigger = trigger;
       panel.classList.add("sheet-open");
+      panel.setAttribute("role", "dialog");
+      panel.setAttribute("aria-modal", "true");
+      panel.setAttribute("aria-label", name === "diagrams" ? "Diagrams panel" : "Properties panel");
       scrim.classList.remove("hidden");
+      const toggle = document.querySelector(`.mobile-action-bar [data-panel="${name}"]`);
+      toggle?.setAttribute("aria-expanded", "true");
+      panel.querySelector(".sheet-close")?.focus();
     };
 
     for (const [name, panel] of Object.entries(panels)) {
       if (!panel) continue;
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = name === "diagrams" ? "Diagrams" : "Properties";
-      button.onclick = () => open(name);
-      toggles.appendChild(button);
+      panel.id ||= `mobile-sheet-${name}`;
+      panel.tabIndex = -1;
 
       const close = document.createElement("button");
       close.type = "button";
@@ -203,8 +228,15 @@
 
     scrim.onclick = closeAll;
     window.addEventListener("keydown", (evt) => {
-      if (evt.key === "Escape") closeAll();
+      const openPanel = Object.values(panels).find((panel) => panel?.classList.contains("sheet-open"));
+      if (evt.key === "Escape" && openPanel) {
+        closeAll();
+      } else if (openPanel) {
+        trapDialogFocus(evt, openPanel);
+      }
     });
+
+    sheetControls = { open, closeAll };
   }
 
   // -------------------------------------------------------------- theme --
@@ -263,7 +295,462 @@
     list.parentNode.insertBefore(wrap, list);
   }
 
+  // ------------------------------------------------------ command palette --
+  // Commands are static definitions and all labels are assigned with
+  // textContent. Search text never becomes markup or code.
+  const MOBILE_ACTION_STORAGE = "nuigraph:mobile-actions:v1";
+  const DEFAULT_MOBILE_ACTIONS = ["save", "tool-node"];
+  let mobileActionBar = null;
+
+  function triggerButton(id) {
+    const button = el(id);
+    if (!button || button.disabled) return;
+    button.click();
+  }
+
+  function triggerTool(tool) {
+    const button = document.querySelector(`.toolbox button[data-tool="${tool}"]`);
+    if (!button || button.disabled) return;
+    button.click();
+  }
+
+  function commandDefinitions() {
+    return [
+      { id: "new", label: "New diagram", shortLabel: "New", category: "Diagram", keywords: "create blank", mobile: true, run: newDiagram },
+      { id: "sample", label: "Create from cloud template", shortLabel: "Sample", category: "Diagram", keywords: "sample architecture", run: loadSample },
+      { id: "save", label: "Save diagram", shortLabel: "Save", category: "Diagram", keywords: "persist sync", shortcut: "Ctrl / Cmd + S", mobile: true, enabled: () => Boolean(state.current) && !state.readOnly, run: saveDiagram },
+      { id: "share", label: "Copy share link", shortLabel: "Share", category: "Diagram", keywords: "url clipboard", mobile: true, enabled: () => Boolean(state.current), run: shareDiagram },
+      { id: "undo", label: "Undo", shortLabel: "Undo", category: "Edit", shortcut: "Ctrl / Cmd + Z", mobile: true, enabled: () => state.history.length > 0 && !state.readOnly, run: undo },
+      { id: "redo", label: "Redo", shortLabel: "Redo", category: "Edit", shortcut: "Ctrl / Cmd + Y", mobile: true, enabled: () => state.future.length > 0 && !state.readOnly, run: redo },
+      { id: "copy", label: "Copy selection", shortLabel: "Copy", category: "Edit", shortcut: "Ctrl / Cmd + C", enabled: () => Boolean(state.selected), run: copySelected },
+      { id: "paste", label: "Paste selection", shortLabel: "Paste", category: "Edit", shortcut: "Ctrl / Cmd + V", enabled: () => Boolean(state.clipboard?.nodes?.length) && !state.readOnly, run: pasteSelected },
+      { id: "delete", label: "Delete selection", shortLabel: "Delete", category: "Edit", mobile: true, enabled: () => Boolean(state.selected) && !state.readOnly, run: deleteSelected },
+      { id: "layout", label: "Auto layout", shortLabel: "Layout", category: "Arrange", keywords: "organize graph", mobile: true, enabled: () => Boolean(state.current?.nodes?.length) && !state.readOnly, run: autoLayout },
+      { id: "fit", label: "Zoom to fit", shortLabel: "Fit", category: "View", keywords: "frame center canvas", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: zoomToFit },
+      { id: "tool-select", label: "Use select tool", shortLabel: "Select", category: "Tools", keywords: "pointer", mobile: true, run: () => triggerTool("select") },
+      { id: "tool-pan", label: "Use pan tool", shortLabel: "Pan", category: "Tools", keywords: "move canvas hand", mobile: true, run: () => triggerTool("pan") },
+      { id: "tool-node", label: "Add node", shortLabel: "Node", category: "Tools", keywords: "create shape", mobile: true, enabled: () => Boolean(state.current) && !state.readOnly, run: () => triggerTool("node") },
+      { id: "tool-edge", label: "Connect nodes with an edge", shortLabel: "Edge", category: "Tools", keywords: "line arrow", mobile: true, enabled: () => Boolean(state.current) && !state.readOnly, run: () => triggerTool("edge") },
+      { id: "snap", label: "Toggle grid snapping", shortLabel: "Snap", category: "Arrange", keywords: "align grid", run: () => triggerButton("snap-toggle") },
+      { id: "zoom-in", label: "Zoom in", shortLabel: "Zoom +", category: "View", enabled: () => state.zoom < MAX_ZOOM, run: () => triggerButton("zoom-in") },
+      { id: "zoom-out", label: "Zoom out", shortLabel: "Zoom -", category: "View", enabled: () => state.zoom > MIN_ZOOM, run: () => triggerButton("zoom-out") },
+      { id: "theme", label: "Toggle light or dark theme", shortLabel: "Theme", category: "View", keywords: "appearance", run: () => triggerButton("theme-toggle") },
+      { id: "panel-diagrams", label: "Open diagrams panel", shortLabel: "Diagrams", category: "Panels", keywords: "projects templates", run: () => sheetControls.open("diagrams") },
+      { id: "panel-properties", label: "Open properties panel", shortLabel: "Properties", category: "Panels", keywords: "inspect versions", run: () => sheetControls.open("properties") },
+      { id: "import", label: "Import JSON", shortLabel: "Import", category: "Import and export", enabled: () => !state.readOnly, run: () => triggerButton("import-json") },
+      { id: "export-json", label: "Export JSON", shortLabel: "JSON", category: "Import and export", enabled: () => Boolean(state.current) && !el("export-json")?.disabled, run: () => triggerButton("export-json") },
+      { id: "export-svg", label: "Export SVG", shortLabel: "SVG", category: "Import and export", enabled: () => Boolean(state.current), run: exportSvg },
+      { id: "export-png", label: "Export PNG", shortLabel: "PNG", category: "Import and export", enabled: () => Boolean(state.current), run: exportPng },
+      { id: "export-mermaid", label: "Export Mermaid", shortLabel: "Mermaid", category: "Import and export", enabled: () => Boolean(state.current), run: exportMermaid },
+      { id: "shortcuts", label: "Show keyboard shortcuts", shortLabel: "Shortcuts", category: "Help", keywords: "help keys", shortcut: "?", run: toggleShortcuts },
+      { id: "customize-mobile", label: "Customize mobile action bar", shortLabel: "Customize", category: "View", keywords: "pin bottom buttons", run: openMobileCustomizer }
+    ];
+  }
+
+  function commandEnabled(command) {
+    if (!command) return false;
+    return command.enabled ? Boolean(command.enabled()) : true;
+  }
+
+  function executeCommand(command, onComplete = null) {
+    if (!command || !commandEnabled(command)) return;
+    try {
+      const result = command.run();
+      if (result && typeof result.then === "function") {
+        result.catch((error) => toast(error.message || "Command failed.", "error"))
+          .finally(() => {
+            refreshMobileActionBar();
+            onComplete?.();
+          });
+      } else {
+        refreshMobileActionBar();
+        onComplete?.();
+      }
+    } catch (error) {
+      toast(error.message || "Command failed.", "error");
+    }
+  }
+
+  function trapDialogFocus(evt, dialog) {
+    if (evt.key !== "Tab") return;
+    const focusable = [...dialog.querySelectorAll("button:not(:disabled), input:not(:disabled)")]
+      .filter((node) => node.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (evt.shiftKey && document.activeElement === first) {
+      evt.preventDefault();
+      last.focus();
+    } else if (!evt.shiftKey && document.activeElement === last) {
+      evt.preventDefault();
+      first.focus();
+    }
+  }
+
+  function closeDialog(selector) {
+    const overlay = document.querySelector(selector);
+    if (typeof overlay?.closeDialog === "function") overlay.closeDialog();
+    else overlay?.remove();
+  }
+
+  function openCommandPalette(initialQuery = "") {
+    const existing = document.querySelector(".command-palette-overlay");
+    if (existing) {
+      existing.querySelector("input")?.focus();
+      return;
+    }
+    document.querySelector(".shortcuts-overlay")?.remove();
+    sheetControls.closeAll(false);
+
+    const previousFocus = document.activeElement;
+    const overlay = document.createElement("div");
+    overlay.className = "command-palette-overlay";
+    const dialog = document.createElement("section");
+    dialog.className = "command-palette";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", "command-palette-title");
+
+    const head = document.createElement("div");
+    head.className = "command-palette-head";
+    const title = document.createElement("h2");
+    title.id = "command-palette-title";
+    title.textContent = "Command palette";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "command-close";
+    close.textContent = "Close";
+    head.append(title, close);
+
+    const input = document.createElement("input");
+    input.type = "search";
+    input.className = "command-search";
+    input.placeholder = "Type a command...";
+    input.autocomplete = "off";
+    input.setAttribute("aria-label", "Search commands");
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-autocomplete", "list");
+    input.setAttribute("aria-controls", "command-results");
+    input.setAttribute("aria-expanded", "true");
+    input.value = initialQuery;
+
+    const status = document.createElement("div");
+    status.className = "command-status";
+    status.setAttribute("aria-live", "polite");
+    const list = document.createElement("div");
+    list.id = "command-results";
+    list.className = "command-results";
+    list.setAttribute("role", "listbox");
+    dialog.append(head, input, status, list);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    let visible = [];
+    let activeIndex = 0;
+    const closePalette = () => {
+      overlay.remove();
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+    overlay.closeDialog = closePalette;
+    close.onclick = closePalette;
+    overlay.onclick = (evt) => { if (evt.target === overlay) closePalette(); };
+
+    const updateActive = () => {
+      [...list.querySelectorAll(".command-item")].forEach((button, index) => {
+        const active = index === activeIndex;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", String(active));
+      });
+      const active = list.querySelectorAll(".command-item")[activeIndex];
+      if (active) {
+        input.setAttribute("aria-activedescendant", active.id);
+        active.scrollIntoView({ block: "nearest" });
+      } else {
+        input.removeAttribute("aria-activedescendant");
+      }
+    };
+
+    const runVisible = (index) => {
+      const command = visible[index];
+      if (!commandEnabled(command)) return;
+      closePalette();
+      executeCommand(command);
+    };
+
+    const renderCommands = () => {
+      const words = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      visible = commandDefinitions().filter((command) => {
+        const haystack = `${command.label} ${command.category} ${command.keywords || ""}`.toLowerCase();
+        return words.every((word) => haystack.includes(word));
+      });
+      activeIndex = Math.min(activeIndex, Math.max(0, visible.length - 1));
+      list.replaceChildren();
+      for (const [index, command] of visible.entries()) {
+        const enabled = commandEnabled(command);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.id = `command-option-${index}`;
+        button.className = "command-item";
+        button.setAttribute("role", "option");
+        button.setAttribute("aria-disabled", String(!enabled));
+        button.disabled = !enabled;
+
+        const copy = document.createElement("span");
+        copy.className = "command-copy";
+        const label = document.createElement("strong");
+        label.textContent = command.label;
+        const category = document.createElement("small");
+        category.textContent = enabled ? command.category : `${command.category} - unavailable`;
+        copy.append(label, category);
+        button.appendChild(copy);
+        if (command.shortcut) {
+          const shortcut = document.createElement("kbd");
+          shortcut.textContent = command.shortcut;
+          button.appendChild(shortcut);
+        }
+        button.onclick = () => runVisible(index);
+        button.onpointerenter = () => {
+          activeIndex = index;
+          updateActive();
+        };
+        list.appendChild(button);
+      }
+      if (!visible.length) {
+        const empty = document.createElement("div");
+        empty.className = "command-empty";
+        empty.textContent = "No matching commands";
+        list.appendChild(empty);
+      }
+      status.textContent = `${visible.length} command${visible.length === 1 ? "" : "s"}`;
+      updateActive();
+    };
+
+    input.oninput = () => {
+      activeIndex = 0;
+      renderCommands();
+    };
+    overlay.addEventListener("keydown", (evt) => {
+      if (evt.key === "Escape") {
+        evt.preventDefault();
+        evt.stopPropagation();
+        closePalette();
+        return;
+      }
+      if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "k") {
+        evt.preventDefault();
+        evt.stopPropagation();
+        closePalette();
+        return;
+      }
+      if (evt.key === "ArrowDown" || evt.key === "ArrowUp") {
+        evt.preventDefault();
+        if (visible.length) {
+          activeIndex = (activeIndex + (evt.key === "ArrowDown" ? 1 : -1) + visible.length) % visible.length;
+          updateActive();
+        }
+        return;
+      }
+      if (evt.key === "Enter" && document.activeElement === input) {
+        evt.preventDefault();
+        runVisible(activeIndex);
+        return;
+      }
+      trapDialogFocus(evt, dialog);
+    });
+
+    renderCommands();
+    input.focus();
+  }
+
+  function mobileCandidateCommands() {
+    return commandDefinitions().filter((command) => command.mobile);
+  }
+
+  function mobileActionIds() {
+    try {
+      const raw = localStorage.getItem(MOBILE_ACTION_STORAGE);
+      if (raw === null) return [...DEFAULT_MOBILE_ACTIONS];
+      const saved = JSON.parse(raw);
+      if (!Array.isArray(saved)) return [...DEFAULT_MOBILE_ACTIONS];
+      const allowed = new Set(mobileCandidateCommands().map((command) => command.id));
+      return [...new Set(saved)].filter((id) => allowed.has(id)).slice(0, 2);
+    } catch {
+      return [...DEFAULT_MOBILE_ACTIONS];
+    }
+  }
+
+  function mobileBarButton(label, className = "") {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = className;
+    button.textContent = label;
+    return button;
+  }
+
+  function refreshMobileActionBar() {
+    if (!mobileActionBar) return;
+    const commands = new Map(commandDefinitions().map((command) => [command.id, command]));
+    mobileActionBar.querySelectorAll("[data-command-id]").forEach((button) => {
+      const command = commands.get(button.dataset.commandId);
+      if (!command) return;
+      button.disabled = !commandEnabled(command);
+      button.classList.toggle("active", command.id === `tool-${state.tool}`);
+      button.classList.toggle("has-changes", command.id === "save" && state.dirty);
+      button.setAttribute("aria-label", command.id === "save" && state.dirty
+        ? "Save diagram - unsaved changes"
+        : command.label);
+    });
+  }
+
+  function renderMobileActionBar() {
+    if (!mobileActionBar) return;
+    const commands = new Map(commandDefinitions().map((command) => [command.id, command]));
+    mobileActionBar.replaceChildren();
+
+    const diagrams = mobileBarButton("Diagrams");
+    diagrams.dataset.panel = "diagrams";
+    diagrams.setAttribute("aria-controls", "mobile-sheet-diagrams");
+    diagrams.setAttribute("aria-expanded", "false");
+    diagrams.onclick = () => sheetControls.open("diagrams", diagrams);
+    mobileActionBar.appendChild(diagrams);
+
+    const pinned = mobileActionIds().map((id) => commands.get(id)).filter(Boolean);
+    const appendCommand = (command) => {
+      const button = mobileBarButton(command.shortLabel);
+      button.dataset.commandId = command.id;
+      button.title = command.label;
+      button.onclick = () => executeCommand(command);
+      mobileActionBar.appendChild(button);
+    };
+    if (pinned[0]) appendCommand(pinned[0]);
+
+    const palette = mobileBarButton("Menu", "mobile-command-trigger");
+    palette.setAttribute("aria-label", "Commands");
+    palette.title = "Open command palette";
+    palette.onclick = () => openCommandPalette();
+    mobileActionBar.appendChild(palette);
+
+    if (pinned[1]) appendCommand(pinned[1]);
+
+    const properties = mobileBarButton("Inspect");
+    properties.setAttribute("aria-label", "Properties");
+    properties.dataset.panel = "properties";
+    properties.setAttribute("aria-controls", "mobile-sheet-properties");
+    properties.setAttribute("aria-expanded", "false");
+    properties.onclick = () => sheetControls.open("properties", properties);
+    mobileActionBar.appendChild(properties);
+    refreshMobileActionBar();
+  }
+
+  function initMobileActionBar() {
+    mobileActionBar = document.createElement("nav");
+    mobileActionBar.className = "mobile-action-bar";
+    mobileActionBar.setAttribute("aria-label", "Mobile editor actions");
+    document.body.appendChild(mobileActionBar);
+    renderMobileActionBar();
+  }
+
+  function openMobileCustomizer() {
+    closeDialog(".command-palette-overlay");
+    const previousFocus = document.activeElement;
+    const overlay = document.createElement("div");
+    overlay.className = "command-palette-overlay mobile-customizer-overlay";
+    const dialog = document.createElement("section");
+    dialog.className = "mobile-customizer";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", "mobile-customizer-title");
+
+    const title = document.createElement("h2");
+    title.id = "mobile-customizer-title";
+    title.textContent = "Customize mobile action bar";
+    const intro = document.createElement("p");
+    intro.className = "muted";
+    intro.textContent = "Pin up to two actions between Diagrams, Commands and Properties.";
+    const choices = document.createElement("div");
+    choices.className = "mobile-action-choices";
+    const selected = new Set(mobileActionIds());
+    const status = document.createElement("div");
+    status.className = "command-status";
+    status.setAttribute("aria-live", "polite");
+
+    const update = () => {
+      status.textContent = `${selected.size} of 2 actions selected`;
+    };
+    for (const command of mobileCandidateCommands()) {
+      const label = document.createElement("label");
+      label.className = "mobile-action-choice";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = selected.has(command.id);
+      input.onchange = () => {
+        if (input.checked && selected.size >= 2) {
+          input.checked = false;
+          status.textContent = "Choose no more than two actions.";
+          return;
+        }
+        if (input.checked) selected.add(command.id);
+        else selected.delete(command.id);
+        update();
+      };
+      const text = document.createElement("span");
+      text.textContent = command.label;
+      label.append(input, text);
+      choices.appendChild(label);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "mobile-customizer-actions";
+    const reset = mobileBarButton("Reset defaults");
+    const cancel = mobileBarButton("Cancel");
+    const apply = mobileBarButton("Apply");
+    apply.classList.add("primary");
+    actions.append(reset, cancel, apply);
+    dialog.append(title, intro, choices, status, actions);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    const close = () => {
+      overlay.remove();
+      if (previousFocus?.isConnected) previousFocus.focus();
+      else mobileActionBar?.querySelector(".mobile-command-trigger")?.focus();
+    };
+    overlay.closeDialog = close;
+    overlay.onclick = (evt) => { if (evt.target === overlay) close(); };
+    cancel.onclick = close;
+    reset.onclick = () => {
+      try {
+        localStorage.removeItem(MOBILE_ACTION_STORAGE);
+        renderMobileActionBar();
+        close();
+      } catch {
+        status.textContent = "Browser storage is unavailable; the action bar was not changed.";
+      }
+    };
+    apply.onclick = () => {
+      try {
+        localStorage.setItem(MOBILE_ACTION_STORAGE, JSON.stringify([...selected]));
+        renderMobileActionBar();
+        close();
+      } catch {
+        status.textContent = "Browser storage is unavailable; the action bar was not changed.";
+      }
+    };
+    overlay.addEventListener("keydown", (evt) => {
+      if (evt.key === "Escape") {
+        evt.preventDefault();
+        evt.stopPropagation();
+        close();
+        return;
+      }
+      trapDialogFocus(evt, dialog);
+    });
+    update();
+    choices.querySelector("input")?.focus();
+  }
+
   const SHORTCUTS = [
+    ["Ctrl / Cmd + K", "Open command palette"],
     ["Ctrl / Cmd + S", "Save diagram"],
     ["Ctrl / Cmd + Z", "Undo"],
     ["Ctrl / Cmd + Y", "Redo"],
@@ -446,6 +933,7 @@
     const status = el("draft-status");
     if (status) status.textContent = text;
     document.body.classList.toggle("dirty", dirty);
+    refreshMobileActionBar();
   }
 
   function markDirty() {
@@ -551,6 +1039,7 @@
       const node = el(id);
       if (node) node.disabled = readOnly;
     });
+    refreshMobileActionBar();
   }
 
   function worldPoint(evt) {
@@ -578,6 +1067,27 @@
     state.zoom = zoom;
     state.pan.x = clientX - rect.left - worldX * zoom;
     state.pan.y = clientY - rect.top - worldY * zoom;
+  }
+
+  function zoomToFit() {
+    if (!state.current?.nodes?.length) return;
+    const rect = canvas.getBoundingClientRect();
+    const minX = Math.min(...state.current.nodes.map((node) => node.x));
+    const minY = Math.min(...state.current.nodes.map((node) => node.y));
+    const maxX = Math.max(...state.current.nodes.map((node) => node.x + node.width));
+    const maxY = Math.max(...state.current.nodes.map((node) => node.y + node.height));
+    const width = Math.max(1, maxX - minX);
+    const height = Math.max(1, maxY - minY);
+    const mobile = window.matchMedia("(max-width: 760px)").matches;
+    const horizontalPadding = mobile ? 28 : 64;
+    const topPadding = mobile ? 28 : 64;
+    const bottomPadding = mobile ? 84 : 64;
+    const availableWidth = Math.max(1, rect.width - horizontalPadding * 2);
+    const availableHeight = Math.max(1, rect.height - topPadding - bottomPadding);
+    state.zoom = Math.min(1, clampZoom(Math.min(availableWidth / width, availableHeight / height)));
+    state.pan.x = horizontalPadding + (availableWidth - width * state.zoom) / 2 - minX * state.zoom;
+    state.pan.y = topPadding + (availableHeight - height * state.zoom) / 2 - minY * state.zoom;
+    render();
   }
 
   const LONG_PRESS_MS = 450;
@@ -1233,6 +1743,7 @@
     renderOverlay();
     renderProperties();
     renderMinimap();
+    refreshMobileActionBar();
   }
 
   function renderMinimap() {
@@ -1396,7 +1907,8 @@
     state.future = [];
     state.selected = null;
     state.edgeSource = null;
-    render();
+    if (state.current.nodes?.length) zoomToFit();
+    else render();
     await loadVersions();
     renderDiagramList();
   }
@@ -1409,7 +1921,8 @@
     state.future = [];
     state.selected = null;
     state.edgeSource = null;
-    render();
+    if (state.current.nodes?.length) zoomToFit();
+    else render();
     await loadVersions();
     renderDiagramList();
   }
@@ -1564,6 +2077,7 @@
     state.tool = tool;
     state.edgeSource = null;
     document.querySelectorAll(".toolbox button[data-tool]").forEach((btn) => btn.classList.toggle("active", btn.dataset.tool === tool));
+    refreshMobileActionBar();
   }
 
   function copySelected() {
@@ -1687,6 +2201,14 @@
     // Added here rather than in the server markup so the shell stays stable.
     const actions = document.querySelector(".top-actions");
     if (actions) {
+      const commands = document.createElement("button");
+      commands.type = "button";
+      commands.id = "show-command-palette";
+      commands.textContent = "Commands";
+      commands.title = "Open command palette (Ctrl/Cmd+K)";
+      commands.onclick = () => openCommandPalette();
+      actions.prepend(commands);
+
       const mmd = document.createElement("button");
       mmd.type = "button";
       mmd.id = "export-mermaid";
@@ -1901,6 +2423,12 @@
     }, { passive: false });
 
     window.addEventListener("keydown", (evt) => {
+      if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "k") {
+        evt.preventDefault();
+        if (document.querySelector(".command-palette-overlay")) closeDialog(".command-palette-overlay");
+        else openCommandPalette();
+        return;
+      }
       if (evt.target.matches("input, textarea, select")) return;
       if (evt.key === "Delete" || evt.key === "Backspace") deleteSelected();
       if (evt.key === "Escape") { state.selected = null; state.edgeSource = null; render(); }
@@ -1922,6 +2450,7 @@
 
   initBindings();
   initSheets();
+  initMobileActionBar();
   initTheme();
   initSearch();
   Promise.all([loadTemplates(), loadDiagrams()])

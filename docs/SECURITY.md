@@ -316,8 +316,10 @@ documented in `DEPLOY.md`.
 - A pinned Chromium end-to-end gate observes actual CSP violations, proves that
   service-worker activation removes obsolete release caches, checks that no API
   response enters Cache Storage, performs an offline navigation, and exercises
-  both desktop and coarse-pointer phone layouts. It uses the same isolated-test
-  database guard as the live API suites.
+  both desktop and coarse-pointer phone layouts. Command-palette focus return,
+  allowlisted mobile-action persistence and 44px touch targets are checked in
+  the same real browser. It uses the same isolated-test database guard as the
+  live API suites.
 - `/metrics` accepts loopback collectors only, is independently denied to public
   clients by nginx, and exports fixed-label aggregate telemetry without actors,
   request IDs, share capabilities or diagram content. It stays readable during

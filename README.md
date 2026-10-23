@@ -12,6 +12,7 @@ admin account for maintenance.
 - **Security audit and threat model:** [`docs/SECURITY_AUDIT.md`](docs/SECURITY_AUDIT.md)
 - **Incident response:** [`docs/INCIDENT_RESPONSE.md`](docs/INCIDENT_RESPONSE.md)
 - **Monitoring and alert response:** [`docs/MONITORING.md`](docs/MONITORING.md)
+- **Supply-chain inventory:** [`docs/SUPPLY_CHAIN.md`](docs/SUPPLY_CHAIN.md)
 - **Delivery roadmap:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - **Deploy runbook:** [`docs/DEPLOY.md`](docs/DEPLOY.md)
 
@@ -30,7 +31,9 @@ admin account for maintenance.
   600x400 bounds the server clamps to.
 - Alignment guides while dragging: edges and centres latch onto neighbouring
   nodes within 6 screen pixels, and the guide spans every box it lines up.
-- Keyboard shortcuts with a `?` overlay listing them.
+- Searchable command palette on `Ctrl/Cmd+K`, including editing, canvas, export,
+  panel and appearance actions; keyboard shortcuts remain available from `?`.
+- Zoom-to-fit frames the entire graph while reserving room for mobile controls.
 - Diagram search filter over the sidebar list.
 - Light and dark themes, remembered per browser.
 
@@ -54,6 +57,9 @@ admin account for maintenance.
   page.
 - Three-breakpoint responsive layout — four-column desktop, stacked tablet, and
   a phone layout with a full-bleed canvas and slide-up sheets for the panels.
+- Compact phone action bar replaces both scrolling toolbars. Its two quick
+  actions are customisable and persisted locally, while every action remains in
+  the command palette; coarse-pointer targets are at least 44px.
 - Installable as a PWA (`manifest.webmanifest`, maskable icon).
 - Service worker caches the static shell for offline loads and serves
   `/offline.html` when a navigation cannot reach the network. It never caches
@@ -152,7 +158,9 @@ See the deploy runbook for the isolated test-database setup.
 
 The Chromium suite exercises desktop and phone layouts, CSP enforcement,
 service-worker replacement, cache isolation from authenticated APIs, and a real
-offline navigation. CI installs its pinned browser runtime; locally run
+offline navigation. It also verifies command-palette focus restoration, mobile
+action customisation, 44px touch targets and persistence across reload. CI
+installs its pinned browser runtime; locally run
 `nui-frontend/node_modules/.bin/playwright install chromium` after `npm ci`.
 
 GitHub Actions runs the full build and all live suites against a disposable

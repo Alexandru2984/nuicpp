@@ -15,6 +15,10 @@ Application login/write/create limits are now PostgreSQL-backed, bounded and
 tested across two processes and a full restart; deployment is still pending.
 The browser shell now has a pinned Chromium gate covering CSP, offline fallback,
 worker replacement, cache isolation and responsive phone geometry.
+The phone layout replaces its scrolling toolbars with a bounded, locally
+customisable action bar, and the searchable command palette restores focus and
+traps keyboard navigation. Command labels are static text, persisted action IDs
+are allowlisted, and Chromium covers desktop and phone interaction paths.
 The server-rendered shell is now the explicit production default; selecting Nui
 fails closed on an incomplete or symlinked bundle, and the default CSP no longer
 grants WebAssembly code generation.

@@ -69,6 +69,29 @@ test.describe("desktop security and offline lifecycle", () => {
     expect(cachedPaths.some((path) => path.startsWith("/api/"))).toBe(false);
     expect(cachedPaths).toContain("/offline.html");
 
+    const title = page.locator("#diagram-title");
+    await title.focus();
+    await page.keyboard.press("Control+k");
+    await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Search commands" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(title).toBeFocused();
+
+    await page.keyboard.press("Control+k");
+    await page.getByRole("combobox", { name: "Search commands" }).fill("definitely no such command");
+    await expect(page.getByText("No matching commands", { exact: true })).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    await page.keyboard.press("Control+k");
+    await page.getByRole("combobox", { name: "Search commands" }).fill("keyboard shortcuts");
+    await expect(page.getByRole("option", { name: /Show keyboard shortcuts/ })).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).not.toBeVisible();
+
     expect(await page.evaluate(() => globalThis.__nuigraphPolicyViolations)).toEqual([]);
 
     await context.setOffline(true);
@@ -86,25 +109,28 @@ test.describe("desktop security and offline lifecycle", () => {
 test.describe("phone layout", () => {
   test.use(pixel5);
 
-  test("keeps the canvas usable and exposes touch-sized bottom sheets", async ({ page }) => {
+  test("keeps the canvas usable with a customisable touch action bar", async ({ page }) => {
     await installPolicyViolationRecorder(page);
     await page.goto("/", { waitUntil: "networkidle" });
 
     await expect(page.locator("#canvas")).toBeVisible();
-    await expect(page.locator(".sheet-toggles")).toBeVisible();
+    await expect(page.locator(".mobile-action-bar")).toBeVisible();
+    await expect(page.locator(".top-actions")).not.toBeVisible();
+    await expect(page.locator(".toolbox")).not.toBeVisible();
     await expect(page.getByRole("button", { name: "Diagrams", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Commands", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Properties", exact: true })).toBeVisible();
 
     const geometry = await page.evaluate(() => ({
       viewportWidth: window.innerWidth,
       documentWidth: document.documentElement.scrollWidth,
       canvas: document.querySelector("#canvas").getBoundingClientRect().toJSON(),
-      targets: [...document.querySelectorAll(".sheet-toggles button")].map((button) =>
+      targets: [...document.querySelectorAll(".mobile-action-bar button")].map((button) =>
         button.getBoundingClientRect().height)
     }));
     expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
     expect(geometry.canvas.width).toBeGreaterThan(300);
-    expect(geometry.canvas.height).toBeGreaterThan(250);
+    expect(geometry.canvas.height).toBeGreaterThan(400);
     expect(geometry.targets.every((height) => height >= 44)).toBe(true);
 
     await page.getByRole("button", { name: "Diagrams", exact: true }).click();
@@ -112,6 +138,21 @@ test.describe("phone layout", () => {
     await expect(page.locator(".sheet-scrim")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.locator(".project-panel")).not.toBeVisible();
+
+    await page.getByRole("button", { name: "Commands", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
+    await page.getByRole("combobox", { name: "Search commands" }).fill("customize mobile");
+    await page.keyboard.press("Enter");
+    const customizer = page.getByRole("dialog", { name: "Customize mobile action bar" });
+    await expect(customizer).toBeVisible();
+    await customizer.getByLabel("Add node", { exact: true }).uncheck();
+    await customizer.getByLabel("Zoom to fit", { exact: true }).check();
+    await customizer.getByRole("button", { name: "Apply", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Zoom to fit", exact: true })).toBeVisible();
+
+    await page.reload({ waitUntil: "networkidle" });
+    await expect(page.getByRole("button", { name: "Zoom to fit", exact: true })).toBeVisible();
+    await expect(page.locator(".mobile-action-bar button")).toHaveCount(5);
 
     expect(await page.evaluate(() => globalThis.__nuigraphPolicyViolations)).toEqual([]);
   });

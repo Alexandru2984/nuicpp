@@ -248,10 +248,25 @@ h2 { font-size: 14px; color: var(--text-strong); }
 
 /* Anything with a coarse pointer gets full-size targets regardless of width. */
 @media (pointer: coarse) {
-  .top-actions button, .top-actions a { min-height: var(--tap); }
+  button, a.button, input, select, textarea { min-height: var(--tap); }
 }
 
 .top-actions a:hover { text-decoration: underline; }
+
+/* The command palette owns infrequent actions. Keep their real controls in the
+   DOM as one implementation target for commands, but do not let a wall of
+   export/import buttons wrap the desktop header into multiple rows. */
+#load-sample,
+#copy-selected,
+#paste-selected,
+#export-json,
+#export-svg,
+#export-mermaid,
+#export-png,
+#import-json,
+#show-shortcuts {
+  display: none;
+}
 
 #zoom-label {
   min-width: 48px;
@@ -668,7 +683,7 @@ body.dirty .draft-status { color: var(--warn); }
 }
 
 /* Mobile-only chrome: hidden until the phone breakpoint turns it on. */
-.sheet-toggles { display: none; }
+.mobile-action-bar { display: none; }
 .sheet-close { display: none; }
 
 /* --------------------------------------------------------------- tablet --- */
@@ -712,10 +727,9 @@ body.dirty .draft-status { color: var(--warn); }
      slide up over it, so the drawing surface is never squeezed into a strip. */
   #app {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     grid-template-areas:
       "top"
-      "tools"
       "canvas";
     height: 100dvh;
     overflow: hidden;
@@ -732,54 +746,66 @@ body.dirty .draft-status { color: var(--warn); }
   .app-title strong { font-size: 15px; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   #diagram-title { width: auto; min-height: var(--tap); }
 
-  /* Toolbar buttons scroll horizontally instead of wrapping into a wall of
-     controls that eats half the viewport. */
-  .top-actions {
-    justify-content: flex-start;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-    padding-bottom: 2px;
-    gap: 6px;
-  }
-
-  .top-actions::-webkit-scrollbar { display: none; }
-  .top-actions button, .top-actions a { min-height: var(--tap); flex: 0 0 auto; }
-
-  .toolbox {
-    flex-direction: row;
-    overflow-x: auto;
-    scrollbar-width: none;
-    gap: 6px;
-    padding: 6px 10px;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .toolbox::-webkit-scrollbar { display: none; }
-  .toolbox button, .toolbox select { min-height: var(--tap); flex: 0 0 auto; }
+  /* The command palette and customisable bottom bar replace two horizontally
+     scrolling toolbars on phones. All original controls remain in the DOM for
+     keyboard/desktop use and for the shared command registry. */
+  .top-actions, .toolbox { display: none; }
 
   .canvas-wrap { grid-area: canvas; }
 
   /* Minimap costs too much of a small screen to be worth it. */
   .minimap { display: none; }
 
-  .sheet-toggles {
-    display: flex;
-    gap: 8px;
+  .mobile-action-bar {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 4px;
     position: fixed;
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: calc(12px + env(safe-area-inset-bottom));
+    left: 8px;
+    right: 8px;
+    bottom: calc(8px + env(safe-area-inset-bottom));
     z-index: 30;
+    padding: 4px;
+    border: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--panel) 92%, transparent);
+    box-shadow: var(--shadow-lift);
+    backdrop-filter: blur(14px);
   }
 
-  .sheet-toggles button {
+  .mobile-action-bar button {
     min-height: var(--tap);
-    padding: 0 16px;
-    border-radius: 999px;
-    background: var(--panel);
-    box-shadow: var(--shadow-lift);
+    min-width: 0;
+    padding: 4px 3px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
     font-weight: 600;
+    font-size: 11px;
+    line-height: 1.15;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-action-bar .mobile-command-trigger {
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+
+  .mobile-action-bar button.active {
+    background: color-mix(in srgb, var(--accent) 20%, var(--panel-2));
+  }
+
+  .mobile-action-bar button.has-changes::after {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-left: 4px;
+    border-radius: 50%;
+    background: var(--warn);
+    vertical-align: 1px;
   }
 
   .project-panel, .properties {
@@ -830,9 +856,9 @@ body.dirty .draft-status { color: var(--warn); }
     position: absolute;
     top: 10px;
     right: 12px;
-    width: var(--tap-sm);
-    height: var(--tap-sm);
-    min-height: 0;
+    width: var(--tap);
+    height: var(--tap);
+    min-height: var(--tap);
     padding: 0;
     border-radius: 999px;
     font-size: 18px;
@@ -850,7 +876,7 @@ body.dirty .draft-status { color: var(--warn); }
     width: 100%;
   }
 
-  .small-actions button { min-height: var(--tap-sm); padding: 0 12px; }
+  .small-actions button { min-height: var(--tap); padding: 0 12px; }
   .diagram-item { padding: 12px; }
   .toast-stack { bottom: calc(76px + env(safe-area-inset-bottom)); }
 }
@@ -897,6 +923,154 @@ body.dirty .draft-status { color: var(--warn); }
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lift);
   padding: 18px;
+}
+
+/* ------------------------------------------------------ command palette -- */
+
+.command-palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: start center;
+  padding: min(13dvh, 120px) 16px 24px;
+  background: color-mix(in srgb, var(--scrim) 88%, transparent);
+}
+
+.command-palette, .mobile-customizer {
+  width: min(640px, 100%);
+  max-height: min(72dvh, 680px);
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: var(--shadow-lift);
+  padding: 14px;
+}
+
+.command-palette-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.command-close { min-height: var(--tap-sm); }
+.command-search { min-height: var(--tap); font-size: 16px; }
+
+.command-status {
+  min-height: 16px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.command-results {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  gap: 5px;
+}
+
+.command-item {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 10px;
+  text-align: left;
+  white-space: normal;
+  background: transparent;
+}
+
+.command-item.active:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel-2));
+}
+
+.command-copy { display: grid; gap: 3px; min-width: 0; }
+.command-copy strong { color: var(--text-strong); font-size: 14px; }
+.command-copy small { color: var(--muted); font-size: 11px; }
+
+.command-item kbd {
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-3);
+  color: var(--muted);
+  padding: 3px 6px;
+  font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.command-empty {
+  padding: 28px 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.mobile-customizer {
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  width: min(520px, 100%);
+}
+
+.mobile-customizer > p { margin: 0; }
+
+.mobile-action-choices {
+  display: grid;
+  gap: 6px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.mobile-action-choice {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap);
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mobile-action-choice input { width: 18px; min-height: 18px; }
+
+.mobile-customizer-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 650;
+}
+
+@media (max-width: 760px) {
+  .command-palette-overlay {
+    place-items: end center;
+    padding: 12px 8px calc(8px + env(safe-area-inset-bottom));
+  }
+
+  .command-palette, .mobile-customizer {
+    width: 100%;
+    max-height: min(82dvh, 720px);
+    border-radius: 18px;
+    padding: 12px;
+  }
+
+  .command-item { min-height: var(--tap); }
 }
 
 .shortcut-list {

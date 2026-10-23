@@ -52,6 +52,10 @@ rollback notes where applicable.
   inventories for direct/native runtime components and the complete npm lock
   graph. CI retains commit-named artifacts and deploy installs read-only copies
   with each release.
+- Searchable, keyboard-accessible command palette and a compact phone action bar
+  with two locally persisted quick actions. The mobile layout now removes both
+  scrolling toolbars, reserves space in zoom-to-fit and keeps coarse-pointer
+  controls at least 44px; Chromium covers focus restoration and customisation.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -94,11 +98,9 @@ High risk remain open.
 
 ## P2 — editor quality and responsive UX
 
-- Command palette and a compact, customisable mobile bottom bar so core actions
-  do not live in two horizontally scrolling toolbars.
 - Inline node/edge label editing, multi-select inspector and batch property edits.
-- Align/distribute actions, rulers, guides, configurable grid, zoom-to-fit,
-  selection framing and navigator/search across nodes.
+- Align/distribute actions, rulers, configurable grid, selection framing and
+  navigator/search across nodes.
 - Orthogonal/smart edge routing, ports/anchors, curved connectors, waypoints and
   collision avoidance.
 - Groups, frames, layers, lock/hide controls, reusable components and multiple
