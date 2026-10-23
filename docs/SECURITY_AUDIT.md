@@ -60,7 +60,7 @@ Session signing, CSRF derivation, stable guest ownership and rate-limit
 pseudonymisation now use distinct required keys. Planned signing rotation can
 re-sign old cookies during an explicit bounded window; emergency rotation omits
 the old key. A live restart test proves ownership continuity and key retirement.
-Inline node-label editing keeps user-controlled labels in input values and SVG
+Inline node and edge-label editing keeps user-controlled labels in input values and SVG
 `textContent`; it does not parse markup. Browser coverage uses an active-event
 payload and verifies that rename, display and undo never create an HTML element
 or execute the payload.

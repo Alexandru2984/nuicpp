@@ -36,8 +36,9 @@ admin account for maintenance.
   panel and appearance actions; keyboard shortcuts remain available from `?`.
 - Instant node navigator on `/` searches titles, types and stable keys, then
   selects and centres a result without leaving the canvas or using the network.
-- Inline node-label editing by double-click, `F2`, `Enter`, command palette or a
-  pinned mobile action, with one-step undo and browser-draft persistence.
+- Inline node and edge-label editing by double-click, `F2`, `Enter`, command
+  palette or a pinned mobile action, with one-step undo and browser-draft
+  persistence.
 - Browser-local Diagram Review detects empty diagrams, missing titles or labels,
   orphan nodes, invalid or duplicate edges, self-loops and directed cycles, then
   focuses the selected finding without sending diagram content to another service.

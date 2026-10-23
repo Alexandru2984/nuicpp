@@ -233,6 +233,47 @@ test.describe("desktop security and offline lifecycle", () => {
       await page.keyboard.press("Control+z");
       await expect(serviceShape).toHaveAttribute("x", originalServiceX);
 
+      const edgeGroup = page.locator("#edges > g").first();
+      const originalEdgeLabel = await edgeGroup.locator(".edge-label").textContent();
+      await edgeGroup.locator(".edge-hit").dispatchEvent("pointerdown", {
+        bubbles: true,
+        detail: 1,
+        pointerId: 920,
+        pointerType: "mouse"
+      });
+      await expect(edgeGroup).toHaveClass(/edge-selected/);
+      await page.keyboard.press("F2");
+      const edgeLabelEditor = page.getByRole("dialog", { name: "Edit edge label" });
+      const edgeLabelInput = edgeLabelEditor.getByRole("textbox", { name: "Edge label" });
+      await expect(edgeLabelEditor).toBeVisible();
+      await expect(edgeLabelInput).toHaveValue(originalEdgeLabel || "");
+
+      const editedEdgeLabel = '<img src=x onerror="globalThis.__inlineEdgeLabelXss=1"> Flow';
+      await edgeLabelInput.fill(editedEdgeLabel);
+      await edgeLabelEditor.getByRole("button", { name: "Save" }).click();
+      await expect(edgeLabelEditor).not.toBeVisible();
+      await expect(edgeGroup.locator(".edge-label")).toBeVisible();
+      const editedRenderedEdgeLabel = await edgeGroup.locator(".edge-label").textContent();
+      expect(await page.evaluate(() => globalThis.__inlineEdgeLabelXss)).toBeUndefined();
+      expect(await edgeGroup.evaluate((group) => group.querySelectorAll("img").length)).toBe(0);
+
+      await edgeGroup.dispatchEvent("dblclick", { bubbles: true });
+      await edgeLabelInput.fill("   ");
+      await edgeLabelEditor.getByRole("button", { name: "Save" }).click();
+      await expect(edgeGroup.locator(".edge-label")).toHaveCount(0);
+
+      await page.keyboard.press("Control+z");
+      await expect(edgeGroup.locator(".edge-label")).toHaveText(editedRenderedEdgeLabel);
+      await page.keyboard.press("Control+z");
+      if (originalEdgeLabel === null) {
+        await expect(edgeGroup.locator(".edge-label")).toHaveCount(0);
+      } else {
+        await expect(edgeGroup.locator(".edge-label")).toHaveText(originalEdgeLabel);
+      }
+      await edgeGroup.dispatchEvent("dblclick", { bubbles: true });
+      await expect(edgeLabelEditor).toBeVisible();
+      await edgeLabelEditor.getByRole("button", { name: "Cancel" }).click();
+
       await page.locator("#share-diagram").click();
       const sharingDialog = page.getByRole("dialog", { name: "Share diagram" });
       await expect(sharingDialog).toBeVisible();
@@ -337,7 +378,7 @@ test.describe("phone layout", () => {
     const customizer = page.getByRole("dialog", { name: "Customize mobile action bar" });
     await expect(customizer).toBeVisible();
     await expect(customizer.getByLabel("Find and focus node", { exact: true })).toBeVisible();
-    await expect(customizer.getByLabel("Edit selected node label", { exact: true })).toBeVisible();
+    await expect(customizer.getByLabel("Edit selected label", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Align selected nodes left", { exact: true })).toBeVisible();
     await customizer.getByLabel("Add node", { exact: true }).uncheck();
     await customizer.getByLabel("Zoom to fit", { exact: true }).check();

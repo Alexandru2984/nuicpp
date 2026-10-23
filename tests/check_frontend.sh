@@ -24,8 +24,8 @@ grep -Fq 'arrange.src = `/diagram-arrange.js' public/app.js
 grep -Fq 'css.href = `/styles.css' public/editor.js
 grep -Fq 'Ctrl / Cmd + K' public/editor.js
 grep -Fq 'Find and focus node' public/editor.js
-grep -Fq 'Edit selected node label' public/editor.js
-grep -Fq 'className = "node-label-editor"' public/editor.js
+grep -Fq 'Edit selected label' public/editor.js
+grep -Fq 'className = "inline-label-editor"' public/editor.js
 grep -Fq 'Share link lifetime' public/editor.js
 grep -Fq 'NODE_NAVIGATOR_RESULT_LIMIT = 100' public/editor.js
 grep -Fq 'evt.key === "/"' public/editor.js
@@ -33,7 +33,7 @@ grep -Fq 'nuigraph:mobile-actions:v1' public/editor.js
 grep -Fq 'className = "command-palette-overlay"' public/editor.js
 test "$(grep -Fc 'if (state.current.nodes?.length) zoomToFit();' public/editor.js)" -eq 2
 grep -Fq '.mobile-action-bar' public/styles.css
-grep -Fq '.node-label-editor' public/styles.css
+grep -Fq '.inline-label-editor' public/styles.css
 node tests/test_diagram_review.cjs
 node tests/test_diagram_arrange.cjs
 if grep -Eqi '<[^>]+[[:space:]]on[a-z]+[[:space:]]*=' public/offline.html; then

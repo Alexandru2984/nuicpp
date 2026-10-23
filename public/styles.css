@@ -342,7 +342,7 @@ body.dirty .draft-status { color: var(--warn); }
 
 #grid-bg { fill: url(#grid); }
 
-.node-label-editor {
+.inline-label-editor {
   position: absolute;
   z-index: 12;
   transform: translate(-50%, -50%);
@@ -356,24 +356,24 @@ body.dirty .draft-status { color: var(--warn); }
   box-shadow: var(--shadow-lift);
 }
 
-.node-label-editor label {
+.inline-label-editor label {
   color: var(--text-strong);
   font-size: 12px;
   font-weight: 650;
 }
 
-.node-label-editor input {
+.inline-label-editor input {
   width: 100%;
   min-width: 0;
 }
 
-.node-label-editor-actions {
+.inline-label-editor-actions {
   display: flex;
   justify-content: flex-end;
   gap: 7px;
 }
 
-.node-label-editor-actions button { min-height: var(--tap-sm); }
+.inline-label-editor-actions button { min-height: var(--tap-sm); }
 
 .minimap {
   position: absolute;

@@ -329,7 +329,8 @@
       { id: "redo", label: "Redo", shortLabel: "Redo", category: "Edit", shortcut: "Ctrl / Cmd + Y", mobile: true, enabled: () => state.future.length > 0 && !state.readOnly, run: redo },
       { id: "copy", label: "Copy selection", shortLabel: "Copy", category: "Edit", shortcut: "Ctrl / Cmd + C", enabled: () => Boolean(state.selected), run: copySelected },
       { id: "paste", label: "Paste selection", shortLabel: "Paste", category: "Edit", shortcut: "Ctrl / Cmd + V", enabled: () => Boolean(state.clipboard?.nodes?.length) && !state.readOnly, run: pasteSelected },
-      { id: "edit-node-label", label: "Edit selected node label", shortLabel: "Rename", category: "Edit", keywords: "inline rename title", shortcut: "F2 / Enter", mobile: true, enabled: () => Boolean(editableSelectedNode()) && !state.readOnly, run: openNodeLabelEditor },
+      // The persisted mobile-action id stays stable as edge support expands the command.
+      { id: "edit-node-label", label: "Edit selected label", shortLabel: "Rename", category: "Edit", keywords: "inline rename node edge title", shortcut: "F2 / Enter", mobile: true, enabled: () => Boolean(editableSelectedLabelTarget()) && !state.readOnly, run: openInlineLabelEditor },
       { id: "delete", label: "Delete selection", shortLabel: "Delete", category: "Edit", mobile: true, enabled: () => Boolean(state.selected) && !state.readOnly, run: deleteSelected },
       { id: "layout", label: "Auto layout", shortLabel: "Layout", category: "Arrange", keywords: "organize graph", mobile: true, enabled: () => Boolean(state.current?.nodes?.length) && !state.readOnly, run: autoLayout },
       { id: "align-left", label: "Align selected nodes left", shortLabel: "Left", category: "Arrange", keywords: "multi selection position", mobile: true, enabled: () => canArrangeSelection(2), run: () => arrangeSelection("align-left") },
@@ -1053,7 +1054,7 @@
   const SHORTCUTS = [
     ["Ctrl / Cmd + K", "Open command palette"],
     ["/", "Find and focus a node"],
-    ["F2 / Enter", "Edit selected node label"],
+    ["F2 / Enter", "Edit selected node or edge label"],
     ["Ctrl / Cmd + S", "Save diagram"],
     ["Ctrl / Cmd + Z", "Undo"],
     ["Ctrl / Cmd + Y", "Redo"],
@@ -1484,17 +1485,44 @@
     return [];
   }
 
-  let nodeLabelEditor = null;
+  let inlineLabelEditor = null;
 
-  function editableSelectedNode() {
-    if (!state.current || state.selected?.type !== "node") return null;
-    return state.current.nodes.find((node) => node.key === state.selected.key) || null;
+  function labelTarget(type, key) {
+    if (!state.current || !key) return null;
+    if (type === "node") {
+      const item = state.current.nodes.find((node) => node.key === key);
+      return item ? {
+        type, key, item, value: item.title, required: true,
+        x: item.x + item.width / 2,
+        y: item.y + item.height / 2
+      } : null;
+    }
+    if (type === "edge") {
+      const item = state.current.edges.find((edge) => edge.key === key);
+      if (!item) return null;
+      const source = state.current.nodes.find((node) => node.key === item.source);
+      const target = state.current.nodes.find((node) => node.key === item.target);
+      if (!source || !target) return null;
+      const a = nodeCenter(source);
+      const b = nodeCenter(target);
+      return {
+        type, key, item, value: item.label || "", required: false,
+        x: (a.x + b.x) / 2,
+        y: (a.y + b.y) / 2 - 10
+      };
+    }
+    return null;
   }
 
-  function closeNodeLabelEditor(restoreFocus = false) {
-    if (!nodeLabelEditor) return;
-    const { element, returnFocus } = nodeLabelEditor;
-    nodeLabelEditor = null;
+  function editableSelectedLabelTarget() {
+    if (!state.selected || !["node", "edge"].includes(state.selected.type)) return null;
+    return labelTarget(state.selected.type, state.selected.key);
+  }
+
+  function closeInlineLabelEditor(restoreFocus = false) {
+    if (!inlineLabelEditor) return;
+    const { element, returnFocus } = inlineLabelEditor;
+    inlineLabelEditor = null;
     element.remove();
     if (restoreFocus) {
       const target = returnFocus?.isConnected ? returnFocus : canvas;
@@ -1502,61 +1530,61 @@
     }
   }
 
-  function positionNodeLabelEditor() {
-    if (!nodeLabelEditor) return;
-    const node = state.current?.nodes.find((candidate) => candidate.key === nodeLabelEditor.key);
+  function positionInlineLabelEditor() {
+    if (!inlineLabelEditor) return;
+    const target = labelTarget(inlineLabelEditor.type, inlineLabelEditor.key);
     const wrap = canvas.closest(".canvas-wrap");
-    if (!node || !wrap || state.readOnly || state.current !== nodeLabelEditor.diagram) {
-      closeNodeLabelEditor();
+    if (!target || !wrap || state.readOnly || state.current !== inlineLabelEditor.diagram) {
+      closeInlineLabelEditor();
       return;
     }
 
-    const { element } = nodeLabelEditor;
+    const { element } = inlineLabelEditor;
     const width = element.offsetWidth || 320;
     const height = element.offsetHeight || 120;
     const halfWidth = Math.min(width / 2, Math.max(0, wrap.clientWidth / 2 - 8));
     const halfHeight = Math.min(height / 2, Math.max(0, wrap.clientHeight / 2 - 8));
-    const desiredLeft = state.pan.x + (node.x + node.width / 2) * state.zoom;
-    const desiredTop = state.pan.y + (node.y + node.height / 2) * state.zoom;
+    const desiredLeft = state.pan.x + target.x * state.zoom;
+    const desiredTop = state.pan.y + target.y * state.zoom;
     element.style.left = `${clamp(desiredLeft, halfWidth + 8, wrap.clientWidth - halfWidth - 8)}px`;
     element.style.top = `${clamp(desiredTop, halfHeight + 8, wrap.clientHeight - halfHeight - 8)}px`;
   }
 
-  function openNodeLabelEditor(nodeKey = editableSelectedNode()?.key) {
-    if (!state.current || state.readOnly || !nodeKey) return;
-    const node = state.current.nodes.find((candidate) => candidate.key === nodeKey);
-    if (!node) return;
-    if (nodeLabelEditor?.key === nodeKey) {
-      nodeLabelEditor.input.focus();
-      nodeLabelEditor.input.select();
+  function openInlineLabelEditor(type = state.selected?.type, key = state.selected?.key) {
+    if (!state.current || state.readOnly) return;
+    const target = labelTarget(type, key);
+    if (!target) return;
+    if (inlineLabelEditor?.type === type && inlineLabelEditor?.key === key) {
+      inlineLabelEditor.input.focus();
+      inlineLabelEditor.input.select();
       return;
     }
 
-    closeNodeLabelEditor();
-    state.selected = { type: "node", key: nodeKey };
+    closeInlineLabelEditor();
+    state.selected = { type, key };
     render();
 
     const returnFocus = document.activeElement === document.body ? canvas : document.activeElement;
     const form = document.createElement("form");
-    form.className = "node-label-editor";
+    form.className = "inline-label-editor";
     form.setAttribute("role", "dialog");
-    form.setAttribute("aria-label", "Edit node label");
+    form.setAttribute("aria-label", `Edit ${type} label`);
 
     const label = document.createElement("label");
-    label.htmlFor = "node-label-editor-input";
-    label.textContent = "Node label";
+    label.htmlFor = "inline-label-editor-input";
+    label.textContent = `${type === "node" ? "Node" : "Edge"} label`;
     const input = document.createElement("input");
-    input.id = "node-label-editor-input";
+    input.id = "inline-label-editor-input";
     input.type = "text";
     input.maxLength = 160;
-    input.required = true;
+    input.required = target.required;
     input.autocomplete = "off";
-    input.value = node.title;
-    input.setAttribute("aria-label", "Node label");
+    input.value = target.value;
+    input.setAttribute("aria-label", label.textContent);
     input.addEventListener("input", () => input.setCustomValidity(""));
 
     const actions = document.createElement("div");
-    actions.className = "node-label-editor-actions";
+    actions.className = "inline-label-editor-actions";
     const cancel = document.createElement("button");
     cancel.type = "button";
     cancel.textContent = "Cancel";
@@ -1568,44 +1596,50 @@
     form.append(label, input, actions);
     canvas.closest(".canvas-wrap")?.appendChild(form);
 
-    nodeLabelEditor = { element: form, input, key: nodeKey, returnFocus, diagram: state.current };
-    positionNodeLabelEditor();
+    inlineLabelEditor = { element: form, input, type, key, returnFocus, diagram: state.current };
+    positionInlineLabelEditor();
     input.focus();
     input.select();
 
-    cancel.onclick = () => closeNodeLabelEditor(true);
+    cancel.onclick = () => closeInlineLabelEditor(true);
     form.addEventListener("keydown", (evt) => {
       if (evt.key === "Escape") {
         evt.preventDefault();
         evt.stopPropagation();
-        closeNodeLabelEditor(true);
+        closeInlineLabelEditor(true);
         return;
       }
       trapDialogFocus(evt, form);
     });
     form.addEventListener("submit", (evt) => {
       evt.preventDefault();
-      const nextTitle = input.value.trim();
-      if (!nextTitle) {
+      const nextValue = input.value.trim();
+      if (target.required && !nextValue) {
         input.setCustomValidity("Enter a node label.");
         input.reportValidity();
         return;
       }
-      if (nextTitle.length > 160) {
+      if (nextValue.length > 160) {
         input.setCustomValidity("Use no more than 160 characters.");
         input.reportValidity();
         return;
       }
-      if (nextTitle === node.title) {
-        closeNodeLabelEditor(true);
+      const current = labelTarget(type, key);
+      if (!current || state.current !== inlineLabelEditor?.diagram) {
+        closeInlineLabelEditor(true);
+        return;
+      }
+      if (nextValue === current.value) {
+        closeInlineLabelEditor(true);
         return;
       }
       pushHistory();
-      node.title = nextTitle;
+      if (type === "node") current.item.title = nextValue;
+      else current.item.label = nextValue;
       markDirty();
-      closeNodeLabelEditor(true);
+      closeInlineLabelEditor(true);
       render();
-      toast("Node label updated.");
+      toast(`${type === "node" ? "Node" : "Edge"} label updated.`);
     });
   }
 
@@ -2238,23 +2272,35 @@
       const a = nodeCenter(source);
       const b = nodeCenter(target);
       const selected = state.selected?.type === "edge" && state.selected.key === edge.key;
-      const group = svg("g", { class: selected ? "edge-selected" : "" }, edgesLayer);
+      const group = svg("g", { class: selected ? "edge-selected" : "", "data-key": edge.key }, edgesLayer);
       const d = `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
-      svg("path", { d, class: "edge-hit" }, group).addEventListener("pointerdown", (evt) => {
-        evt.stopPropagation();
-        state.selected = { type: "edge", key: edge.key };
-        render();
-      });
-      const path = svg("path", {
+      svg("path", { d, class: "edge-hit" }, group);
+      svg("path", {
         d,
         class: "edge-path",
         stroke: edge.color || "#94a3b8",
         "marker-end": edge.directed ? "url(#arrow)" : ""
       }, group);
-      path.addEventListener("pointerdown", (evt) => {
+      group.addEventListener("pointerdown", (evt) => {
+        evt.stopPropagation();
+        canvas.focus({ preventScroll: true });
+        if (evt.pointerType === "mouse" && evt.detail === 2 && !state.readOnly) {
+          evt.preventDefault();
+          state.selected = { type: "edge", key: edge.key };
+          render();
+          openInlineLabelEditor("edge", edge.key);
+          return;
+        }
+        state.selected = { type: "edge", key: edge.key };
+        render();
+      });
+      group.addEventListener("dblclick", (evt) => {
+        if (state.readOnly) return;
+        evt.preventDefault();
         evt.stopPropagation();
         state.selected = { type: "edge", key: edge.key };
         render();
+        openInlineLabelEditor("edge", edge.key);
       });
       if (edge.label) {
         svg("text", { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 - 10, class: "edge-label" }, group).textContent = shortText(edge.label, 28);
@@ -2300,7 +2346,7 @@
           state.dragging = null;
           state.selected = { type: "node", key: node.key };
           render();
-          openNodeLabelEditor(node.key);
+          openInlineLabelEditor("node", node.key);
           return;
         }
         state.pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
@@ -2370,7 +2416,7 @@
         evt.stopPropagation();
         state.selected = { type: "node", key: node.key };
         render();
-        openNodeLabelEditor(node.key);
+        openInlineLabelEditor("node", node.key);
       });
     }
   }
@@ -2452,7 +2498,7 @@
     renderOverlay();
     renderProperties();
     renderMinimap();
-    positionNodeLabelEditor();
+    positionInlineLabelEditor();
     refreshMobileActionBar();
   }
 
@@ -3153,9 +3199,9 @@
       if (evt.target.matches("input, textarea, select") || evt.target.isContentEditable) return;
       const editWithEnter = evt.key === "Enter" && (evt.target === canvas || evt.target === document.body);
       if ((evt.key === "F2" || editWithEnter) && !evt.ctrlKey && !evt.metaKey && !evt.altKey &&
-          !document.querySelector('[role="dialog"]') && editableSelectedNode() && !state.readOnly) {
+          !document.querySelector('[role="dialog"]') && editableSelectedLabelTarget() && !state.readOnly) {
         evt.preventDefault();
-        openNodeLabelEditor();
+        openInlineLabelEditor();
         return;
       }
       if (evt.key === "/" && !evt.ctrlKey && !evt.metaKey && !evt.altKey) {
