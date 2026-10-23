@@ -20,6 +20,10 @@ rollback notes where applicable.
 - Atomic global diagram ceiling across all owners and creation paths, with a
   concurrent multi-session PostgreSQL integration test and distinct `503`
   capacity response.
+- Transactional per-guest and global logical-byte ceilings across current
+  diagrams and retained snapshots. Trigger-maintained accounting covers prune
+  and cascade delete, concurrent writers cannot race the limit, and capacity is
+  exported with a validated alert.
 - Conditional save, delete and restore with monotonic revisions, strong ETags,
   `428` for missing preconditions, `412` for stale clients and browser-draft
   preservation.

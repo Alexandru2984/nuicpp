@@ -158,6 +158,8 @@ operator's exported variables cannot override the files being checked.
 | `MAX_IMPORT_BYTES` | `1048576` | nginx rejects >2 MiB before buffering |
 | `MAX_DIAGRAMS_PER_GUEST` | `60` | Hard ceiling per guest session |
 | `MAX_DIAGRAMS_TOTAL` | `5000` | Global row ceiling across every owner and creation path |
+| `MAX_LOGICAL_BYTES_PER_GUEST` | `33554432` | 32 MiB of current diagrams plus retained snapshots per guest |
+| `MAX_LOGICAL_BYTES_TOTAL` | `536870912` | 512 MiB global logical-content ceiling |
 | `DB_POOL_SIZE` | `8` | Pooled connections; see sizing below |
 | `PROJECT_ROOT` | `/opt/nuigraph-studio/current` | Root-owned release/static root |
 
@@ -170,10 +172,14 @@ what the other projects on this host use. Eight is enough that 60 concurrent
 requests were served using only two backends; raising it trades idle backends
 for headroom under burst, not throughput.
 
-`MAX_DIAGRAMS_TOTAL` bounds rows rather than bytes. Keep it above the current
-diagram count, monitor database/disk growth, and lower it only with an explicit
-retention or deletion plan. If the database is already at or above the value,
-reads and deletes keep working but every creation path returns `503`.
+Keep `MAX_DIAGRAMS_TOTAL` above the current diagram count and
+`MAX_LOGICAL_BYTES_TOTAL` above the current `logical_storage_usage.logical_bytes`
+value. The latter counts current user-controlled diagram content and retained
+snapshot JSON, not PostgreSQL indexes, WAL or page overhead; continue monitoring
+the database and disk metrics too. Lower either ceiling only with an explicit
+retention or deletion plan. Reads and deletes keep working at capacity. New
+content returns `503` at global capacity or `403` at the current guest's logical
+limit, and failed saves roll back their revision and snapshot atomically.
 
 ### 3. systemd
 
@@ -314,6 +320,11 @@ nullable timestamp. An older binary ignores that timestamp and would re-expose
 expired links whose stored enabled flag remains true. Never roll back across
 this migration while share routes are reachable; restore the hardened binary or
 deny both `/d/` and `/api/diagrams/slug/` at nginx until it is running again.
+`008_logical_storage_quota.sql` backfills per-row estimates and an atomic global
+counter. Older binaries leave new/updated content estimates stale and can bypass
+the byte ceiling. A rollback may serve reads and deletes, but must deny mutating
+API methods until the quota-aware binary is restored; do not drop the counter or
+its triggers.
 `FRONTEND_SHELL` adds no database state: roll back with the prior binary while
 keeping it at `server`, or restore the previous vhost and release together if a
 Nui-specific CSP was introduced.

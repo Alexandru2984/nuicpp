@@ -19,6 +19,8 @@ struct OperationalMetrics {
     std::uint64_t versions = 0;
     std::uint64_t activeRateLimitBuckets = 0;
     std::uint64_t diagramCapacity = 0;
+    std::uint64_t logicalBytes = 0;
+    std::uint64_t logicalByteCapacity = 0;
     std::uint64_t rateLimitBucketCapacity = 0;
     std::uint64_t databaseBytes = 0;
     std::uint64_t poolMax = 0;

@@ -89,7 +89,7 @@ admin account for maintenance.
 - Separate `/live` process and PostgreSQL-backed `/ready` probes; `/health`
   remains a compatibility alias for liveness. Dependency errors are not exposed.
 - Loopback-only Prometheus telemetry for bounded HTTP/security/create, latency,
-  database-capacity and connection-pool signals, with validated alert rules and
+  row/logical/database-capacity and connection-pool signals, with validated alert rules and
   an operator response runbook in [`docs/MONITORING.md`](docs/MONITORING.md).
 
 ### Security
@@ -105,7 +105,8 @@ Summarised here, detailed in [`docs/SECURITY.md`](docs/SECURITY.md).
 - CSRF tokens bound to the exact session cookie, required on every mutating
   endpoint.
 - Rate limiting at the edge and in the app, plus atomic per-guest and global
-  diagram quotas so storage growth has a ceiling and not just a slope.
+  diagram and logical-byte quotas so concurrent writes cannot grow retained
+  user content past the configured ceilings.
 - End-to-end request IDs and redacted structured security events for login,
   authorization, CSRF, quota, rate-limit, share lifecycle/view and storage failures.
 - Defensive id parsing, exhaustive input validation, parameterised SQL only,
@@ -153,10 +154,10 @@ The build is clean under `-Wall -Wextra -Wpedantic`.
 ctest --test-dir build --output-on-failure
 ```
 
-Twelve suites cover unit validation, frontend assets, the nginx candidate,
+Thirteen suites cover unit validation, frontend assets, the nginx candidate,
 Prometheus rules, incident-runbook integrity, CycloneDX SBOM generation, real
 Chromium behavior, live security/API behavior, shared persistent rate limits,
-concurrent global quota enforcement, and migration-ledger integrity. The six
+concurrent row/logical-byte quota enforcement, and migration-ledger integrity. The seven
 database-backed suites use
 a config with `APP_ENV=test` whose
 actual PostgreSQL database and login-role names both end in `_test`. Missing
@@ -198,7 +199,8 @@ values are documented in [`docs/DEPLOY.md`](docs/DEPLOY.md#2-environment):
 APP_ENV  APP_HOST  APP_PORT  APP_BASE_URL  DATABASE_URL
 AUTH_USERNAME  AUTH_PASSWORD_HASH  SESSION_SECRET  PUBLIC_ACCESS  FRONTEND_SHELL
 MAX_NODES_PER_DIAGRAM  MAX_EDGES_PER_DIAGRAM  MAX_VERSIONS_PER_DIAGRAM
-MAX_IMPORT_BYTES  MAX_DIAGRAMS_PER_GUEST  MAX_DIAGRAMS_TOTAL  DB_POOL_SIZE
+MAX_IMPORT_BYTES  MAX_DIAGRAMS_PER_GUEST  MAX_DIAGRAMS_TOTAL
+MAX_LOGICAL_BYTES_PER_GUEST  MAX_LOGICAL_BYTES_TOTAL  DB_POOL_SIZE
 PROJECT_ROOT
 ```
 

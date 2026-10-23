@@ -81,6 +81,7 @@ add_test(NAME nuigraph-security-smoke COMMAND bash ${CMAKE_SOURCE_DIR}/tests/che
 add_test(NAME nuigraph-api-integration COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_api_integration.sh)
 add_test(NAME nuigraph-rate-limits COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_rate_limits.sh)
 add_test(NAME nuigraph-global-quota COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_global_quota.sh)
+add_test(NAME nuigraph-logical-quota COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_logical_quota.sh)
 add_test(NAME nuigraph-migrations COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_migrations.sh)
 set_tests_properties(
     nuigraph-frontend
@@ -97,6 +98,7 @@ set_tests_properties(
     nuigraph-api-integration
     nuigraph-rate-limits
     nuigraph-global-quota
+    nuigraph-logical-quota
     nuigraph-migrations
     PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}

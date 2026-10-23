@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 namespace nuigraph {
@@ -27,6 +28,8 @@ struct Config {
     int maxVersionsPerDiagram = 50;
     int maxDiagramsPerGuest = 60;
     int maxDiagramsTotal = 5000;
+    std::uint64_t maxLogicalBytesPerGuest = 32ULL * 1024 * 1024;
+    std::uint64_t maxLogicalBytesTotal = 512ULL * 1024 * 1024;
     int dbPoolSize = 8;
     std::size_t maxImportBytes = 1048576;
     std::string projectRoot = "/opt/nuigraph-studio/current";

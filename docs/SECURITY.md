@@ -191,6 +191,8 @@ Three independent layers, because each has a different failure mode:
 | App/DB | 8 login attempts / 10 min per pseudonymous IP key | `/login` |
 | App | `MAX_DIAGRAMS_PER_GUEST` rows per owner hash | `PostgresStorage::createDiagram` |
 | App | `MAX_DIAGRAMS_TOTAL` rows across all owners | `PostgresStorage::createDiagram` |
+| App/DB | `MAX_LOGICAL_BYTES_PER_GUEST` retained logical bytes per owner hash | Every content/snapshot mutation |
+| App/DB | `MAX_LOGICAL_BYTES_TOTAL` retained logical bytes globally | Every content/snapshot mutation |
 
 Per-IP limits only slow storage growth; they do not bound it, and the per-owner
 quota can be renewed by clearing the guest cookie. Every creation first obtains
@@ -201,10 +203,16 @@ parallel requests or rotated sessions cannot race past either ceiling. The API
 returns `503` when global capacity is exhausted and `403` when only the current
 session is full. Reads and deletes remain available.
 
-The global quota is a containment control, not lifecycle management: it counts
-diagram rows rather than bytes, and an attacker could deliberately fill it to
-deny new creations. Disk alerts, a retention policy, cleanup tooling and a
-logical-byte budget are still required.
+Logical usage includes the current user-controlled title, description, node,
+edge and metadata bytes plus every retained snapshot and note. PostgreSQL
+triggers maintain one counter in the same transaction as inserts, updates,
+pruning and cascade deletion. That counter serialises competing storage growth;
+the application checks the global and owner ceilings before commit, so a denied
+write rolls back its content, revision, snapshot and counter together. The
+logical metric deliberately excludes indexes, WAL, dead tuples and fixed row
+overhead, so physical database/disk alerts and a retention policy remain
+required. An attacker can still fill the bounded allowance and deny later
+writes, but cannot turn cookie rotation into unbounded retained content.
 
 Application buckets are PostgreSQL-backed GCRA counters. They survive restarts,
 are atomic across multiple app instances, refill gradually, and fail closed with
@@ -414,7 +422,10 @@ matching positive control on the visitor's own diagram, so a pass cannot come
 from a route that is simply broken. `tests/check_rate_limits.sh` exercises
 shared counters across two app instances and verifies that throttling survives
 their restart; `tests/check_global_quota.sh` launches six distinct guest
-sessions concurrently against one remaining global slot.
+sessions concurrently against one remaining global row slot.
+`tests/check_logical_quota.sh` proves an oversized update rolls back content,
+revision, snapshot and accounting, then races six unrelated sessions against one
+logical-capacity slot and recomputes the counter from its source rows.
 
 ```bash
 ctest --test-dir build --output-on-failure

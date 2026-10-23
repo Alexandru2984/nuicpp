@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
@@ -52,6 +53,19 @@ std::string randomHex(std::size_t bytes) {
     return out.str();
 }
 
+std::uint64_t logicalDiagramBytes(const Diagram& diagram) {
+    std::uint64_t total = diagram.title.size() + diagram.description.size();
+    for (const auto& node : diagram.nodes) {
+        total += node.key.size() + node.type.size() + node.title.size()
+            + node.color.size() + node.metadata.dump().size();
+    }
+    for (const auto& edge : diagram.edges) {
+        total += edge.key.size() + edge.source.size() + edge.target.size()
+            + edge.label.size() + edge.color.size() + edge.metadata.dump().size();
+    }
+    return std::max<std::uint64_t>(1, total);
+}
+
 nlohmann::json diagramSummaryJson(const pqxx::row& row) {
     const auto sharingEnabled = row["sharing_enabled"].as<bool>();
     nlohmann::json result = {
@@ -90,6 +104,7 @@ bool PostgresStorage::ping() {
 OperationalMetrics PostgresStorage::operationalMetrics() {
     OperationalMetrics metrics;
     metrics.diagramCapacity = static_cast<std::uint64_t>(cfg_.maxDiagramsTotal);
+    metrics.logicalByteCapacity = cfg_.maxLogicalBytesTotal;
     metrics.rateLimitBucketCapacity = static_cast<std::uint64_t>(kMaxPersistentRateLimitKeys);
     try {
         {
@@ -105,6 +120,8 @@ OperationalMetrics PostgresStorage::operationalMetrics() {
                     COALESCE((SELECT n_live_tup FROM pg_stat_user_tables
                               WHERE schemaname='public' AND relname='diagram_versions'), 0) AS versions,
                     (SELECT count(*) FROM rate_limit_buckets) AS rate_limit_buckets,
+                    (SELECT logical_bytes FROM public.logical_storage_usage
+                     WHERE singleton=true) AS logical_bytes,
                     pg_database_size(current_database()) AS database_bytes
             )SQL")[0];
             metrics.diagrams = row["diagrams"].as<std::uint64_t>();
@@ -112,6 +129,7 @@ OperationalMetrics PostgresStorage::operationalMetrics() {
             metrics.edges = row["edges"].as<std::uint64_t>();
             metrics.versions = row["versions"].as<std::uint64_t>();
             metrics.activeRateLimitBuckets = row["rate_limit_buckets"].as<std::uint64_t>();
+            metrics.logicalBytes = row["logical_bytes"].as<std::uint64_t>();
             metrics.databaseBytes = row["database_bytes"].as<std::uint64_t>();
             metrics.databaseUp = true;
         }
@@ -428,6 +446,44 @@ void PostgresStorage::replaceNodesAndEdges(pqxx::work& tx, long diagramId, const
     }
 }
 
+void PostgresStorage::enforceLogicalStorageCapacity(
+    pqxx::work& tx, const std::string& ownerTokenHash) {
+    const auto total = tx.exec(R"SQL(
+        SELECT logical_bytes
+        FROM public.logical_storage_usage
+        WHERE singleton=true
+    )SQL");
+    if (total.empty()) {
+        throw std::runtime_error("logical storage usage is unavailable");
+    }
+    if (total[0]["logical_bytes"].as<std::uint64_t>() > cfg_.maxLogicalBytesTotal) {
+        throw DiagramCapacityExceeded(
+            "logical storage capacity is temporarily exhausted; delete content before retrying");
+    }
+
+    if (ownerTokenHash.empty()) {
+        return;
+    }
+    const auto owned = tx.exec(R"SQL(
+        SELECT
+            COALESCE((
+                SELECT sum(d.logical_bytes)
+                FROM diagrams d
+                WHERE d.owner_token_hash=$1
+            ), 0)
+            + COALESCE((
+                SELECT sum(v.logical_bytes)
+                FROM diagram_versions v
+                JOIN diagrams d ON d.id=v.diagram_id
+                WHERE d.owner_token_hash=$1
+            ), 0) AS logical_bytes
+    )SQL", pqxx::params{ownerTokenHash});
+    if (owned[0]["logical_bytes"].as<std::uint64_t>() > cfg_.maxLogicalBytesPerGuest) {
+        throw DiagramQuotaExceeded(
+            "logical storage limit reached for this session; delete content before retrying");
+    }
+}
+
 Diagram PostgresStorage::createDiagram(const Diagram& input, bool importMode, const std::string& ownerTokenHash) {
     Diagram diagram = input;
     auto validation = validator_.validate(diagram, importMode);
@@ -468,13 +524,16 @@ Diagram PostgresStorage::createDiagram(const Diagram& input, bool importMode, co
 
     auto slug = uniqueSlug(tx, diagram.title);
     auto rows = tx.exec(R"SQL(
-        INSERT INTO diagrams (title, slug, description, owner_token_hash)
-        VALUES ($1,$2,$3,$4)
+        INSERT INTO diagrams (title, slug, description, owner_token_hash, logical_bytes)
+        VALUES ($1,$2,$3,$4,$5)
         RETURNING id
-    )SQL", pqxx::params{diagram.title, slug, diagram.description, ownerTokenHash});
+    )SQL", pqxx::params{
+        diagram.title, slug, diagram.description, ownerTokenHash,
+        static_cast<long long>(logicalDiagramBytes(diagram))});
     long id = rows[0]["id"].as<long>();
     replaceNodesAndEdges(tx, id, diagram);
     createVersion(tx, id, "initial snapshot");
+    enforceLogicalStorageCapacity(tx, ownerTokenHash);
     tx.commit();
     return getDiagram(id);
 }
@@ -491,10 +550,13 @@ Diagram PostgresStorage::updateDiagram(long id, const Diagram& input, const std:
     pqxx::work tx(conn.get());
     auto updated = tx.exec(R"SQL(
         UPDATE diagrams
-        SET title=$1, description=$2, updated_at=now(), revision=revision+1
-        WHERE id=$3 AND revision=$4
-        RETURNING revision
-    )SQL", pqxx::params{diagram.title, diagram.description, id, expectedRevision});
+        SET title=$1, description=$2, logical_bytes=$3,
+            updated_at=now(), revision=revision+1
+        WHERE id=$4 AND revision=$5
+        RETURNING revision, owner_token_hash
+    )SQL", pqxx::params{
+        diagram.title, diagram.description,
+        static_cast<long long>(logicalDiagramBytes(diagram)), id, expectedRevision});
     if (updated.empty()) {
         auto current = tx.exec("SELECT revision FROM diagrams WHERE id=$1", pqxx::params{id});
         if (current.empty()) {
@@ -506,6 +568,7 @@ Diagram PostgresStorage::updateDiagram(long id, const Diagram& input, const std:
     }
     replaceNodesAndEdges(tx, id, diagram);
     createVersion(tx, id, note.empty() ? "saved snapshot" : note);
+    enforceLogicalStorageCapacity(tx, rowString(updated[0], "owner_token_hash"));
     tx.commit();
     return getDiagram(id);
 }
@@ -668,6 +731,13 @@ VersionInfo PostgresStorage::createVersion(long diagramId, const std::string& no
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
     auto info = createVersion(tx, diagramId, note);
+    const auto owner = tx.exec(
+        "SELECT owner_token_hash FROM diagrams WHERE id=$1",
+        pqxx::params{diagramId});
+    if (owner.empty()) {
+        throw std::runtime_error("diagram not found");
+    }
+    enforceLogicalStorageCapacity(tx, rowString(owner[0], "owner_token_hash"));
     tx.commit();
     return info;
 }
@@ -689,13 +759,18 @@ VersionInfo PostgresStorage::createVersion(pqxx::work& tx, long diagramId, const
 
     auto diagram = getDiagram(tx, diagramId);
     auto next = tx.exec("SELECT COALESCE(MAX(version_number),0)+1 AS n FROM diagram_versions WHERE diagram_id=$1", pqxx::params{diagramId})[0]["n"].as<int>();
+    const auto snapshot = diagramToJson(diagram).dump();
+    const auto logicalBytes = std::max<std::uint64_t>(
+        1, static_cast<std::uint64_t>(snapshot.size() + note.size()));
     auto rows = tx.exec(R"SQL(
-        INSERT INTO diagram_versions (diagram_id, version_number, snapshot_json, note)
-        VALUES ($1,$2,$3::jsonb,$4)
+        INSERT INTO diagram_versions
+            (diagram_id, version_number, snapshot_json, note, logical_bytes)
+        VALUES ($1,$2,$3::jsonb,$4,$5)
         RETURNING id, diagram_id, version_number,
                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
                   note
-    )SQL", pqxx::params{diagramId, next, diagramToJson(diagram).dump(), note});
+    )SQL", pqxx::params{
+        diagramId, next, snapshot, note, static_cast<long long>(logicalBytes)});
     pruneVersions(tx, diagramId);
     const auto& row = rows[0];
     return {row["id"].as<long>(), row["diagram_id"].as<long>(), row["version_number"].as<int>(), rowString(row, "created_at"), rowString(row, "note")};
@@ -754,10 +829,13 @@ Diagram PostgresStorage::restoreVersion(long diagramId, long versionId, long exp
     }
     auto updated = tx.exec(R"SQL(
         UPDATE diagrams
-        SET title=$1, description=$2, updated_at=now(), revision=revision+1
-        WHERE id=$3 AND revision=$4
-        RETURNING revision
-    )SQL", pqxx::params{diagram.title, diagram.description, diagramId, expectedRevision});
+        SET title=$1, description=$2, logical_bytes=$3,
+            updated_at=now(), revision=revision+1
+        WHERE id=$4 AND revision=$5
+        RETURNING revision, owner_token_hash
+    )SQL", pqxx::params{
+        diagram.title, diagram.description,
+        static_cast<long long>(logicalDiagramBytes(diagram)), diagramId, expectedRevision});
     if (updated.empty()) {
         auto current = tx.exec("SELECT revision FROM diagrams WHERE id=$1", pqxx::params{diagramId});
         if (current.empty()) {
@@ -769,6 +847,7 @@ Diagram PostgresStorage::restoreVersion(long diagramId, long versionId, long exp
     }
     replaceNodesAndEdges(tx, diagramId, diagram);
     createVersion(tx, diagramId, "restored version " + std::to_string(versionId));
+    enforceLogicalStorageCapacity(tx, rowString(updated[0], "owner_token_hash"));
     tx.commit();
     return getDiagram(diagramId);
 }

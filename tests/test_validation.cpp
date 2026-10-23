@@ -318,6 +318,13 @@ void testConfigRejectsUnsafeLimits() {
             "global diagram capacity must be positive");
     require(configThrows(validConfig("MAX_DIAGRAMS_TOTAL=1000001\n")),
             "global diagram capacity must have an operational upper bound");
+    require(configThrows(validConfig("MAX_LOGICAL_BYTES_TOTAL=-1\n")),
+            "negative logical storage limits must not wrap");
+    require(configThrows(validConfig("MAX_LOGICAL_BYTES_TOTAL=1099511627777\n")),
+            "logical storage must have an operational upper bound");
+    require(configThrows(validConfig(
+        "MAX_LOGICAL_BYTES_PER_GUEST=4096\nMAX_LOGICAL_BYTES_TOTAL=2048\n")),
+        "per-guest logical capacity cannot exceed global capacity");
     require(configThrows(validConfig("DB_POOL_SIZE=1000\n")),
             "excessive database pools should throw");
 }
@@ -393,6 +400,8 @@ void testMetricsStayAggregateAndBounded() {
     operational.databaseUp = true;
     operational.diagrams = 7;
     operational.nodes = 21;
+    operational.logicalBytes = 2048;
+    operational.logicalByteCapacity = 8192;
     operational.databaseBytes = 4096;
     operational.poolMax = 8;
     operational.poolIdle = 3;
@@ -412,6 +421,10 @@ void testMetricsStayAggregateAndBounded() {
             "metrics should count successful import creations");
     require(body.find("nuigraph_database_size_bytes 4096") != std::string::npos,
             "metrics should include aggregate database size");
+    require(body.find("nuigraph_logical_storage_bytes 2048") != std::string::npos,
+            "metrics should expose aggregate logical storage usage");
+    require(body.find("nuigraph_logical_storage_capacity_bytes 8192") != std::string::npos,
+            "metrics should expose configured logical storage capacity");
     require(body.find("attacker-controlled") == std::string::npos,
             "network-derived labels must never create metric cardinality");
 }

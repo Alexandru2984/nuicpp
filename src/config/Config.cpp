@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -74,6 +75,27 @@ int getInt(const std::unordered_map<std::string, std::string>& file, const std::
         return static_cast<int>(parsed);
     } catch (...) {
         throw std::runtime_error(key + " must be a valid integer");
+    }
+}
+
+std::uint64_t getUint64(const std::unordered_map<std::string, std::string>& file,
+                        const std::string& key, std::uint64_t fallback) {
+    const auto value = getValue(file, key);
+    if (value.empty()) {
+        return fallback;
+    }
+    if (value.front() == '-' || value.front() == '+') {
+        throw std::runtime_error(key + " must be a valid non-negative integer");
+    }
+    try {
+        std::size_t consumed = 0;
+        const auto parsed = std::stoull(value, &consumed);
+        if (consumed != value.size()) {
+            throw std::runtime_error("trailing data");
+        }
+        return parsed;
+    } catch (...) {
+        throw std::runtime_error(key + " must be a valid non-negative integer");
     }
 }
 
@@ -164,6 +186,13 @@ void requireRange(const char* name, int value, int low, int high) {
     }
 }
 
+void requireRange(const char* name, std::uint64_t value,
+                  std::uint64_t low, std::uint64_t high) {
+    if (value < low || value > high) {
+        throw std::runtime_error(std::string(name) + " is outside the allowed range");
+    }
+}
+
 void validatePasswordHash(const std::string& encoded) {
     const auto parts = split(encoded, '$');
     if (parts.size() != 4 || parts[0] != "pbkdf2_sha256" || !isHex(parts[2]) ||
@@ -194,6 +223,15 @@ void validateConfig(const Config& cfg) {
     requireRange("MAX_VERSIONS_PER_DIAGRAM", cfg.maxVersionsPerDiagram, 1, 1000);
     requireRange("MAX_DIAGRAMS_PER_GUEST", cfg.maxDiagramsPerGuest, 1, 10000);
     requireRange("MAX_DIAGRAMS_TOTAL", cfg.maxDiagramsTotal, 1, 1000000);
+    constexpr std::uint64_t kMaxLogicalStorage = 1024ULL * 1024 * 1024 * 1024;
+    requireRange("MAX_LOGICAL_BYTES_PER_GUEST", cfg.maxLogicalBytesPerGuest,
+                 1024ULL, kMaxLogicalStorage);
+    requireRange("MAX_LOGICAL_BYTES_TOTAL", cfg.maxLogicalBytesTotal,
+                 1024ULL, kMaxLogicalStorage);
+    if (cfg.maxLogicalBytesPerGuest > cfg.maxLogicalBytesTotal) {
+        throw std::runtime_error(
+            "MAX_LOGICAL_BYTES_PER_GUEST cannot exceed MAX_LOGICAL_BYTES_TOTAL");
+    }
     requireRange("DB_POOL_SIZE", cfg.dbPoolSize, 1, 64);
     if (cfg.maxImportBytes < 1024 || cfg.maxImportBytes > 16 * 1024 * 1024) {
         throw std::runtime_error("MAX_IMPORT_BYTES is outside the allowed range");
@@ -253,6 +291,10 @@ Config Config::load(const std::string& envPath) {
     cfg.maxVersionsPerDiagram = getInt(file, "MAX_VERSIONS_PER_DIAGRAM", cfg.maxVersionsPerDiagram);
     cfg.maxDiagramsPerGuest = getInt(file, "MAX_DIAGRAMS_PER_GUEST", cfg.maxDiagramsPerGuest);
     cfg.maxDiagramsTotal = getInt(file, "MAX_DIAGRAMS_TOTAL", cfg.maxDiagramsTotal);
+    cfg.maxLogicalBytesPerGuest = getUint64(
+        file, "MAX_LOGICAL_BYTES_PER_GUEST", cfg.maxLogicalBytesPerGuest);
+    cfg.maxLogicalBytesTotal = getUint64(
+        file, "MAX_LOGICAL_BYTES_TOTAL", cfg.maxLogicalBytesTotal);
     cfg.dbPoolSize = getInt(file, "DB_POOL_SIZE", cfg.dbPoolSize);
     cfg.maxImportBytes = static_cast<std::size_t>(getInt(file, "MAX_IMPORT_BYTES", static_cast<int>(cfg.maxImportBytes)));
     cfg.projectRoot = getValue(file, "PROJECT_ROOT", cfg.projectRoot);

@@ -204,6 +204,8 @@ for metric in \
   nuigraph_diagram_creates_total \
   nuigraph_database_up \
   nuigraph_storage_capacity \
+  nuigraph_logical_storage_bytes \
+  nuigraph_logical_storage_capacity_bytes \
   nuigraph_database_size_bytes \
   nuigraph_db_pool_timeouts_total
 do
@@ -218,6 +220,10 @@ if ! grep -q '^nuigraph_database_up 1$' <<<"$metrics_body"; then
 fi
 if ! grep -Eq '^nuigraph_storage_capacity\{kind="diagrams"\} [1-9][0-9]*$' <<<"$metrics_body"; then
   echo "metrics scrape did not expose the configured diagram capacity" >&2
+  exit 1
+fi
+if ! grep -Eq '^nuigraph_logical_storage_capacity_bytes [1-9][0-9]*$' <<<"$metrics_body"; then
+  echo "metrics scrape did not expose the configured logical storage capacity" >&2
   exit 1
 fi
 for series in \

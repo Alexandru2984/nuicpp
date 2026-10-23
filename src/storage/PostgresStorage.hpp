@@ -84,6 +84,8 @@ private:
     void replaceNodesAndEdges(pqxx::work& tx, long diagramId, const Diagram& diagram);
     VersionInfo createVersion(pqxx::work& tx, long diagramId, const std::string& note);
     void pruneVersions(pqxx::work& tx, long diagramId);
+    void enforceLogicalStorageCapacity(pqxx::work& tx,
+                                       const std::string& ownerTokenHash);
     std::string uniqueSlug(pqxx::work& tx, const std::string& title);
 
     const Config& cfg_;

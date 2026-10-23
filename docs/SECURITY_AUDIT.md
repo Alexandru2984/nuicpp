@@ -52,6 +52,10 @@ Share links now support allowlisted lifetimes using the PostgreSQL clock on page
 API and fork paths. Expired capabilities return `404`; re-enable always rotates;
 owner-only expiry changes remain CSRF- and ETag-protected; blocked-view spikes
 have a bounded-label alert. Existing links intentionally migrate with no expiry.
+Retained user content now has transactional per-guest and global logical-byte
+ceilings in addition to row quotas. A trigger-maintained singleton serialises
+growth across app instances; rejected writes roll back revisions and snapshots;
+delete/prune release capacity; usage and capacity have a validated alert.
 
 ## Executive verdict
 
@@ -62,8 +66,8 @@ bounded request sizes, a dedicated runtime user and database role, Cloudflare-on
 public ingress, and a heavily sandboxed systemd unit.
 
 The largest residual risks are operational and architectural rather than a single
-critical exploit. The global row ceiling can still be filled to deny new
-creations, historical and error logs may retain bearer share identifiers, and
+critical exploit. The finite global row/byte ceilings can still be filled to deny
+new writes, historical and error logs may retain bearer share identifiers, and
 there is no alerting or NuiGraph-specific backup/restore evidence. Do not expand
 public usage until the P0 controls in `ROADMAP.md` are
 complete.
@@ -118,7 +122,7 @@ complete.
 
 | Rank | STRIDE | Scenario | Likelihood | Impact | Existing controls | Required treatment |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Denial of service | An attacker rotates guest cookies and source addresses, fills the global row or active limiter-key allowance, creates large diagrams/snapshots, or saturates DB workers/storage. The row ceiling does not bound bytes. | High | Medium | Cloudflare/nginx limits, bounded shared GCRA buckets, payload caps, pool cap, atomic per-session and global row quotas | Logical-byte budget and cleanup; Turnstile for suspicious creation; storage, limiter-capacity and latency alerts |
+| 1 | Denial of service | An attacker rotates guest cookies and source addresses, fills the global row/byte or active limiter-key allowance, or saturates DB workers/storage. | High | Medium | Cloudflare/nginx limits, bounded shared GCRA buckets, payload caps, pool cap, atomic per-session/global row and logical-byte quotas | Retention/cleanup; Turnstile for suspicious creation; deploy and wire the checked-in storage, limiter-capacity and latency alerts |
 | 2 | Information disclosure | App, DB, backups, journals, or an enabled bearer link expose private diagram content. Legacy links stay active until deliberately expired, rotated or revoked. | Medium | High | Private-by-default creation, optional DB-clock expiry, explicit rotate/revoke, 128-bit slugs, owner checks, least-privilege DB role, CSP, origin guard | Deploy the lifecycle changes; review legacy links; encrypted and access-controlled backups; retention policy |
 | 3 | Spoofing / elevation | Theft or forgery of the single admin session grants access to all diagrams. Stateless sessions have no individual revocation and one secret also derives guest ownership. | Low | High | HMAC cookies, Secure/HttpOnly/SameSite, PBKDF2, login throttles | `__Host-` cookie; server-side admin session revocation; MFA/passkey; split signing and ownership keys; alert on admin login |
 | 4 | Tampering | Concurrent editors attempt to overwrite, delete or restore over newer work. | Low | Medium | Atomic revision increments, strong ETags, mandatory `If-Match`, `412` rejection, bounded history and local draft preservation | Add a merge/recovery UI before real-time collaboration |
@@ -131,11 +135,12 @@ A full application-host compromise exposes every live diagram and version, the
 database credential, admin password hash, and session signing/ownership key. That
 key permits forged admin sessions and makes all guest owner identifiers
 recomputable. The current database blast radius is 15 diagrams; after deployment,
-the default application ceiling limits future volume to 5,000 diagram rows,
-although node, edge and snapshot sizes still determine the byte-level blast
-radius. The database does not contain raw session cookies, but diagram bodies may
-contain arbitrary user-entered PII, credentials, architecture details, or
-incident data.
+the default application ceiling limits future volume to 5,000 diagram rows and
+512 MiB of current plus historical logical content. Physical PostgreSQL storage
+also includes indexes, WAL and tuple overhead and therefore remains disk-alert
+bounded rather than quota-equivalent. The database does not contain raw session
+cookies, but diagram bodies may contain arbitrary user-entered PII, credentials,
+architecture details, or incident data.
 
 The project has no revenue, data-classification, incident-cost, or traffic inputs
 in the repository, so a defensible exact Annualised Loss Expectancy is impossible.
@@ -168,12 +173,12 @@ costs.
 
 ### Medium
 
-1. **Global capacity can be weaponised.** Quota enforcement is atomic per owner
-   and globally. Clearing the cookie no longer increases the overall row budget,
-   but an attacker can consume that budget and deny new creations. The ceiling
-   also counts rows rather than logical or on-disk bytes. Add storage alerts,
-   retention/cleanup and a byte-aware budget; require stronger proof for
-   suspicious anonymous creation.
+1. **Global capacity can be weaponised (byte growth remediated locally).** Row
+   and logical-byte enforcement is atomic per owner and globally across current
+   content and retained snapshots. Clearing the cookie no longer makes retained
+   growth unbounded, but an attacker can consume the finite global allowance and
+   deny new writes. Deploy the change and its capacity alert; add retention and
+   cleanup, and require stronger proof for suspicious anonymous creation.
 2. **Bearer capabilities in historical/error logs.** Application and dedicated
    nginx access logging now redact `/d/{slug}` and
    `/api/diagrams/slug/{slug}`. Historical records and nginx error messages may

@@ -138,6 +138,17 @@ groups:
           summary: NuiGraph diagram capacity is above 80 percent
           runbook: docs/MONITORING.md#abuse-or-capacity-pressure
 
+      - alert: NuiGraphLogicalStorageCapacityHigh
+        expr: |
+          nuigraph_logical_storage_bytes{job="nuigraph"}
+          / nuigraph_logical_storage_capacity_bytes{job="nuigraph"} > 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: NuiGraph logical storage capacity is above 80 percent
+          runbook: docs/MONITORING.md#abuse-or-capacity-pressure
+
       - alert: NuiGraphLimiterCapacityHigh
         expr: |
           nuigraph_storage_objects{job="nuigraph",kind="rate_limit_buckets"}

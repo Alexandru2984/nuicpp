@@ -8,12 +8,12 @@ proxy this endpoint through Cloudflare.
 
 The endpoint includes only bounded labels and aggregate values: HTTP method and
 status class, latency buckets, fixed security outcomes, creation source, object
-counts, configured capacity, database bytes and pool state. It never exports IP
-addresses, usernames, owner hashes, request IDs, diagram titles/bodies or bearer
-share capabilities. Diagram and rate-limit counts are exact; potentially much
-larger node, edge and version counts use PostgreSQL's live-row estimates so the
-monitor does not repeatedly scan millions of rows. Responses are `no-store` and
-excluded from indexing.
+counts, configured row/logical-byte capacity, database bytes and pool state. It
+never exports IP addresses, usernames, owner hashes, request IDs, diagram
+titles/bodies or bearer share capabilities. Diagram, rate-limit and logical-byte
+counts are exact; potentially much larger node, edge and version counts use
+PostgreSQL's live-row estimates so the monitor does not repeatedly scan millions
+of rows. Responses are `no-store` and excluded from indexing.
 
 The bounded security series includes allowed/blocked share views and successful
 enable/disable/rotate/expiry-update lifecycle changes. Runtime logs use the same outcomes but
@@ -89,12 +89,17 @@ only when a real artifact timestamp and restore verification signal exist.
 
 ## Abuse or capacity pressure
 
-1. Compare create rate, diagram capacity, rate-limit bucket capacity and DB byte
-   growth over the same window.
+1. Compare create rate, row capacity, logical-byte capacity, rate-limit bucket
+   capacity and physical DB byte growth over the same window. Logical bytes
+   cover retained user content; DB bytes also include indexes, bloat and system
+   overhead.
 2. Contain at Cloudflare/nginx first when the source pattern is clear. Do not
    delete rate-limit rows or user diagrams merely to silence an alert.
 3. Preserve aggregate evidence and open an incident when global capacity can be
    exhausted or legitimate creation is being denied.
+4. Do not raise a logical ceiling until disk headroom and recent growth are
+   understood. Prefer pruning or an explicit retention decision; deleting a
+   diagram transactionally releases its current and historical byte count.
 
 ## Authentication attack
 

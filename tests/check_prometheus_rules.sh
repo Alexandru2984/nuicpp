@@ -18,6 +18,7 @@ for alert in \
   NuiGraphBlockedShareViewSpike \
   NuiGraphRateLimitStorageFailure \
   NuiGraphDiagramCapacityHigh \
+  NuiGraphLogicalStorageCapacityHigh \
   NuiGraphLimiterCapacityHigh \
   NuiGraphDatabaseGrowthHigh \
   NuiGraphUnexpectedRestart \
