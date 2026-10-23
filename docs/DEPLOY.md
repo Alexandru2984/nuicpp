@@ -280,7 +280,7 @@ rules. See Cloudflare's current
 and [Origin Cache Control](https://developers.cloudflare.com/cache/concepts/cache-control/)
 documentation before changing the rule.
 
-The service worker caches eight shell/offline assets under a `VERSION` key.
+The service worker caches ten shell/offline assets under a `VERSION` key.
 **If you change what the shell needs, bump `VERSION`** — the activate handler
 deletes every cache whose key does not match, which is the only way old entries
 are cleared from visitors' browsers.
@@ -309,6 +309,11 @@ ledger rows or reverts SQL; use a new forward migration for any schema correctio
 rows to private. An older binary ignores the flag and would make every stored
 slug reachable again, so do not roll back across this migration without first
 restoring the hardened binary or denying `/d/` and `/api/diagrams/slug/` at nginx.
+`007_share_expiry.sql` preserves existing links with no deadline and adds only a
+nullable timestamp. An older binary ignores that timestamp and would re-expose
+expired links whose stored enabled flag remains true. Never roll back across
+this migration while share routes are reachable; restore the hardened binary or
+deny both `/d/` and `/api/diagrams/slug/` at nginx until it is running again.
 `FRONTEND_SHELL` adds no database state: roll back with the prior binary while
 keeping it at `server`, or restore the previous vhost and release together if a
 Nui-specific CSP was introduced.

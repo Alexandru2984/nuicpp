@@ -37,6 +37,8 @@ struct Diagram {
     std::string updatedAt;
     long revision = 0;
     bool sharingEnabled = false;
+    std::string shareExpiresAt;
+    bool shareExpired = false;
     std::vector<Node> nodes;
     std::vector<Edge> edges;
 };

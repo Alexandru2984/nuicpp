@@ -13,6 +13,7 @@
 #include <pqxx/except>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <chrono>
 #include <filesystem>
@@ -1134,8 +1135,15 @@ void Routes::registerRoutes(httplib::Server& server) {
             if (!body.is_object() || !body.contains("action") || !body["action"].is_string()) {
                 throw std::invalid_argument("sharing action must be a string");
             }
+            for (const auto& [key, value] : body.items()) {
+                (void)value;
+                if (key != "action" && key != "expires_in") {
+                    throw std::invalid_argument("unknown sharing field");
+                }
+            }
             const auto actionName = body["action"].get<std::string>();
             ShareAction action;
+            ShareExpiry expiry;
             std::string outcome;
             if (actionName == "enable") {
                 action = ShareAction::Enable;
@@ -1146,10 +1154,32 @@ void Routes::registerRoutes(httplib::Server& server) {
             } else if (actionName == "rotate") {
                 action = ShareAction::Rotate;
                 outcome = "rotated";
+            } else if (actionName == "set_expiry") {
+                action = ShareAction::SetExpiry;
+                outcome = "expiry_updated";
             } else {
                 throw std::invalid_argument("unknown sharing action");
             }
-            const auto diagram = storage_.updateSharing(id, action, expectedRevision);
+            const auto expiryProvided = body.contains("expires_in");
+            if (action == ShareAction::Disable && expiryProvided) {
+                throw std::invalid_argument("disable does not accept an expiry");
+            }
+            if (action == ShareAction::SetExpiry && !expiryProvided) {
+                throw std::invalid_argument("set_expiry requires expires_in");
+            }
+            expiry.preserve = action == ShareAction::Rotate && !expiryProvided;
+            if (expiryProvided && !body["expires_in"].is_null()) {
+                if (!body["expires_in"].is_number_integer()) {
+                    throw std::invalid_argument("expires_in must be null or an allowed number of seconds");
+                }
+                const auto seconds = body["expires_in"].get<long>();
+                constexpr std::array<long, 5> allowed = {300, 3600, 86400, 604800, 2592000};
+                if (std::find(allowed.begin(), allowed.end(), seconds) == allowed.end()) {
+                    throw std::invalid_argument("expires_in is not an allowed duration");
+                }
+                expiry.seconds = seconds;
+            }
+            const auto diagram = storage_.updateSharing(id, action, expectedRevision, expiry);
             sendDiagramJson(req, res, 200, diagram);
             logSecurityEvent(req, res, "sharing_change", outcome);
         } catch (const std::exception& e) {

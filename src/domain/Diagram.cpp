@@ -39,7 +39,7 @@ nlohmann::json diagramToJson(const Diagram& diagram) {
     for (const auto& edge : diagram.edges) {
         edges.push_back(edgeToJson(edge));
     }
-    return {
+    nlohmann::json result = {
         {"id", diagram.id},
         {"title", diagram.title},
         {"slug", diagram.slug},
@@ -48,9 +48,14 @@ nlohmann::json diagramToJson(const Diagram& diagram) {
         {"updated_at", diagram.updatedAt},
         {"revision", diagram.revision},
         {"sharing_enabled", diagram.sharingEnabled},
+        {"share_expired", diagram.shareExpired},
         {"nodes", nodes},
         {"edges", edges}
     };
+    result["share_expires_at"] = diagram.shareExpiresAt.empty()
+        ? nlohmann::json(nullptr)
+        : nlohmann::json(diagram.shareExpiresAt);
+    return result;
 }
 
 Node nodeFromJson(const nlohmann::json& value) {
@@ -87,6 +92,10 @@ Diagram diagramFromJson(const nlohmann::json& value) {
     diagram.description = value.value("description", "");
     diagram.revision = value.value("revision", 0L);
     diagram.sharingEnabled = value.value("sharing_enabled", false);
+    diagram.shareExpiresAt = value.contains("share_expires_at") && value["share_expires_at"].is_string()
+        ? value["share_expires_at"].get<std::string>()
+        : "";
+    diagram.shareExpired = value.value("share_expired", false);
     if (!value.contains("nodes") || !value["nodes"].is_array() || !value.contains("edges") || !value["edges"].is_array()) {
         throw std::runtime_error("diagram JSON must include nodes and edges arrays");
     }

@@ -16,7 +16,7 @@ monitor does not repeatedly scan millions of rows. Responses are `no-store` and
 excluded from indexing.
 
 The bounded security series includes allowed/blocked share views and successful
-enable/disable/rotate lifecycle changes. Runtime logs use the same outcomes but
+enable/disable/rotate/expiry-update lifecycle changes. Runtime logs use the same outcomes but
 redact the capability from both page and API paths. A sudden blocked-view spike
 after a planned rotation is expected; an unexplained sustained spike should be
 correlated with access logs without recovering or printing the old token.
@@ -102,6 +102,16 @@ only when a real artifact timestamp and restore verification signal exist.
 2. Block abusive sources at the edge; do not weaken application throttling.
 3. Treat any unexplained successful login near the attack window as a potential
    credential incident and follow `docs/INCIDENT_RESPONSE.md`.
+
+## Share-link probing or expiry noise
+
+1. Check whether an owner just rotated, disabled or allowed a link to expire;
+   those normal events can produce a short burst of blocked views.
+2. If unexplained, correlate only redacted `/d/<redacted>` request records by
+   request ID, time window and edge metadata. Never recover or print the token.
+3. A sustained distributed pattern is capability probing: contain it at
+   Cloudflare/nginx, preserve aggregate evidence and follow the incident runbook
+   if any allowed views appear in the same window.
 
 ## Unexpected restart
 

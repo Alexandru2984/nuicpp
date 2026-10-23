@@ -54,11 +54,12 @@ std::string randomHex(std::size_t bytes) {
 
 nlohmann::json diagramSummaryJson(const pqxx::row& row) {
     const auto sharingEnabled = row["sharing_enabled"].as<bool>();
-    return {
+    nlohmann::json result = {
         {"id", row["id"].as<long>()},
         {"title", rowString(row, "title")},
         {"slug", sharingEnabled ? rowString(row, "slug") : ""},
         {"sharing_enabled", sharingEnabled},
+        {"share_expired", row["share_expired"].as<bool>()},
         {"description", rowString(row, "description")},
         {"created_at", rowString(row, "created_at")},
         {"updated_at", rowString(row, "updated_at")},
@@ -66,6 +67,10 @@ nlohmann::json diagramSummaryJson(const pqxx::row& row) {
         {"node_count", row["node_count"].as<int>()},
         {"edge_count", row["edge_count"].as<int>()}
     };
+    result["share_expires_at"] = row["share_expires_at"].is_null()
+        ? nlohmann::json(nullptr)
+        : nlohmann::json(rowString(row, "share_expires_at"));
+    return result;
 }
 
 } // namespace
@@ -143,7 +148,13 @@ std::vector<nlohmann::json> PostgresStorage::listDiagrams(long limit, long offse
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
     auto rows = tx.exec(R"SQL(
-        SELECT d.id, d.title, d.slug, d.description, d.revision, d.sharing_enabled,
+        SELECT d.id, d.title, d.slug, d.description, d.revision,
+               (d.sharing_enabled AND
+                (d.share_expires_at IS NULL OR d.share_expires_at > now())) AS sharing_enabled,
+               (d.sharing_enabled AND d.share_expires_at IS NOT NULL AND
+                d.share_expires_at <= now()) AS share_expired,
+               to_char(d.share_expires_at AT TIME ZONE 'UTC',
+                       'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS share_expires_at,
                to_char(d.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
                to_char(d.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS updated_at,
                (SELECT count(*) FROM nodes n WHERE n.diagram_id=d.id) AS node_count,
@@ -167,7 +178,13 @@ std::vector<nlohmann::json> PostgresStorage::listDiagramsForOwner(const std::str
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
     auto rows = tx.exec(R"SQL(
-        SELECT d.id, d.title, d.slug, d.description, d.revision, d.sharing_enabled,
+        SELECT d.id, d.title, d.slug, d.description, d.revision,
+               (d.sharing_enabled AND
+                (d.share_expires_at IS NULL OR d.share_expires_at > now())) AS sharing_enabled,
+               (d.sharing_enabled AND d.share_expires_at IS NOT NULL AND
+                d.share_expires_at <= now()) AS share_expired,
+               to_char(d.share_expires_at AT TIME ZONE 'UTC',
+                       'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS share_expires_at,
                to_char(d.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
                to_char(d.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS updated_at,
                (SELECT count(*) FROM nodes n WHERE n.diagram_id=d.id) AS node_count,
@@ -197,7 +214,11 @@ Diagram PostgresStorage::getDiagramBySlug(const std::string& slug) {
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
     auto rows = tx.exec(
-        "SELECT id FROM diagrams WHERE slug=$1 AND sharing_enabled=true",
+        R"SQL(
+            SELECT id FROM diagrams
+            WHERE slug=$1 AND sharing_enabled=true
+              AND (share_expires_at IS NULL OR share_expires_at > now())
+        )SQL",
         pqxx::params{slug});
     if (rows.empty()) {
         throw std::runtime_error("diagram not found");
@@ -211,7 +232,11 @@ bool PostgresStorage::activeShareExists(const std::string& slug) {
     auto conn = pool_.acquire();
     pqxx::read_transaction tx(conn.get());
     const auto rows = tx.exec(
-        "SELECT 1 FROM diagrams WHERE slug=$1 AND sharing_enabled=true",
+        R"SQL(
+            SELECT 1 FROM diagrams
+            WHERE slug=$1 AND sharing_enabled=true
+              AND (share_expires_at IS NULL OR share_expires_at > now())
+        )SQL",
         pqxx::params{slug});
     return !rows.empty();
 }
@@ -323,7 +348,13 @@ void PostgresStorage::clearRateLimit(const std::string& bucketKey) {
 
 Diagram PostgresStorage::getDiagram(pqxx::work& tx, long id) {
     auto rows = tx.exec(R"SQL(
-        SELECT id, title, slug, description, revision, sharing_enabled,
+        SELECT id, title, slug, description, revision,
+               (sharing_enabled AND
+                (share_expires_at IS NULL OR share_expires_at > now())) AS sharing_enabled,
+               (sharing_enabled AND share_expires_at IS NOT NULL AND
+                share_expires_at <= now()) AS share_expired,
+               to_char(share_expires_at AT TIME ZONE 'UTC',
+                       'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS share_expires_at,
                to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
                to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS updated_at
         FROM diagrams WHERE id=$1
@@ -341,6 +372,8 @@ Diagram PostgresStorage::getDiagram(pqxx::work& tx, long id) {
     diagram.updatedAt = rowString(d, "updated_at");
     diagram.revision = d["revision"].as<long>();
     diagram.sharingEnabled = d["sharing_enabled"].as<bool>();
+    diagram.shareExpiresAt = rowString(d, "share_expires_at");
+    diagram.shareExpired = d["share_expired"].as<bool>();
 
     auto nodeRows = tx.exec(R"SQL(
         SELECT node_key, type, title, x, y, width, height, color, metadata_json::text
@@ -477,11 +510,15 @@ Diagram PostgresStorage::updateDiagram(long id, const Diagram& input, const std:
     return getDiagram(id);
 }
 
-Diagram PostgresStorage::updateSharing(long id, ShareAction action, long expectedRevision) {
+Diagram PostgresStorage::updateSharing(long id, ShareAction action, long expectedRevision,
+                                       const ShareExpiry& expiry) {
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
     const auto rows = tx.exec(R"SQL(
-        SELECT title, sharing_enabled, revision
+        SELECT title, sharing_enabled,
+               (sharing_enabled AND
+                (share_expires_at IS NULL OR share_expires_at > now())) AS sharing_active,
+               revision
         FROM diagrams
         WHERE id=$1
         FOR UPDATE
@@ -496,32 +533,76 @@ Diagram PostgresStorage::updateSharing(long id, ShareAction action, long expecte
             currentRevision,
             "diagram changed since it was opened; reload before changing sharing");
     }
-    const auto currentlyEnabled = rows[0]["sharing_enabled"].as<bool>();
+    const auto storedEnabled = rows[0]["sharing_enabled"].as<bool>();
+    const auto currentlyActive = rows[0]["sharing_active"].as<bool>();
+    if (expiry.seconds.has_value() && *expiry.seconds <= 0) {
+        throw std::invalid_argument("share expiry must be positive");
+    }
 
     if (action == ShareAction::Disable) {
-        if (!currentlyEnabled) {
+        if (!storedEnabled) {
             throw std::invalid_argument("sharing is already disabled");
         }
         tx.exec(R"SQL(
             UPDATE diagrams
-            SET sharing_enabled=false, updated_at=now(), revision=revision+1
+            SET sharing_enabled=false, share_expires_at=NULL,
+                updated_at=now(), revision=revision+1
             WHERE id=$1
         )SQL", pqxx::params{id});
+    } else if (action == ShareAction::SetExpiry) {
+        if (!currentlyActive) {
+            throw std::invalid_argument("cannot change expiry for an inactive share link");
+        }
+        if (expiry.preserve) {
+            throw std::invalid_argument("share expiry update is missing a value");
+        }
+        if (expiry.seconds.has_value()) {
+            tx.exec(R"SQL(
+                UPDATE diagrams
+                SET share_expires_at=now() + ($1 * interval '1 second'),
+                    updated_at=now(), revision=revision+1
+                WHERE id=$2
+            )SQL", pqxx::params{*expiry.seconds, id});
+        } else {
+            tx.exec(R"SQL(
+                UPDATE diagrams
+                SET share_expires_at=NULL, updated_at=now(), revision=revision+1
+                WHERE id=$1
+            )SQL", pqxx::params{id});
+        }
     } else {
-        if (action == ShareAction::Enable && currentlyEnabled) {
+        if (action == ShareAction::Enable && currentlyActive) {
             throw std::invalid_argument("sharing is already enabled");
         }
-        if (action == ShareAction::Rotate && !currentlyEnabled) {
-            throw std::invalid_argument("cannot rotate a disabled share link");
+        if (action == ShareAction::Rotate && !currentlyActive) {
+            throw std::invalid_argument("cannot rotate an inactive share link");
         }
         // Enabling also rotates. A URL copied before revocation must never
-        // become valid again merely because sharing was re-enabled later.
+        // become valid again merely because sharing was re-enabled later. The
+        // same rule applies when an expired link is enabled again.
         const auto slug = uniqueSlug(tx, rowString(rows[0], "title"));
-        tx.exec(R"SQL(
-            UPDATE diagrams
-            SET slug=$1, sharing_enabled=true, updated_at=now(), revision=revision+1
-            WHERE id=$2
-        )SQL", pqxx::params{slug, id});
+        if (expiry.preserve) {
+            tx.exec(R"SQL(
+                UPDATE diagrams
+                SET slug=$1, sharing_enabled=true, updated_at=now(), revision=revision+1
+                WHERE id=$2
+            )SQL", pqxx::params{slug, id});
+        } else if (expiry.seconds.has_value()) {
+            tx.exec(R"SQL(
+                UPDATE diagrams
+                SET slug=$1, sharing_enabled=true,
+                    share_expires_at=now() + ($2 * interval '1 second'),
+                    updated_at=now(), revision=revision+1
+                WHERE id=$3
+            )SQL", pqxx::params{slug, *expiry.seconds, id});
+        } else {
+            tx.exec(R"SQL(
+                UPDATE diagrams
+                SET slug=$1, sharing_enabled=true, share_expires_at=NULL,
+                    updated_at=now(), revision=revision+1
+                WHERE id=$2
+            )SQL", pqxx::params{slug, id});
+        }
     }
 
     tx.commit();

@@ -203,11 +203,18 @@ test.describe("desktop security and offline lifecycle", () => {
       const sharingDialog = page.getByRole("dialog", { name: "Share diagram" });
       await expect(sharingDialog).toBeVisible();
       await expect(sharingDialog.getByText("Private", { exact: true })).toBeVisible();
+      const lifetime = sharingDialog.getByRole("combobox", { name: "Share link lifetime" });
+      await expect(lifetime).toHaveValue("604800");
       await sharingDialog.getByRole("button", { name: "Enable share link" }).click();
       const shareInput = sharingDialog.getByRole("textbox", { name: "Active share link" });
       await expect(shareInput).toBeVisible();
+      await expect(sharingDialog.getByText(/can view and fork the diagram until/)).toBeVisible();
       const firstLink = await shareInput.inputValue();
       expect(firstLink).toMatch(/\/d\/[a-z0-9-]+-[0-9a-f]{32}$/);
+
+      await lifetime.selectOption("never");
+      await sharingDialog.getByRole("button", { name: "Update expiry" }).click();
+      await expect(sharingDialog.getByText(/no automatic expiry/i)).toBeVisible();
 
       page.once("dialog", (dialog) => dialog.accept());
       await sharingDialog.getByRole("button", { name: "Rotate link" }).click();

@@ -72,6 +72,10 @@ rollback notes where applicable.
   distribution through the command palette and customisable mobile actions. A
   pure local geometry engine has deterministic generated tests, finite-number
   guards and live Chromium coverage.
+- Optional share-link expiry from five minutes to 30 days (or no deadline),
+  enforced by the PostgreSQL clock on page, API and fork paths. Expired links
+  fail with `404`, re-enable rotates the capability, changes are revision-safe,
+  and blocked-view spikes have a validated alert rule.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -96,7 +100,7 @@ High risk remain open.
 
 - Add an explicitly indexed `public` visibility distinct from the implemented
   private and unlisted-link states.
-- Add share expiry plus optional password-protected and time-limited links.
+- Add optional password-protected links.
 - User accounts with email verification or OIDC, passkeys/WebAuthn and MFA for
   the administrator; convert a guest workspace into an account without data loss.
 - Server-side admin sessions with device list, last-used metadata and individual

@@ -103,6 +103,12 @@ own_shared_json="$(curl --noproxy '*' -fsS -b "$COOKIE_JAR" \
   -X POST -d '{"action":"enable"}' \
   "http://127.0.0.1:${PORT}/api/diagrams/${own_id}/sharing")"
 own_share_slug="$(python3 -c 'import json,sys; data=json.loads(sys.argv[1]); assert data["sharing_enabled"] is True; print(data["slug"])' "$own_shared_json")"
+own_shared_revision="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["revision"])' "$own_shared_json")"
+curl --noproxy '*' -fsS -b "$COOKIE_JAR" \
+  -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
+  -H "If-Match: \"diagram-${own_id}-r${own_shared_revision}\"" \
+  -X POST -d '{"action":"set_expiry","expires_in":3600}' \
+  "http://127.0.0.1:${PORT}/api/diagrams/${own_id}/sharing" >/dev/null
 
 status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" \
   -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
@@ -219,7 +225,8 @@ for series in \
   'nuigraph_security_events_total{event="share_view",outcome="blocked"}' \
   'nuigraph_security_events_total{event="sharing_change",outcome="enabled"}' \
   'nuigraph_security_events_total{event="sharing_change",outcome="disabled"}' \
-  'nuigraph_security_events_total{event="sharing_change",outcome="rotated"}'
+  'nuigraph_security_events_total{event="sharing_change",outcome="rotated"}' \
+  'nuigraph_security_events_total{event="sharing_change",outcome="expiry_updated"}'
 do
   if ! grep -Fq "$series" <<<"$metrics_body"; then
     echo "expected bounded sharing metric $series" >&2
@@ -417,6 +424,10 @@ if ! grep -q 'category=security event=share_view outcome=blocked.*path=/d/<redac
 fi
 if ! grep -q 'category=security event=sharing_change outcome=enabled.*path=/api/diagrams/' "$LOG_FILE"; then
   echo "expected an explicit sharing lifecycle security event" >&2
+  exit 1
+fi
+if ! grep -q 'category=security event=sharing_change outcome=expiry_updated.*path=/api/diagrams/' "$LOG_FILE"; then
+  echo "expected an explicit share-expiry lifecycle event" >&2
   exit 1
 fi
 if grep -q 'not-a-real-share' "$LOG_FILE"; then

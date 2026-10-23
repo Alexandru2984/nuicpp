@@ -48,6 +48,10 @@ keyboard focus and reuses the reviewed canvas centring path.
 Multi-node alignment and distribution now use a pure local geometry engine with
 finite-number validation, prototype-safe key lookup and one-step undo. Generated
 unit cases plus Chromium cover the invariants and user interaction.
+Share links now support allowlisted lifetimes using the PostgreSQL clock on page,
+API and fork paths. Expired capabilities return `404`; re-enable always rotates;
+owner-only expiry changes remain CSRF- and ETag-protected; blocked-view spikes
+have a bounded-label alert. Existing links intentionally migrate with no expiry.
 
 ## Executive verdict
 
@@ -115,7 +119,7 @@ complete.
 | Rank | STRIDE | Scenario | Likelihood | Impact | Existing controls | Required treatment |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Denial of service | An attacker rotates guest cookies and source addresses, fills the global row or active limiter-key allowance, creates large diagrams/snapshots, or saturates DB workers/storage. The row ceiling does not bound bytes. | High | Medium | Cloudflare/nginx limits, bounded shared GCRA buckets, payload caps, pool cap, atomic per-session and global row quotas | Logical-byte budget and cleanup; Turnstile for suspicious creation; storage, limiter-capacity and latency alerts |
-| 2 | Information disclosure | App, DB, backups, journals, or an enabled bearer link expose private diagram content. Legacy links stay active until deliberately revoked. | Medium | High | Private-by-default creation, explicit rotate/revoke, 128-bit slugs, owner checks, least-privilege DB role, CSP, origin guard | Deploy the lifecycle change; review legacy links; encrypted and access-controlled backups; retention policy |
+| 2 | Information disclosure | App, DB, backups, journals, or an enabled bearer link expose private diagram content. Legacy links stay active until deliberately expired, rotated or revoked. | Medium | High | Private-by-default creation, optional DB-clock expiry, explicit rotate/revoke, 128-bit slugs, owner checks, least-privilege DB role, CSP, origin guard | Deploy the lifecycle changes; review legacy links; encrypted and access-controlled backups; retention policy |
 | 3 | Spoofing / elevation | Theft or forgery of the single admin session grants access to all diagrams. Stateless sessions have no individual revocation and one secret also derives guest ownership. | Low | High | HMAC cookies, Secure/HttpOnly/SameSite, PBKDF2, login throttles | `__Host-` cookie; server-side admin session revocation; MFA/passkey; split signing and ownership keys; alert on admin login |
 | 4 | Tampering | Concurrent editors attempt to overwrite, delete or restore over newer work. | Low | Medium | Atomic revision increments, strong ETags, mandatory `If-Match`, `412` rejection, bounded history and local draft preservation | Add a merge/recovery UI before real-time collaboration |
 | 5 | Repudiation | A shared admin credential prevents attribution to one person, and local logs can be altered after host compromise. | Medium | Medium | Correlated nginx/app request IDs; structured actor-class login/share/auth/CSRF/quota/storage events; redacted routes | Central/tamper-resistant audit storage, retention/access policy, individual admin identities and alerts |
@@ -156,9 +160,11 @@ costs.
    every diagram. Add encrypted backups, retention, off-host replication, restore
    tests and ownership for failed jobs.
 2. **Sharing was always-on and bearer-only (remediated locally).** New diagrams
-   are private; enable/rotate/revoke are owner-only, CSRF-protected and
-   revision-conditional. Deployment and a one-time review of intentionally
-   preserved legacy links remain required before closing the finding.
+   are private; enable/rotate/revoke/expiry are owner-only, CSRF-protected and
+   revision-conditional. Expiration uses the database clock on every capability
+   path and cannot revive a token. Deployment and a one-time review of
+   intentionally preserved no-expiry legacy links remain required before closing
+   the finding.
 
 ### Medium
 

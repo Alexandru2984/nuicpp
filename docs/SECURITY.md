@@ -80,8 +80,13 @@ because owner hashes are derived from it. Rotate only deliberately.
 Share slugs are bearer capabilities, but new diagrams are private until their
 owner explicitly enables one. Enable and rotate mint a fresh 128-bit token;
 disable makes both share routes return `404`, and re-enable rotates again so a
-revoked URL cannot revive. Existing URLs remain enabled during the additive
-migration for compatibility. The application logger and the dedicated
+revoked URL cannot revive. Owners can choose an allowlisted lifetime from five
+minutes through 30 days or no automatic expiry; the browser defaults to seven
+days. PostgreSQL `now()` gates page, API and fork lookups, so app-server clock
+skew cannot make one route disagree with another. An expired link returns `404`,
+is hidden from API responses and can only be re-enabled with a newly rotated
+token. Existing URLs remain enabled without expiry during the additive migration
+for compatibility. The application logger and the dedicated
 nginx access format replace values in `/d/{slug}` and
 `/api/diagrams/slug/{slug}` with `<redacted>` before writing them. Do not switch
 the vhost back to the default `$request` access format, which contains the raw
@@ -139,9 +144,13 @@ Two subtleties worth preserving:
    replaced the old sequential `-<timestamp>` suffix with 16 hex characters from
    `gen_random_uuid()`. New links use a 32-hex-character, 128-bit random suffix;
    older 64-bit links remain valid until rotated or disabled. The database
-   query also requires `sharing_enabled=true`; knowing an inactive slug does
-   not bypass revocation. Sharing mutations require owner authorization, CSRF
-   and the current revision ETag. Do not reintroduce a predictable suffix.
+   query also requires `sharing_enabled=true` and either a null deadline or a
+   future deadline;
+   knowing an inactive or expired slug does not bypass revocation. Sharing
+   mutations require owner authorization, CSRF and the current revision ETag.
+   Durations are a closed allowlist and expiry changes increment the diagram
+   revision. Do not reintroduce a predictable suffix or an application-clock
+   check on only one access path.
 4. **Forking does not weaken ID authorization.** The owner-only
    `POST /api/diagrams/{id}/duplicate` remains protected against IDOR. A visitor
    may instead fork only through `POST /api/diagrams/slug/{slug}/fork`, which
@@ -397,7 +406,8 @@ asserts the live behaviour: a fresh guest cannot enumerate existing diagrams,
 cannot read one by id, cannot copy one via duplicate, cannot read one's version
 snapshots, gets `400` rather than a crash on an out-of-range id, is refused
 without a CSRF token, receives a request ID and emits redacted share/CSRF
-security events. It also proves that private and revoked slugs return `404`,
+security events. It also proves that private, expired and revoked slugs return
+`404` across page/API/fork paths, expired capabilities rotate before re-enable,
 rotated capabilities stay dead and a different guest cannot change sharing.
 Each `403` has a
 matching positive control on the visitor's own diagram, so a pass cannot come

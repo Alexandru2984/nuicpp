@@ -1035,9 +1035,12 @@ body.dirty .draft-status { color: var(--warn); }
 
 .sharing-status.shared { border-left-color: var(--good); }
 .sharing-status.private { border-left-color: var(--accent); }
+.sharing-status.expired { border-left-color: var(--warn); }
 .sharing-status strong { color: var(--text-strong); }
 .sharing-status p { margin: 5px 0 0; color: var(--muted); line-height: 1.45; }
 .sharing-link { width: 100%; min-height: var(--tap); font-size: 14px; }
+.sharing-expiry { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
+.sharing-expiry select { min-height: var(--tap); }
 .sharing-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .sharing-actions button { min-height: var(--tap); }
 

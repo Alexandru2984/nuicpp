@@ -24,6 +24,7 @@ grep -Fq 'arrange.src = `/diagram-arrange.js' public/app.js
 grep -Fq 'css.href = `/styles.css' public/editor.js
 grep -Fq 'Ctrl / Cmd + K' public/editor.js
 grep -Fq 'Find and focus node' public/editor.js
+grep -Fq 'Share link lifetime' public/editor.js
 grep -Fq 'NODE_NAVIGATOR_RESULT_LIMIT = 100' public/editor.js
 grep -Fq 'evt.key === "/"' public/editor.js
 grep -Fq 'nuigraph:mobile-actions:v1' public/editor.js

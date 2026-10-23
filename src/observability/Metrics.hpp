@@ -42,7 +42,7 @@ private:
     static constexpr std::size_t kMethodCount = 5;
     static constexpr std::size_t kStatusCount = 6;
     static constexpr std::size_t kLatencyBucketCount = 6;
-    static constexpr std::size_t kSecurityEventCount = 20;
+    static constexpr std::size_t kSecurityEventCount = 21;
     static constexpr std::size_t kCreateSourceCount = 5;
 
     std::uint64_t startTimeSeconds_;

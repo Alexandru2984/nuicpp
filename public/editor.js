@@ -320,7 +320,7 @@
       { id: "new", label: "New diagram", shortLabel: "New", category: "Diagram", keywords: "create blank", mobile: true, run: newDiagram },
       { id: "sample", label: "Create from cloud template", shortLabel: "Sample", category: "Diagram", keywords: "sample architecture", run: loadSample },
       { id: "save", label: "Save diagram", shortLabel: "Save", category: "Diagram", keywords: "persist sync", shortcut: "Ctrl / Cmd + S", mobile: true, enabled: () => Boolean(state.current) && !state.readOnly, run: saveDiagram },
-      { id: "share", label: "Manage or copy sharing", shortLabel: "Share", category: "Diagram", keywords: "private public url revoke rotate link", mobile: true, enabled: () => Boolean(state.current), run: shareDiagram },
+      { id: "share", label: "Manage or copy sharing", shortLabel: "Share", category: "Diagram", keywords: "private public url revoke rotate expire timed link", mobile: true, enabled: () => Boolean(state.current), run: shareDiagram },
       { id: "fork", label: "Fork shared diagram", shortLabel: "Fork", category: "Diagram", keywords: "copy public link own", mobile: true, enabled: () => Boolean(state.current) && state.readOnly && Boolean(sharedSlugFromPath()), run: forkSharedDiagram },
       { id: "undo", label: "Undo", shortLabel: "Undo", category: "Edit", shortcut: "Ctrl / Cmd + Z", mobile: true, enabled: () => state.history.length > 0 && !state.readOnly, run: undo },
       { id: "redo", label: "Redo", shortLabel: "Redo", category: "Edit", shortcut: "Ctrl / Cmd + Y", mobile: true, enabled: () => state.future.length > 0 && !state.readOnly, run: redo },
@@ -1290,6 +1290,8 @@
           revision: state.current.revision,
           can_edit: state.current.can_edit,
           sharing_enabled: state.current.sharing_enabled,
+          share_expires_at: state.current.share_expires_at,
+          share_expired: state.current.share_expired,
           share_url: state.current.share_url
         };
         state.current = { ...draft.diagram, ...serverMeta };
@@ -1933,18 +1935,25 @@
       state.current.updated_at = updated.updated_at;
       state.current.slug = updated.slug;
       state.current.sharing_enabled = updated.sharing_enabled;
+      state.current.share_expires_at = updated.share_expires_at;
+      state.current.share_expired = updated.share_expired;
       state.current.share_url = updated.share_url;
     };
 
-    const changeSharing = async (action) => {
+    const changeSharing = async (action, expiresIn = undefined) => {
       const buttons = [...dialog.querySelectorAll("button")];
       buttons.forEach((button) => { button.disabled = true; });
-      liveStatus.textContent = `${action[0].toUpperCase()}${action.slice(1)} in progress...`;
+      const progressLabel = action === "set_expiry"
+        ? "Expiry update"
+        : `${action[0].toUpperCase()}${action.slice(1)}`;
+      liveStatus.textContent = `${progressLabel} in progress...`;
       try {
+        const request = { action };
+        if (expiresIn !== undefined) request.expires_in = expiresIn;
         const updated = await api(`/api/diagrams/${state.current.id}/sharing`, {
           method: "POST",
           headers: { "If-Match": diagramEtag(state.current) },
-          body: JSON.stringify({ action })
+          body: JSON.stringify(request)
         });
         mergeSharingMetadata(updated);
         render();
@@ -1954,7 +1963,9 @@
           ? "Sharing disabled. The previous URL no longer works."
           : action === "rotate"
             ? "Link rotated. The previous URL no longer works."
-            : "Sharing enabled with a new link.";
+            : action === "set_expiry"
+              ? "Link expiry updated."
+              : "Sharing enabled with a new link.";
       } catch (error) {
         if (!handleRevisionConflict(
           error,
@@ -1970,24 +1981,64 @@
       }
     };
 
+    const expiryControl = (preserveCurrent) => {
+      const label = document.createElement("label");
+      label.className = "sharing-expiry";
+      const caption = document.createElement("span");
+      caption.textContent = "Link lifetime";
+      const select = document.createElement("select");
+      select.setAttribute("aria-label", "Share link lifetime");
+      const choices = preserveCurrent
+        ? [["preserve", "Keep current expiry"]]
+        : [];
+      choices.push(
+        ["300", "5 minutes"],
+        ["3600", "1 hour"],
+        ["86400", "24 hours"],
+        ["604800", "7 days"],
+        ["2592000", "30 days"],
+        ["never", "Never expires"]
+      );
+      for (const [value, text] of choices) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = text;
+        select.appendChild(option);
+      }
+      select.value = preserveCurrent ? "preserve" : "604800";
+      label.append(caption, select);
+      return { label, select };
+    };
+
+    const selectedExpiry = (select) => select.value === "never"
+      ? null
+      : Number.parseInt(select.value, 10);
+
     const renderContent = () => {
       content.replaceChildren();
+      const expired = Boolean(state.current.share_expired);
       const status = document.createElement("div");
-      status.className = `sharing-status ${state.current.sharing_enabled ? "shared" : "private"}`;
+      status.className = `sharing-status ${state.current.sharing_enabled ? "shared" : expired ? "expired" : "private"}`;
       const statusTitle = document.createElement("strong");
-      statusTitle.textContent = state.current.sharing_enabled ? "Shared by link" : "Private";
+      statusTitle.textContent = state.current.sharing_enabled ? "Shared by link" : expired ? "Share link expired" : "Private";
       const explanation = document.createElement("p");
       explanation.textContent = state.current.sharing_enabled
-        ? "Anyone with this unguessable link can view and fork the diagram."
-        : "Only this guest session and the administrator can access the diagram.";
+        ? state.current.share_expires_at
+          ? `Anyone with this unguessable link can view and fork the diagram until ${new Date(state.current.share_expires_at).toLocaleString()}.`
+          : "Anyone with this unguessable link can view and fork the diagram. It has no automatic expiry."
+        : expired
+          ? "The old URL is inactive. Enabling sharing creates a new capability instead of reviving it."
+          : "Only this guest session and the administrator can access the diagram.";
       status.append(statusTitle, explanation);
       content.appendChild(status);
 
       const actions = document.createElement("div");
       actions.className = "sharing-actions";
       if (!state.current.sharing_enabled) {
-        const enable = mobileBarButton("Enable share link", "primary");
-        enable.onclick = () => changeSharing("enable");
+        const expiry = expiryControl(false);
+        content.appendChild(expiry.label);
+        const enable = mobileBarButton(expired ? "Create new share link" : "Enable share link", "primary");
+        enable.onclick = () => changeSharing("enable", selectedExpiry(expiry.select));
         actions.appendChild(enable);
       } else {
         const link = document.createElement("input");
@@ -2012,7 +2063,15 @@
             changeSharing("disable");
           }
         };
-        actions.append(copy, rotate, disable);
+        const expiry = expiryControl(true);
+        content.appendChild(expiry.label);
+        const updateExpiry = mobileBarButton("Update expiry");
+        updateExpiry.onclick = () => {
+          if (expiry.select.value !== "preserve") {
+            changeSharing("set_expiry", selectedExpiry(expiry.select));
+          }
+        };
+        actions.append(copy, rotate, updateExpiry, disable);
       }
       content.appendChild(actions);
     };
@@ -2235,7 +2294,8 @@
       shareButton.classList.toggle("active", Boolean(state.current?.sharing_enabled));
       shareButton.title = !state.current ? "Open a diagram to manage sharing"
         : state.readOnly ? "Copy share link"
-          : state.current.sharing_enabled ? "Manage active share link" : "Enable sharing";
+          : state.current.sharing_enabled ? "Manage active share link"
+            : state.current.share_expired ? "Share link expired" : "Enable sharing";
     }
     const forkButton = el("fork-shared");
     if (forkButton) forkButton.hidden = !(state.current && state.readOnly && sharedSlugFromPath());

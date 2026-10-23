@@ -8,6 +8,7 @@
 
 #include <nlohmann/json.hpp>
 #include <pqxx/pqxx>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -38,7 +39,13 @@ private:
 enum class ShareAction {
     Enable,
     Disable,
-    Rotate
+    Rotate,
+    SetExpiry
+};
+
+struct ShareExpiry {
+    bool preserve = false;
+    std::optional<long> seconds;
 };
 
 class PostgresStorage {
@@ -61,7 +68,8 @@ public:
     Diagram createDiagram(const Diagram& input, bool importMode, const std::string& ownerTokenHash = "");
     Diagram updateDiagram(long id, const Diagram& input, const std::string& note,
                           bool importMode, long expectedRevision);
-    Diagram updateSharing(long id, ShareAction action, long expectedRevision);
+    Diagram updateSharing(long id, ShareAction action, long expectedRevision,
+                          const ShareExpiry& expiry = {});
     void deleteDiagram(long id, long expectedRevision);
     Diagram duplicateDiagram(long id, const std::string& ownerTokenHash = "");
     Diagram forkDiagramBySlug(const std::string& slug, const std::string& ownerTokenHash);

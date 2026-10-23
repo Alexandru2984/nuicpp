@@ -54,7 +54,8 @@ admin account for maintenance.
 - Export to JSON, SVG, PNG, and Mermaid.
 - Template gallery: architecture, incident-response, and data-pipeline diagrams.
 - Private-by-default diagrams with explicit read-only sharing at `/d/{slug}`,
-  128-bit capabilities, immediate rotation/revocation and one-click fork.
+  128-bit capabilities, allowlisted 5-minute to 30-day expiry, immediate
+  rotation/revocation and one-click fork. The UI defaults new links to 7 days.
 - Browser draft autosave with a restore prompt for unsaved local changes.
 
 ### Mobile and offline

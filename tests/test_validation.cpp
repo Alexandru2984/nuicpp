@@ -167,12 +167,16 @@ void testJsonRoundTrip() {
     auto d = validDiagram();
     d.revision = 7;
     d.sharingEnabled = true;
+    d.shareExpiresAt = "2030-01-02T03:04:05Z";
+    d.shareExpired = false;
     auto parsed = diagramFromJson(diagramToJson(d));
     require(parsed.nodes.size() == 2, "nodes should round trip");
     require(parsed.edges.size() == 1, "edges should round trip");
     require(parsed.edges[0].source == "node_a", "edge source should round trip");
     require(parsed.revision == 7, "diagram revision should round trip");
     require(parsed.sharingEnabled, "sharing state should round trip");
+    require(parsed.shareExpiresAt == "2030-01-02T03:04:05Z", "share expiry should round trip");
+    require(!parsed.shareExpired, "active share should not round trip as expired");
 }
 
 void testFormUrlDecode() {
