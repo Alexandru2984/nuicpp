@@ -125,6 +125,7 @@ jobs:
             "AUTH_PASSWORD_HASH=pbkdf2_sha256\$100000\$${test_auth_salt}\$${test_auth_digest}" \
             "SESSION_SECRET=${test_session_secret}" \
             'PUBLIC_ACCESS=true' \
+            'FRONTEND_SHELL=server' \
             'MAX_NODES_PER_DIAGRAM=1000' \
             'MAX_EDGES_PER_DIAGRAM=2000' \
             'MAX_VERSIONS_PER_DIAGRAM=30' \

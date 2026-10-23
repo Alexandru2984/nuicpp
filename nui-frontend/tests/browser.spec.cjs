@@ -45,6 +45,7 @@ test.describe("desktop security and offline lifecycle", () => {
     expect(csp).toContain("default-src 'self'");
     expect(csp).not.toContain("'unsafe-inline'");
     expect(csp).not.toContain("'unsafe-eval'");
+    expect(csp).not.toContain("'wasm-unsafe-eval'");
 
     await expect(page.locator("#canvas")).toBeVisible();
     await expect(page.locator("#diagram-title")).toHaveValue("Untitled diagram");

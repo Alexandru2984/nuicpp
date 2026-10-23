@@ -14,7 +14,7 @@ install -m 0644 "$ROOT_DIR/build/nui-frontend/bin/index.js" "$ROOT_DIR/public/nu
 
 # index.js is only the Emscripten loader; it calls createWasm() to fetch the
 # compiled module. Installing it without the .wasm leaves a shell that can
-# never start, which is what the server's nuiShellReady() check now detects.
+# never start, so FRONTEND_SHELL=nui rejects the release during config checks.
 WASM_SRC="$ROOT_DIR/build/nui-frontend/bin/index.wasm"
 if [[ ! -f "$WASM_SRC" ]]; then
   echo "build_nui_frontend: expected $WASM_SRC after the parcel build" >&2

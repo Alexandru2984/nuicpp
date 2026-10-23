@@ -247,7 +247,7 @@ POST /api/diagrams/import</pre>
     <h2>Templates</h2>
     <p>The app includes built-in cloud architecture, incident-response, and data-pipeline templates. Creating from a template stores a normal versioned diagram owned by the current guest session or admin.</p>
     <h2>Limitations</h2>
-    <p>v1 is not WebSocket collaboration: concurrent saves are detected but require manual reload and draft reconciliation. Guest ownership is session based rather than full account identity. The authenticated editor shell and toolbar are rendered by Nui C++ compiled with Emscripten/WASM; detailed canvas gestures use a small JavaScript bridge. Mutating API calls require CSRF tokens.</p>
+    <p>v1 is not WebSocket collaboration: concurrent saves are detected but require manual reload and draft reconciliation. Guest ownership is session based rather than full account identity. Production uses the server-rendered C++ shell; an explicitly selected Nui/Emscripten shell is available only when a complete WASM bundle passes startup validation. Detailed canvas gestures use a small JavaScript bridge. Mutating API calls require CSRF tokens.</p>
   </main>
 </body>
 </html>)HTML";

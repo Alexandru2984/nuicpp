@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 #include <stdexcept>
@@ -100,6 +101,49 @@ bool isHex(const std::string& value) {
            });
 }
 
+FrontendShell parseFrontendShell(std::string value) {
+    for (auto& c : value) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    if (value == "server") {
+        return FrontendShell::Server;
+    }
+    if (value == "nui") {
+        return FrontendShell::Nui;
+    }
+    throw std::runtime_error("FRONTEND_SHELL must be server or nui");
+}
+
+bool isRegularReleaseFile(const std::filesystem::path& path) {
+    std::error_code ec;
+    const auto status = std::filesystem::symlink_status(path, ec);
+    return !ec && !std::filesystem::is_symlink(status) &&
+           std::filesystem::is_regular_file(status);
+}
+
+void validateNuiBundle(const std::string& projectRoot) {
+    const auto directory = std::filesystem::path(projectRoot) / "public" / "nui";
+    if (!isRegularReleaseFile(directory / "index.html") ||
+        !isRegularReleaseFile(directory / "index.js")) {
+        throw std::runtime_error(
+            "FRONTEND_SHELL=nui requires regular public/nui/index.html and index.js files");
+    }
+
+    std::error_code ec;
+    bool hasWasm = false;
+    for (std::filesystem::directory_iterator it(directory, ec), end; !ec && it != end;
+         it.increment(ec)) {
+        if (it->path().extension() == ".wasm" && isRegularReleaseFile(it->path())) {
+            hasWasm = true;
+            break;
+        }
+    }
+    if (ec || !hasWasm) {
+        throw std::runtime_error(
+            "FRONTEND_SHELL=nui requires a regular WebAssembly module in public/nui");
+    }
+}
+
 std::vector<std::string> split(const std::string& value, char delimiter) {
     std::vector<std::string> parts;
     std::size_t start = 0;
@@ -170,12 +214,25 @@ void validateConfig(const Config& cfg) {
     if (cfg.projectRoot.empty() || cfg.projectRoot.front() != '/') {
         throw std::runtime_error("PROJECT_ROOT must be an absolute path");
     }
+    if (cfg.frontendShell == FrontendShell::Nui) {
+        validateNuiBundle(cfg.projectRoot);
+    }
     if (cfg.appEnv == "production" && !cfg.baseUrl.starts_with("https://")) {
         throw std::runtime_error("APP_BASE_URL must use HTTPS in production");
     }
 }
 
 } // namespace
+
+const char* frontendShellName(FrontendShell shell) {
+    switch (shell) {
+        case FrontendShell::Server:
+            return "server";
+        case FrontendShell::Nui:
+            return "nui";
+    }
+    return "unknown";
+}
 
 Config Config::load(const std::string& envPath) {
     auto file = readEnvFile(envPath);
@@ -189,6 +246,8 @@ Config Config::load(const std::string& envPath) {
     cfg.authPasswordHash = getValue(file, "AUTH_PASSWORD_HASH");
     cfg.sessionSecret = getValue(file, "SESSION_SECRET");
     cfg.publicAccess = getBool(file, "PUBLIC_ACCESS", cfg.publicAccess);
+    cfg.frontendShell = parseFrontendShell(
+        getValue(file, "FRONTEND_SHELL", frontendShellName(cfg.frontendShell)));
     cfg.maxNodesPerDiagram = getInt(file, "MAX_NODES_PER_DIAGRAM", cfg.maxNodesPerDiagram);
     cfg.maxEdgesPerDiagram = getInt(file, "MAX_EDGES_PER_DIAGRAM", cfg.maxEdgesPerDiagram);
     cfg.maxVersionsPerDiagram = getInt(file, "MAX_VERSIONS_PER_DIAGRAM", cfg.maxVersionsPerDiagram);

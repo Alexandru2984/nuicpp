@@ -40,7 +40,8 @@ cmake --build build --config Release -j "$(nproc)"
 npm ci --prefix nui-frontend --ignore-scripts
 npm audit --prefix nui-frontend --audit-level=high
 nui-frontend/node_modules/.bin/playwright install chromium
-sudo env -i PATH="$DEPLOY_COMMAND_PATH" ./build/nuigraph-studio check-config "$APP_CONFIG"
+sudo env -i PATH="$DEPLOY_COMMAND_PATH" PROJECT_ROOT="$ROOT_DIR" \
+  ./build/nuigraph-studio check-config "$APP_CONFIG"
 sudo env -i PATH="$DEPLOY_COMMAND_PATH" ./build/nuigraph-studio check-config "$TEST_CONFIG"
 
 # Live suites mutate data. Migrate and use only the dedicated test database;

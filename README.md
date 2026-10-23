@@ -98,7 +98,7 @@ Summarised here, detailed in [`docs/SECURITY.md`](docs/SECURITY.md).
 ## Stack
 
 - C++20, CMake
-- Nui C++ frontend compiled with Emscripten to WebAssembly
+- Server-rendered C++ shell, with an optional Nui/Emscripten WebAssembly shell
 - cpp-httplib for HTTP serving
 - libpqxx 7.10+ / libpq for PostgreSQL
 - nlohmann/json
@@ -108,15 +108,16 @@ Summarised here, detailed in [`docs/SECURITY.md`](docs/SECURITY.md).
 
 ## How the frontend fits together
 
-The authenticated editor shell is rendered by a Nui C++ frontend compiled to
-`public/nui/index.js` plus `index.wasm`. The backend serves that shell for `/`,
-so the top bar, panels, toolbar, and SVG canvas root are created from C++ in the
-browser. `public/editor.js` is a JavaScript bridge that attaches canvas
-interaction handlers and calls the JSON API.
+Production deliberately defaults to `FRONTEND_SHELL=server`: the backend renders
+the top bar, panels, toolbar and SVG canvas root, while `public/editor.js`
+attaches interactions and calls the JSON API. This is the complete, tested
+primary path and does not need WebAssembly code generation in its CSP.
 
-If the WebAssembly module is missing, `nuiShellReady()` detects the incomplete
-bundle and falls back to the server-rendered editor rather than serving a shell
-that can never start.
+`FRONTEND_SHELL=nui` is an explicit alternative. It renders the same shell from
+a Nui C++ frontend compiled to `public/nui/index.js` plus a `.wasm` module.
+Configuration validation refuses to start or release this mode if its HTML,
+loader or regular (non-symlink) WebAssembly artifact is missing; there is no
+silent fallback that can hide a broken build.
 
 ## Build
 
@@ -170,7 +171,7 @@ values are documented in [`docs/DEPLOY.md`](docs/DEPLOY.md#2-environment):
 
 ```
 APP_ENV  APP_HOST  APP_PORT  APP_BASE_URL  DATABASE_URL
-AUTH_USERNAME  AUTH_PASSWORD_HASH  SESSION_SECRET  PUBLIC_ACCESS
+AUTH_USERNAME  AUTH_PASSWORD_HASH  SESSION_SECRET  PUBLIC_ACCESS  FRONTEND_SHELL
 MAX_NODES_PER_DIAGRAM  MAX_EDGES_PER_DIAGRAM  MAX_VERSIONS_PER_DIAGRAM
 MAX_IMPORT_BYTES  MAX_DIAGRAMS_PER_GUEST  MAX_DIAGRAMS_TOTAL  DB_POOL_SIZE
 PROJECT_ROOT

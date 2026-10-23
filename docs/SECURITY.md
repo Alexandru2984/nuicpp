@@ -241,7 +241,7 @@ Set by both nginx and the app (`applySecurityHeaders`), kept in step by hand:
 
 ```
 Content-Security-Policy: default-src 'self';
-  script-src 'self' 'wasm-unsafe-eval' https://static.cloudflareinsights.com;
+  script-src 'self' https://static.cloudflareinsights.com;
   style-src 'self';
   img-src 'self' data: blob:;
   connect-src 'self' https://cloudflareinsights.com;
@@ -257,8 +257,10 @@ Strict-Transport-Security: max-age=31536000; includeSubDomains   (nginx only)
 
 Notes:
 
-- `'wasm-unsafe-eval'` is required by the Emscripten-compiled Nui shell. It does
-  **not** permit `eval()` of JavaScript the way `'unsafe-eval'` would.
+- The production `FRONTEND_SHELL=server` policy does not grant WebAssembly code
+  generation. The optional Emscripten-compiled Nui shell requires a deliberate
+  `'wasm-unsafe-eval'` addition to both application and nginx policy; it does not
+  permit JavaScript `eval()` the way `'unsafe-eval'` would.
 - The `cloudflareinsights` hosts are for the beacon Cloudflare injects at the
   edge; nothing in this repository references them. `'unsafe-inline'` is
   deliberately withheld, so the beacon's inline loader stays blocked. That costs

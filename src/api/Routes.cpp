@@ -276,31 +276,6 @@ std::string nuiShellPage(const std::string& projectRoot, const std::string& base
     return page;
 }
 
-// The Nui shell is an Emscripten bundle: index.js is only the loader and calls
-// createWasm(), which fetches the compiled module. build_nui_frontend.sh used to
-// install the loader without the .wasm beside it, so the module could never
-// instantiate, Module.main() never ran, and the #app element bootstrap.js waits
-// for was never created. The result was a blank page.
-//
-// Serve the shell only when the bundle is actually complete, otherwise fall
-// back to the server-rendered editor, which needs no WebAssembly at all.
-bool nuiShellReady(const std::string& projectRoot) {
-    std::error_code ec;
-    const auto dir = projectRoot + "/public/nui";
-    if (!std::filesystem::exists(dir + "/index.html", ec)) {
-        return false;
-    }
-    if (!std::filesystem::exists(dir + "/index.js", ec)) {
-        return false;
-    }
-    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
-        if (!ec && entry.is_regular_file(ec) && entry.path().extension() == ".wasm") {
-            return true;
-        }
-    }
-    return false;
-}
-
 bool safeSlug(const std::string& slug) {
     return !slug.empty() && slug.size() <= 140 && std::all_of(slug.begin(), slug.end(), [](char c) {
         return std::isalnum(static_cast<unsigned char>(c)) || c == '-';
@@ -394,13 +369,16 @@ void Routes::applySecurityHeaders(httplib::Response& res) const {
     // 'unsafe-inline' is deliberately NOT granted: the beacon's inline loader
     // stays blocked, which costs some reporting fidelity but keeps the policy
     // meaningful against injected script.
-    res.set_header("Content-Security-Policy",
-                   "default-src 'self'; "
-                   "script-src 'self' 'wasm-unsafe-eval' https://static.cloudflareinsights.com; "
-                   "style-src 'self'; "
-                   "img-src 'self' data: blob:; "
-                   "connect-src 'self' https://cloudflareinsights.com; "
-                   "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    auto policy = std::string("default-src 'self'; script-src 'self'");
+    if (cfg_.frontendShell == FrontendShell::Nui) {
+        policy += " 'wasm-unsafe-eval'";
+    }
+    policy += " https://static.cloudflareinsights.com; "
+              "style-src 'self'; "
+              "img-src 'self' data: blob:; "
+              "connect-src 'self' https://cloudflareinsights.com; "
+              "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
+    res.set_header("Content-Security-Policy", policy);
 }
 
 // Shell URLs carry a digest of the complete public asset tree. Only an exact
@@ -897,7 +875,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             res.set_header("Location", "/login");
             return;
         }
-        if (nuiShellReady(cfg_.projectRoot)) {
+        if (cfg_.frontendShell == FrontendShell::Nui) {
             res.set_content(nuiShellPage(cfg_.projectRoot, cfg_.baseUrl, true, assetVersion_), "text/html; charset=utf-8");
             return;
         }
@@ -908,7 +886,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         // them to third parties and make revocation by obscurity impossible.
         res.set_header("X-Robots-Tag", "noindex, nofollow, noarchive");
         logSecurityEvent(req, res, "share_view", "allowed");
-        if (nuiShellReady(cfg_.projectRoot)) {
+        if (cfg_.frontendShell == FrontendShell::Nui) {
             res.set_content(nuiShellPage(cfg_.projectRoot, cfg_.baseUrl, false, assetVersion_), "text/html; charset=utf-8");
             return;
         }

@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <limits>
@@ -326,6 +327,49 @@ void testProductionConfigRequiresSafePathsAndHttps() {
             "production base URL must use HTTPS");
     require(configThrows(validConfig("PROJECT_ROOT=relative/path\n")),
             "project root must be absolute");
+}
+
+void testFrontendShellDefaultsAndRejectsUnknownModes() {
+    auto path = tmpEnvPath();
+    writeEnvFile(path, validConfig());
+    const auto cfg = Config::load(path);
+    std::remove(path.c_str());
+    require(cfg.frontendShell == FrontendShell::Server,
+            "server-rendered frontend should be the safe default");
+    require(std::string(frontendShellName(cfg.frontendShell)) == "server",
+            "frontend shell should have a stable log name");
+    require(configThrows(validConfig("FRONTEND_SHELL=automatic\n")),
+            "unknown frontend shell must not silently fall back");
+}
+
+void testNuiShellRequiresACompleteRegularBundle() {
+    namespace fs = std::filesystem;
+    const auto root = fs::path("/tmp") /
+        ("nuigraph-nui-config-test-" + std::to_string(getpid()));
+    const auto bundle = root / "public" / "nui";
+    fs::remove_all(root);
+    fs::create_directories(bundle);
+    writeEnvFile((bundle / "index.html").string(), "<!doctype html>");
+    writeEnvFile((bundle / "index.js").string(), "// loader");
+
+    const auto selected = "PROJECT_ROOT=" + root.string() + "\nFRONTEND_SHELL=nui\n";
+    require(configThrows(validConfig(selected)),
+            "Nui mode must reject a loader without a WebAssembly module");
+
+    writeEnvFile((bundle / "index.wasm").string(), "wasm fixture");
+    auto path = tmpEnvPath();
+    writeEnvFile(path, validConfig(selected));
+    const auto cfg = Config::load(path);
+    std::remove(path.c_str());
+    require(cfg.frontendShell == FrontendShell::Nui,
+            "a complete regular Nui bundle should be selectable");
+
+    fs::remove(bundle / "index.wasm");
+    writeEnvFile((bundle / "module.bin").string(), "wasm fixture");
+    fs::create_symlink(bundle / "module.bin", bundle / "index.wasm");
+    require(configThrows(validConfig(selected)),
+            "Nui mode must reject symlinked release artifacts");
+    fs::remove_all(root);
 }
 
 // ===== New validation edge case tests =====
@@ -677,6 +721,8 @@ int main() {
         testConfigRejectsUnsafeLimits();
         testConfigRejectsWeakSecrets();
         testProductionConfigRequiresSafePathsAndHttps();
+        testFrontendShellDefaultsAndRejectsUnknownModes();
+        testNuiShellRequiresACompleteRegularBundle();
         // validation edge cases
         testEmptyTitleFails();
         testDuplicateNodeKeysFails();
@@ -712,6 +758,6 @@ int main() {
         std::cerr << "test failed: " << e.what() << '\n';
         return EXIT_FAILURE;
     }
-        std::cout << "nuigraph validation tests passed (49 tests)\n";
+        std::cout << "nuigraph validation tests passed (51 tests)\n";
     return EXIT_SUCCESS;
 }

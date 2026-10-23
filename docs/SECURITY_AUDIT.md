@@ -15,6 +15,9 @@ Application login/write/create limits are now PostgreSQL-backed, bounded and
 tested across two processes and a full restart; deployment is still pending.
 The browser shell now has a pinned Chromium gate covering CSP, offline fallback,
 worker replacement, cache isolation and responsive phone geometry.
+The server-rendered shell is now the explicit production default; selecting Nui
+fails closed on an incomplete or symlinked bundle, and the default CSP no longer
+grants WebAssembly code generation.
 
 ## Executive verdict
 
@@ -34,7 +37,7 @@ complete.
 ## Evidence snapshot
 
 - `main` was clean and three commits ahead of `origin/main` at assessment start.
-- Release build and 49 C++ tests passed. All nine CTest suites, including the six
+- Release build and 51 C++ tests passed. All nine CTest suites, including the six
   live suites, passed against a disposable PostgreSQL 18 database with isolated
   `_test` identities. JavaScript syntax checks, ShellCheck and Cppcheck passed.
 - `npm audit --package-lock-only --audit-level=low` reported zero known
@@ -59,9 +62,10 @@ complete.
 - Cloudflare returned `Cache-Control: max-age=14400` for `sw.js`, overriding the
   application's `no-cache` intent and allowing a stale service worker for four
   hours.
-- The deployed `public/nui` directory contained no `.wasm`; production therefore
-  uses the server-rendered fallback even though the project describes the Nui/WASM
-  shell as the primary editor.
+- The deployed `public/nui` directory contained no `.wasm`; production currently
+  reaches the server-rendered fallback. The local release contract now makes
+  that shell the declared default and rejects Nui mode unless its complete
+  non-symlink bundle is present; deployment is still pending.
 - The database contained 15 diagrams, 60 nodes, 45 edges and 16 versions at the
   time of the metadata-only check. It occupied about 8 MiB.
 - Package metadata was refreshed on 2026-10-21. Ubuntu's critical PHP fix from

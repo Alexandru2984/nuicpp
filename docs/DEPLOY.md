@@ -50,10 +50,12 @@ scripts/build_nui_frontend.sh
 
 That script installs both `public/nui/index.js` and `public/nui/index.wasm` and
 **fails loudly if the `.wasm` is missing**. Do not work around that failure: the
-loader without its module produces a blank page. The server's `nuiShellReady()`
-check will fall back to the server-rendered editor rather than serve a broken
-shell, so a failed frontend build degrades instead of breaking — but it is still
-a failed build.
+loader without its module produces a blank page. Production defaults to
+`FRONTEND_SHELL=server`; selecting `nui` makes both `check-config` and application
+startup fail until `index.html`, `index.js` and a regular (non-symlink) `.wasm`
+artifact are present. Enabling Nui also requires the reviewed
+`'wasm-unsafe-eval'` CSP source in both the app and nginx candidate before the
+vhost is installed.
 
 ## First-time install
 
@@ -130,6 +132,7 @@ operator's exported variables cannot override the files being checked.
 | `AUTH_PASSWORD_HASH` | `pbkdf2_sha256$<iters>$<salt>$<hash>` | |
 | `SESSION_SECRET` | 32+ random bytes, hex | See the rotation warning below |
 | `PUBLIC_ACCESS` | `true` | Anonymous visitors may create diagrams |
+| `FRONTEND_SHELL` | `server` | Use `nui` only with a complete WASM bundle and matching reviewed CSP |
 | `MAX_NODES_PER_DIAGRAM` | `1000` | |
 | `MAX_EDGES_PER_DIAGRAM` | `2000` | |
 | `MAX_VERSIONS_PER_DIAGRAM` | `50` | Older snapshots are pruned |
@@ -283,6 +286,9 @@ adds an independent table; an older binary ignores it and falls back to its
 process-local counters. Do not drop the table during rollback: doing so destroys
 active throttling state and is unnecessary. Rolling back code never deletes
 ledger rows or reverts SQL; use a new forward migration for any schema correction.
+`FRONTEND_SHELL` adds no database state: roll back with the prior binary while
+keeping it at `server`, or restore the previous vhost and release together if a
+Nui-specific CSP was introduced.
 
 ## Troubleshooting
 
@@ -292,7 +298,7 @@ ledger rows or reverts SQL; use a new forward migration for any schema correctio
 | 403 on everything | Origin guard: traffic did not arrive via Cloudflare, or CF is in DNS-only mode |
 | 429 during normal use | Edge zones in `nuicpp-rate-limit.conf`, then active pseudonymous rows in `rate_limit_buckets`; do not clear a production bucket without confirming the caller and abuse signal |
 | Login/write returns 503 | Check PostgreSQL readiness, pool saturation and the `rate_limit_storage` event; the abuse control deliberately fails closed |
-| Blank editor page | `ls public/nui/index.wasm`; re-run `scripts/build_nui_frontend.sh` |
+| Nui mode refuses startup | Confirm `FRONTEND_SHELL=nui`, inspect regular files under `public/nui/`, then re-run `scripts/build_nui_frontend.sh`; never replace the gate with a symlink |
 | "storage unavailable" | Correlate the response `X-Request-ID` with the generic `storage_failure` journal event and PostgreSQL logs; raw connection errors are deliberately not journaled |
 | Save/delete/restore returns 412 | Another client won the revision; reopen or refresh, then retry deliberately |
 | Save/delete/restore returns 428 | Client omitted the latest diagram ETag in `If-Match` |

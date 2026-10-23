@@ -331,6 +331,10 @@ if grep -q 'not-a-real-share' "$LOG_FILE"; then
   echo "bearer share value leaked into application logs" >&2
   exit 1
 fi
+if ! grep -q 'level=info msg=listening .* frontend=server' "$LOG_FILE"; then
+  echo "expected the selected frontend shell in the startup event" >&2
+  exit 1
+fi
 if ! grep -Eq 'request_id=[A-Za-z0-9_-]{8,64}' "$LOG_FILE"; then
   echo "expected request ids in application logs" >&2
   exit 1

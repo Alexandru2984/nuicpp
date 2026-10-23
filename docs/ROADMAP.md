@@ -37,6 +37,9 @@ rollback notes where applicable.
 - Real Chromium regression coverage for CSP enforcement, offline navigation,
   service-worker cache replacement, API cache isolation and phone/desktop
   layout geometry.
+- Explicit frontend-shell selection: the complete server-rendered path is the
+  production default with a tighter CSP, while Nui mode fails configuration and
+  release checks unless its HTML, loader and non-symlink WASM artifact exist.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -53,8 +56,6 @@ High risk remain open.
 - Correct the account-level Cloudflare cache rule and purge stale objects;
   content-versioned URLs, origin headers and service-worker updates are now
   deterministic unless a Cache Rule overrides them.
-- Ship the actual WASM artifact or formally remove it from the primary path; fail
-  release assembly when the chosen shell is incomplete.
 - Add monitoring/alerts for readiness, 5xx, latency, DB pool timeouts, create
   rates, disk growth, auth failures, restarts, certificate expiry and backups.
 - Perform and record the first incident-response tabletop.

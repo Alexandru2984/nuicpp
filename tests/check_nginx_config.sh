@@ -54,6 +54,10 @@ if grep -Eq '^[[:space:]]*add_header Content-Security-Policy .*unsafe-inline' "$
   echo "nginx config test failed: CSP reintroduced unsafe-inline" >&2
   exit 1
 fi
+if grep -Eq '^[[:space:]]*add_header Content-Security-Policy .*wasm-unsafe-eval' "$VHOST"; then
+  echo "nginx config test failed: server frontend must not grant WebAssembly code generation" >&2
+  exit 1
+fi
 
 TMP_DIR="$(mktemp -d)"
 cleanup() {

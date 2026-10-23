@@ -4,6 +4,13 @@
 
 namespace nuigraph {
 
+enum class FrontendShell {
+    Server,
+    Nui
+};
+
+const char* frontendShellName(FrontendShell shell);
+
 struct Config {
     std::string appEnv = "production";
     std::string host = "127.0.0.1";
@@ -14,6 +21,7 @@ struct Config {
     std::string authPasswordHash;
     std::string sessionSecret;
     bool publicAccess = false;
+    FrontendShell frontendShell = FrontendShell::Server;
     int maxNodesPerDiagram = 1000;
     int maxEdgesPerDiagram = 2000;
     int maxVersionsPerDiagram = 50;

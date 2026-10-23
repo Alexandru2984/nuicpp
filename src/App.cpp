@@ -94,7 +94,8 @@ int App::run() {
     std::signal(SIGPIPE, SIG_IGN);
 
     std::cout << logTimestamp() << " level=info msg=listening host=" << cfg_.host
-              << " port=" << cfg_.port << " pool=" << cfg_.dbPoolSize << std::endl;
+              << " port=" << cfg_.port << " pool=" << cfg_.dbPoolSize
+              << " frontend=" << frontendShellName(cfg_.frontendShell) << std::endl;
 
     if (!server.listen(cfg_.host, cfg_.port)) {
         std::cerr << "failed to bind " << cfg_.host << ":" << cfg_.port << "\n";
