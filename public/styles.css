@@ -342,6 +342,39 @@ body.dirty .draft-status { color: var(--warn); }
 
 #grid-bg { fill: url(#grid); }
 
+.node-label-editor {
+  position: absolute;
+  z-index: 12;
+  transform: translate(-50%, -50%);
+  width: min(320px, calc(100% - 16px));
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow-lift);
+}
+
+.node-label-editor label {
+  color: var(--text-strong);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.node-label-editor input {
+  width: 100%;
+  min-width: 0;
+}
+
+.node-label-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.node-label-editor-actions button { min-height: var(--tap-sm); }
+
 .minimap {
   position: absolute;
   right: 14px;

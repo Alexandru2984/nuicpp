@@ -58,6 +58,9 @@
   const viewport = el("viewport");
   const nodesLayer = el("nodes");
   const edgesLayer = el("edges");
+  // A selected canvas object needs a real keyboard focus target before Enter
+  // can be a safe, predictable editing shortcut.
+  canvas.tabIndex = 0;
   // Both shells ship this layer, but a browser holding a cached copy of an
   // older Nui bundle would not have it, and a missing overlay must not take the
   // whole canvas down. svg() is a hoisted declaration, so this is safe here.
@@ -326,6 +329,7 @@
       { id: "redo", label: "Redo", shortLabel: "Redo", category: "Edit", shortcut: "Ctrl / Cmd + Y", mobile: true, enabled: () => state.future.length > 0 && !state.readOnly, run: redo },
       { id: "copy", label: "Copy selection", shortLabel: "Copy", category: "Edit", shortcut: "Ctrl / Cmd + C", enabled: () => Boolean(state.selected), run: copySelected },
       { id: "paste", label: "Paste selection", shortLabel: "Paste", category: "Edit", shortcut: "Ctrl / Cmd + V", enabled: () => Boolean(state.clipboard?.nodes?.length) && !state.readOnly, run: pasteSelected },
+      { id: "edit-node-label", label: "Edit selected node label", shortLabel: "Rename", category: "Edit", keywords: "inline rename title", shortcut: "F2 / Enter", mobile: true, enabled: () => Boolean(editableSelectedNode()) && !state.readOnly, run: openNodeLabelEditor },
       { id: "delete", label: "Delete selection", shortLabel: "Delete", category: "Edit", mobile: true, enabled: () => Boolean(state.selected) && !state.readOnly, run: deleteSelected },
       { id: "layout", label: "Auto layout", shortLabel: "Layout", category: "Arrange", keywords: "organize graph", mobile: true, enabled: () => Boolean(state.current?.nodes?.length) && !state.readOnly, run: autoLayout },
       { id: "align-left", label: "Align selected nodes left", shortLabel: "Left", category: "Arrange", keywords: "multi selection position", mobile: true, enabled: () => canArrangeSelection(2), run: () => arrangeSelection("align-left") },
@@ -1049,6 +1053,7 @@
   const SHORTCUTS = [
     ["Ctrl / Cmd + K", "Open command palette"],
     ["/", "Find and focus a node"],
+    ["F2 / Enter", "Edit selected node label"],
     ["Ctrl / Cmd + S", "Save diagram"],
     ["Ctrl / Cmd + Z", "Undo"],
     ["Ctrl / Cmd + Y", "Redo"],
@@ -1477,6 +1482,131 @@
     if (state.selected.type === "node") return [state.selected.key];
     if (state.selected.type === "nodes") return state.selected.keys;
     return [];
+  }
+
+  let nodeLabelEditor = null;
+
+  function editableSelectedNode() {
+    if (!state.current || state.selected?.type !== "node") return null;
+    return state.current.nodes.find((node) => node.key === state.selected.key) || null;
+  }
+
+  function closeNodeLabelEditor(restoreFocus = false) {
+    if (!nodeLabelEditor) return;
+    const { element, returnFocus } = nodeLabelEditor;
+    nodeLabelEditor = null;
+    element.remove();
+    if (restoreFocus) {
+      const target = returnFocus?.isConnected ? returnFocus : canvas;
+      target.focus?.({ preventScroll: true });
+    }
+  }
+
+  function positionNodeLabelEditor() {
+    if (!nodeLabelEditor) return;
+    const node = state.current?.nodes.find((candidate) => candidate.key === nodeLabelEditor.key);
+    const wrap = canvas.closest(".canvas-wrap");
+    if (!node || !wrap || state.readOnly || state.current !== nodeLabelEditor.diagram) {
+      closeNodeLabelEditor();
+      return;
+    }
+
+    const { element } = nodeLabelEditor;
+    const width = element.offsetWidth || 320;
+    const height = element.offsetHeight || 120;
+    const halfWidth = Math.min(width / 2, Math.max(0, wrap.clientWidth / 2 - 8));
+    const halfHeight = Math.min(height / 2, Math.max(0, wrap.clientHeight / 2 - 8));
+    const desiredLeft = state.pan.x + (node.x + node.width / 2) * state.zoom;
+    const desiredTop = state.pan.y + (node.y + node.height / 2) * state.zoom;
+    element.style.left = `${clamp(desiredLeft, halfWidth + 8, wrap.clientWidth - halfWidth - 8)}px`;
+    element.style.top = `${clamp(desiredTop, halfHeight + 8, wrap.clientHeight - halfHeight - 8)}px`;
+  }
+
+  function openNodeLabelEditor(nodeKey = editableSelectedNode()?.key) {
+    if (!state.current || state.readOnly || !nodeKey) return;
+    const node = state.current.nodes.find((candidate) => candidate.key === nodeKey);
+    if (!node) return;
+    if (nodeLabelEditor?.key === nodeKey) {
+      nodeLabelEditor.input.focus();
+      nodeLabelEditor.input.select();
+      return;
+    }
+
+    closeNodeLabelEditor();
+    state.selected = { type: "node", key: nodeKey };
+    render();
+
+    const returnFocus = document.activeElement === document.body ? canvas : document.activeElement;
+    const form = document.createElement("form");
+    form.className = "node-label-editor";
+    form.setAttribute("role", "dialog");
+    form.setAttribute("aria-label", "Edit node label");
+
+    const label = document.createElement("label");
+    label.htmlFor = "node-label-editor-input";
+    label.textContent = "Node label";
+    const input = document.createElement("input");
+    input.id = "node-label-editor-input";
+    input.type = "text";
+    input.maxLength = 160;
+    input.required = true;
+    input.autocomplete = "off";
+    input.value = node.title;
+    input.setAttribute("aria-label", "Node label");
+    input.addEventListener("input", () => input.setCustomValidity(""));
+
+    const actions = document.createElement("div");
+    actions.className = "node-label-editor-actions";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.textContent = "Cancel";
+    const save = document.createElement("button");
+    save.type = "submit";
+    save.className = "primary";
+    save.textContent = "Save";
+    actions.append(cancel, save);
+    form.append(label, input, actions);
+    canvas.closest(".canvas-wrap")?.appendChild(form);
+
+    nodeLabelEditor = { element: form, input, key: nodeKey, returnFocus, diagram: state.current };
+    positionNodeLabelEditor();
+    input.focus();
+    input.select();
+
+    cancel.onclick = () => closeNodeLabelEditor(true);
+    form.addEventListener("keydown", (evt) => {
+      if (evt.key === "Escape") {
+        evt.preventDefault();
+        evt.stopPropagation();
+        closeNodeLabelEditor(true);
+        return;
+      }
+      trapDialogFocus(evt, form);
+    });
+    form.addEventListener("submit", (evt) => {
+      evt.preventDefault();
+      const nextTitle = input.value.trim();
+      if (!nextTitle) {
+        input.setCustomValidity("Enter a node label.");
+        input.reportValidity();
+        return;
+      }
+      if (nextTitle.length > 160) {
+        input.setCustomValidity("Use no more than 160 characters.");
+        input.reportValidity();
+        return;
+      }
+      if (nextTitle === node.title) {
+        closeNodeLabelEditor(true);
+        return;
+      }
+      pushHistory();
+      node.title = nextTitle;
+      markDirty();
+      closeNodeLabelEditor(true);
+      render();
+      toast("Node label updated.");
+    });
   }
 
   function canArrangeSelection(minimum) {
@@ -2163,6 +2293,16 @@
       renderNodeShape(group, node);
       group.addEventListener("pointerdown", (evt) => {
         evt.stopPropagation();
+        canvas.focus({ preventScroll: true });
+        if (evt.pointerType === "mouse" && evt.detail === 2 && state.tool === "select" && !state.readOnly) {
+          evt.preventDefault();
+          cancelLongPress();
+          state.dragging = null;
+          state.selected = { type: "node", key: node.key };
+          render();
+          openNodeLabelEditor(node.key);
+          return;
+        }
         state.pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
         if (state.pointers.size === 2) {
           cancelLongPress();
@@ -2223,6 +2363,14 @@
           state.selected = { type: "node", key: node.key };
         }
         render();
+      });
+      group.addEventListener("dblclick", (evt) => {
+        if (state.tool !== "select" || state.readOnly) return;
+        evt.preventDefault();
+        evt.stopPropagation();
+        state.selected = { type: "node", key: node.key };
+        render();
+        openNodeLabelEditor(node.key);
       });
     }
   }
@@ -2304,6 +2452,7 @@
     renderOverlay();
     renderProperties();
     renderMinimap();
+    positionNodeLabelEditor();
     refreshMobileActionBar();
   }
 
@@ -3002,6 +3151,13 @@
         return;
       }
       if (evt.target.matches("input, textarea, select") || evt.target.isContentEditable) return;
+      const editWithEnter = evt.key === "Enter" && (evt.target === canvas || evt.target === document.body);
+      if ((evt.key === "F2" || editWithEnter) && !evt.ctrlKey && !evt.metaKey && !evt.altKey &&
+          !document.querySelector('[role="dialog"]') && editableSelectedNode() && !state.readOnly) {
+        evt.preventDefault();
+        openNodeLabelEditor();
+        return;
+      }
       if (evt.key === "/" && !evt.ctrlKey && !evt.metaKey && !evt.altKey) {
         evt.preventDefault();
         openNodeNavigator();

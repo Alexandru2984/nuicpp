@@ -166,8 +166,42 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(nodeNavigator).not.toBeVisible();
       await expect(page.locator("#share-diagram")).toBeFocused();
 
-      const startGroup = page.locator('#nodes > g[data-key="node_start"]');
       const serviceGroup = page.locator('#nodes > g[data-key="node_service"]');
+      const originalRenderedTitle = await serviceGroup.locator(".node-title").textContent();
+      await page.keyboard.press("F2");
+      const labelEditor = page.getByRole("dialog", { name: "Edit node label" });
+      const labelInput = labelEditor.getByRole("textbox", { name: "Node label" });
+      await expect(labelEditor).toBeVisible();
+      await expect(labelInput).toBeFocused();
+      await expect(labelInput).toHaveValue(unsafeNodeTitle);
+
+      await labelInput.fill("   ");
+      await labelEditor.getByRole("button", { name: "Save" }).click();
+      await expect(labelEditor).toBeVisible();
+      expect(await labelInput.evaluate((input) => input.validationMessage)).not.toBe("");
+
+      const editedNodeTitle = '<img src=x onerror="globalThis.__inlineLabelXss=1"> Renamed';
+      await labelInput.fill(editedNodeTitle);
+      await labelEditor.getByRole("button", { name: "Save" }).click();
+      await expect(labelEditor).not.toBeVisible();
+      await expect(serviceGroup.locator(".node-title")).not.toHaveText(originalRenderedTitle);
+      expect(await page.evaluate(() => globalThis.__inlineLabelXss)).toBeUndefined();
+      expect(await serviceGroup.evaluate((group) => group.querySelectorAll("img").length)).toBe(0);
+
+      await page.keyboard.press("Control+z");
+      await expect(serviceGroup.locator(".node-title")).toHaveText(originalRenderedTitle);
+      await serviceGroup.dispatchEvent("dblclick", { bubbles: true });
+      await expect(labelEditor).toBeVisible();
+      await expect(labelInput).toHaveValue(unsafeNodeTitle);
+      await page.keyboard.press("Escape");
+      await expect(labelEditor).not.toBeVisible();
+      await page.locator("#canvas").focus();
+      await page.keyboard.press("Enter");
+      await expect(labelEditor).toBeVisible();
+      await labelEditor.getByRole("button", { name: "Cancel" }).click();
+      await expect(labelEditor).not.toBeVisible();
+
+      const startGroup = page.locator('#nodes > g[data-key="node_start"]');
       const startShape = startGroup.locator(".node-shape");
       const serviceShape = serviceGroup.locator(".node-shape");
       const originalServiceX = await serviceShape.getAttribute("x");
@@ -303,6 +337,7 @@ test.describe("phone layout", () => {
     const customizer = page.getByRole("dialog", { name: "Customize mobile action bar" });
     await expect(customizer).toBeVisible();
     await expect(customizer.getByLabel("Find and focus node", { exact: true })).toBeVisible();
+    await expect(customizer.getByLabel("Edit selected node label", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Align selected nodes left", { exact: true })).toBeVisible();
     await customizer.getByLabel("Add node", { exact: true }).uncheck();
     await customizer.getByLabel("Zoom to fit", { exact: true }).check();

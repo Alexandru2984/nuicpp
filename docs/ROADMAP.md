@@ -84,6 +84,9 @@ rollback notes where applicable.
   enforced by the PostgreSQL clock on page, API and fork paths. Expired links
   fail with `404`, re-enable rotates the capability, changes are revision-safe,
   and blocked-view spikes have a validated alert rule.
+- Inline node-label editing by double-click, keyboard, command palette or a
+  customisable mobile action. Empty labels are rejected, untrusted text is never
+  interpreted as markup, edits persist to local drafts and undo in one step.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -125,7 +128,7 @@ High risk remain open.
 
 ## P2 — editor quality and responsive UX
 
-- Inline node/edge label editing, multi-select inspector and batch property edits.
+- Inline edge-label editing, multi-select inspector and batch property edits.
 - Rulers, configurable grid and selection framing.
 - Orthogonal/smart edge routing, ports/anchors, curved connectors, waypoints and
   collision avoidance.
