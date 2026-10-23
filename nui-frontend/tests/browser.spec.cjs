@@ -49,6 +49,11 @@ test.describe("desktop security and offline lifecycle", () => {
 
     await expect(page.locator("#canvas")).toBeVisible();
     await expect(page.locator("#diagram-title")).toHaveValue("Untitled diagram");
+    await page.locator("#grid-size").selectOption("64");
+    await expect(page.locator("#grid")).toHaveAttribute("width", "64");
+    await expect(page.locator("#grid")).toHaveAttribute("height", "64");
+    await expect(page.locator("#grid path")).toHaveAttribute("d", "M 64 0 L 0 0 0 64");
+    expect(await page.evaluate(() => localStorage.getItem("nuigraph:grid-size:v1"))).toBe("64");
     expect(await page.evaluate(() => typeof globalThis.NuiGraphReview?.analyzeDiagram)).toBe("function");
     expect(await page.evaluate(() => typeof globalThis.NuiGraphArrange?.arrangeNodes)).toBe("function");
     const browserReview = await page.evaluate(() => globalThis.NuiGraphReview.analyzeDiagram({
@@ -139,6 +144,8 @@ test.describe("desktop security and offline lifecycle", () => {
       }, { id: sharingTestId, title: unsafeNodeTitle });
       await page.reload({ waitUntil: "networkidle" });
       await expect(page.locator("#share-diagram")).toBeEnabled();
+      await expect(page.locator("#grid-size")).toHaveValue("64");
+      await expect(page.locator("#grid")).toHaveAttribute("width", "64");
 
       await page.locator("#share-diagram").focus();
       await page.keyboard.press("/");
@@ -461,6 +468,7 @@ test.describe("phone layout", () => {
     await expect(customizer.getByLabel("Find and focus node", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Edit selected label", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Frame selection", { exact: true })).toBeVisible();
+    await expect(customizer.getByLabel("Cycle grid size", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Align selected nodes left", { exact: true })).toBeVisible();
     await customizer.getByLabel("Add node", { exact: true }).uncheck();
     await customizer.getByLabel("Zoom to fit", { exact: true }).check();

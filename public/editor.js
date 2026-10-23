@@ -9,6 +9,8 @@
 
   const svgNS = "http://www.w3.org/2000/svg";
   const nodeTypes = ["process", "decision", "database", "service", "api", "note", "external"];
+  const GRID_SIZES = [8, 16, 32, 64];
+  const GRID_SIZE_STORAGE = "nuigraph:grid-size:v1";
   const colors = {
     process: "#38bdf8",
     decision: "#f59e0b",
@@ -29,6 +31,7 @@
     readOnly: false,
     tool: "select",
     snap: true,
+    gridSize: 16,
     zoom: 1,
     pan: { x: 80, y: 70 },
     edgeSource: null,
@@ -350,6 +353,7 @@
       { id: "tool-node", label: "Add node", shortLabel: "Node", category: "Tools", keywords: "create shape", mobile: true, enabled: () => Boolean(state.current) && !state.readOnly, run: () => triggerTool("node") },
       { id: "tool-edge", label: "Connect nodes with an edge", shortLabel: "Edge", category: "Tools", keywords: "line arrow", mobile: true, enabled: () => Boolean(state.current) && !state.readOnly, run: () => triggerTool("edge") },
       { id: "snap", label: "Toggle grid snapping", shortLabel: "Snap", category: "Arrange", keywords: "align grid", run: () => triggerButton("snap-toggle") },
+      { id: "grid-size", label: "Cycle grid size", shortLabel: "Grid", category: "Arrange", keywords: "snap spacing 8 16 32 64", mobile: true, run: cycleGridSize },
       { id: "zoom-in", label: "Zoom in", shortLabel: "Zoom +", category: "View", enabled: () => state.zoom < MAX_ZOOM, run: () => triggerButton("zoom-in") },
       { id: "zoom-out", label: "Zoom out", shortLabel: "Zoom -", category: "View", enabled: () => state.zoom > MIN_ZOOM, run: () => triggerButton("zoom-out") },
       { id: "theme", label: "Toggle light or dark theme", shortLabel: "Theme", category: "View", keywords: "appearance", run: () => triggerButton("theme-toggle") },
@@ -1483,8 +1487,51 @@
     return { x: node.x + node.width / 2, y: node.y + node.height / 2 };
   }
 
-  function snapValue(value, grid = 8) {
+  function snapValue(value, grid = state.gridSize) {
     return state.snap ? Math.round(value / grid) * grid : value;
+  }
+
+  function applyGridSize(value, persist = true) {
+    const size = Number(value);
+    if (!GRID_SIZES.includes(size)) return false;
+    state.gridSize = size;
+    const pattern = el("grid");
+    pattern.setAttribute("width", String(size));
+    pattern.setAttribute("height", String(size));
+    pattern.querySelector("path")?.setAttribute("d", `M ${size} 0 L 0 0 0 ${size}`);
+    el("grid-size").value = String(size);
+    if (persist) {
+      try {
+        localStorage.setItem(GRID_SIZE_STORAGE, String(size));
+      } catch {
+        // Storage can be disabled; the in-memory grid still works.
+      }
+    }
+    return true;
+  }
+
+  function initGridSize() {
+    let saved = null;
+    try {
+      saved = localStorage.getItem(GRID_SIZE_STORAGE);
+    } catch {
+      // Keep the documented default when storage is unavailable.
+    }
+    if (!applyGridSize(saved === null ? state.gridSize : saved, false)) {
+      applyGridSize(16, false);
+      try {
+        localStorage.removeItem(GRID_SIZE_STORAGE);
+      } catch {
+        // The valid in-memory fallback is already active.
+      }
+    }
+  }
+
+  function cycleGridSize() {
+    const index = GRID_SIZES.indexOf(state.gridSize);
+    const next = GRID_SIZES[(index + 1) % GRID_SIZES.length];
+    applyGridSize(next);
+    toast(`Grid spacing set to ${next}px.`);
   }
 
   function clamp(value, low, high) {
@@ -2926,8 +2973,8 @@
       key: `node_${Date.now()}`,
       type,
       title: type.charAt(0).toUpperCase() + type.slice(1),
-      x: snapValue(point.x, 16),
-      y: snapValue(point.y, 16),
+      x: snapValue(point.x),
+      y: snapValue(point.y),
       width: size.width,
       height: size.height,
       color: colors[type] || colors.process,
@@ -3088,6 +3135,7 @@
       state.snap = !state.snap;
       el("snap-toggle").classList.toggle("active", state.snap);
     };
+    el("grid-size").onchange = () => applyGridSize(el("grid-size").value);
     el("zoom-in").onclick = () => { state.zoom = Math.min(2.5, state.zoom * 1.15); render(); };
     el("zoom-out").onclick = () => { state.zoom = Math.max(0.25, state.zoom / 1.15); render(); };
     el("export-json").onclick = () => { if (state.current) window.open(`/api/diagrams/${state.current.id}/export.json`, "_blank"); };
@@ -3365,6 +3413,7 @@
   initSheets();
   initMobileActionBar();
   initTheme();
+  initGridSize();
   initSearch();
   Promise.all([loadTemplates(), loadDiagrams()])
     .then(() => {

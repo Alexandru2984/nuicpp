@@ -85,13 +85,19 @@ Nui::ElementRenderer MainPage::render() {
                     option{value = "api"}("API"),
                     option{value = "note"}("Note"),
                     option{value = "external"}("External")
+                ),
+                select{id = "grid-size", AttributeFactory("aria-label") = "Grid size"}(
+                    option{value = "8"}("Grid 8"),
+                    option{value = "16", selected = true}("Grid 16"),
+                    option{value = "32"}("Grid 32"),
+                    option{value = "64"}("Grid 64")
                 )
             ),
             main_{class_ = "canvas-wrap"}(
                 se::svg{id = "canvas", role = "application", AttributeFactory("aria-label") = "Diagram canvas"}(
                     se::defs{}(
-                        se::pattern{id = "grid", sa::width = "32", sa::height = "32", sa::patternUnits = "userSpaceOnUse"}(
-                            se::path{sa::d = "M 32 0 L 0 0 0 32", sa::fill = "none", sa::stroke = "rgba(148,163,184,.18)", sa::strokeWidth = "1"}()
+                        se::pattern{id = "grid", sa::width = "16", sa::height = "16", sa::patternUnits = "userSpaceOnUse"}(
+                            se::path{sa::d = "M 16 0 L 0 0 0 16", sa::fill = "none", sa::stroke = "rgba(148,163,184,.18)", sa::strokeWidth = "1"}()
                         ),
                         se::marker{id = "arrow", sa::viewBox = "0 0 10 10", sa::refX = "9", sa::refY = "5", sa::markerWidth = "8", sa::markerHeight = "8", sa::orient = "auto-start-reverse"}(
                             se::path{sa::d = "M 0 0 L 10 5 L 0 10 z", sa::fill = "#94a3b8"}()

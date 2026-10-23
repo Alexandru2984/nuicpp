@@ -147,12 +147,18 @@ std::string renderEditorPage(const std::string& username, const std::string& bas
         <option value="note">Note</option>
         <option value="external">External</option>
       </select>
+      <select id="grid-size" aria-label="Grid size">
+        <option value="8">Grid 8</option>
+        <option value="16" selected>Grid 16</option>
+        <option value="32">Grid 32</option>
+        <option value="64">Grid 64</option>
+      </select>
     </nav>
     <main class="canvas-wrap">
       <svg id="canvas" role="application" aria-label="Diagram canvas">
         <defs>
-          <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
-            <path d="M 32 0 L 0 0 0 32" fill="none" stroke="rgba(148,163,184,.18)" stroke-width="1"/>
+          <pattern id="grid" width="16" height="16" patternUnits="userSpaceOnUse">
+            <path d="M 16 0 L 0 0 0 16" fill="none" stroke="rgba(148,163,184,.18)" stroke-width="1"/>
           </pattern>
           <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
             <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"></path>
@@ -220,7 +226,7 @@ std::string renderDocsPage(const std::string& baseUrl, const std::string& assetV
     <h1>NuiGraph Studio</h1>
     <p>NuiGraph Studio is a C++ powered graph and diagram editor for flowcharts, architecture maps, service graphs, and node-link diagrams. Diagrams start private. Owners can enable an unguessable read-only link, rotate it, or disable it immediately; visitors can fork an active shared diagram into their own session.</p>
     <h2>Canvas Controls</h2>
-    <p>Select nodes and edges with the Select tool. Shift-click nodes for basic multi-select, or drag on empty canvas to rubber-band everything the band touches; hold Shift while dragging to add to the current selection instead of replacing it. Drag nodes to move them; edges and centres latch onto nearby nodes and a guide line shows what lined up. Multi-node selections can align left, centre, right, top, middle or bottom, and three or more nodes can distribute equal centre spacing through the command palette. The multi-selection inspector summarises type, colour and bounds, then applies shared type, colour or size changes as one undoable edit. Press Shift+2 to frame the selected nodes or both endpoints of a selected edge. A single selected node gets eight resize handles; the opposite edge stays anchored and sizes are held between 72x48 and 600x400, the same range the server enforces. Double-click a node or edge, or select it and press F2 or Enter, to edit its label directly on the canvas; the same action can be pinned on mobile. Use the Node tool to create nodes, Edge to connect two nodes, and Pan or middle mouse drag to move the canvas. Delete removes the selected object. Press / to search nodes by title, type or key and centre a result. Ctrl+K (or Cmd+K) opens the searchable command palette; Ctrl+S saves, Ctrl+C/Ctrl+V copy and paste selected nodes, Ctrl+Z/Ctrl+Y undo and redo, and Esc closes transient UI or clears selection. Zoom to fit, Snap, Layout, SVG, PNG, Mermaid and Sample are available from the palette. Diagram Review checks structure locally in the browser for orphan nodes, invalid or duplicate edges, missing titles or labels, self-loops and directed cycles; Focus centres the affected object. On phones a compact bottom bar keeps the canvas large; choose Customize mobile action bar from the palette to pin up to two preferred actions. Unsaved browser drafts are stored locally and can be restored when reopening the same diagram.</p>
+    <p>Select nodes and edges with the Select tool. Shift-click nodes for basic multi-select, or drag on empty canvas to rubber-band everything the band touches; hold Shift while dragging to add to the current selection instead of replacing it. Drag nodes to move them; edges and centres latch onto nearby nodes and a guide line shows what lined up. Choose an 8, 16, 32 or 64 pixel grid to change both the visual spacing and snap interval. Multi-node selections can align left, centre, right, top, middle or bottom, and three or more nodes can distribute equal centre spacing through the command palette. The multi-selection inspector summarises type, colour and bounds, then applies shared type, colour or size changes as one undoable edit. Press Shift+2 to frame the selected nodes or both endpoints of a selected edge. A single selected node gets eight resize handles; the opposite edge stays anchored and sizes are held between 72x48 and 600x400, the same range the server enforces. Double-click a node or edge, or select it and press F2 or Enter, to edit its label directly on the canvas; the same action can be pinned on mobile. Use the Node tool to create nodes, Edge to connect two nodes, and Pan or middle mouse drag to move the canvas. Delete removes the selected object. Press / to search nodes by title, type or key and centre a result. Ctrl+K (or Cmd+K) opens the searchable command palette; Ctrl+S saves, Ctrl+C/Ctrl+V copy and paste selected nodes, Ctrl+Z/Ctrl+Y undo and redo, and Esc closes transient UI or clears selection. Zoom to fit, Snap, Layout, SVG, PNG, Mermaid and Sample are available from the palette. Diagram Review checks structure locally in the browser for orphan nodes, invalid or duplicate edges, missing titles or labels, self-loops and directed cycles; Focus centres the affected object. On phones a compact bottom bar keeps the canvas large; choose Customize mobile action bar from the palette to pin up to two preferred actions. Unsaved browser drafts are stored locally and can be restored when reopening the same diagram.</p>
     <h2>Node Types</h2>
     <p>Supported types: process, decision, database, service, api, note, external. Unknown imported types are mapped to note.</p>
     <h2>Edges</h2>
