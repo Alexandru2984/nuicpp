@@ -26,6 +26,10 @@ The first incident-response tabletop produced a conditional pass: severity,
 evidence, containment, GDPR timing and recovery decisions were workable, while
 live paging, emergency traffic denial, log retention, breach inventory, admin
 revocation/MFA and key separation received named owners and due dates.
+Nui is now pinned to the full commit behind its reviewed release tag. Native,
+linked Ubuntu and complete npm-lock CycloneDX inventories are validated in CTest,
+retained by CI and installed read-only with a release; signing and provenance
+remain open.
 
 ## Executive verdict
 
@@ -45,7 +49,7 @@ complete.
 ## Evidence snapshot
 
 - `main` was clean and three commits ahead of `origin/main` at assessment start.
-- Release build and 52 C++ tests passed. All eleven CTest suites, including the six
+- Release build and 52 C++ tests passed. All twelve CTest suites, including the six
   live suites, passed against a disposable PostgreSQL 18 database with isolated
   `_test` identities. JavaScript syntax checks, ShellCheck and Cppcheck passed.
 - `npm audit --package-lock-only --audit-level=low` reported zero known
@@ -97,7 +101,7 @@ complete.
 | 3 | Spoofing / elevation | Theft or forgery of the single admin session grants access to all diagrams. Stateless sessions have no individual revocation and one secret also derives guest ownership. | Low | High | HMAC cookies, Secure/HttpOnly/SameSite, PBKDF2, login throttles | `__Host-` cookie; server-side admin session revocation; MFA/passkey; split signing and ownership keys; alert on admin login |
 | 4 | Tampering | Concurrent editors attempt to overwrite, delete or restore over newer work. | Low | Medium | Atomic revision increments, strong ETags, mandatory `If-Match`, `412` rejection, bounded history and local draft preservation | Add a merge/recovery UI before real-time collaboration |
 | 5 | Repudiation | A shared admin credential prevents attribution to one person, and local logs can be altered after host compromise. | Medium | Medium | Correlated nginx/app request IDs; structured actor-class login/share/auth/CSRF/quota/storage events; redacted routes | Central/tamper-resistant audit storage, retention/access policy, individual admin identities and alerts |
-| 6 | Supply chain | C++ packages come from the OS without an SBOM; Nui is pinned to a mutable Git tag. | Medium | Medium | npm lockfile and audit; pinned CI actions/service image; passing CodeQL, Cppcheck, ShellCheck, GitGuardian and Dependabot; root-owned releases | Pin Nui to an immutable commit, generate an SBOM and add signed release provenance |
+| 6 | Supply chain | A compromised package source or CI account introduces a malicious dependency or substitutes build output. | Low | Medium | Immutable Nui/action/service refs; npm lock integrity and audit; native plus npm CycloneDX inventories; CodeQL, Cppcheck, ShellCheck, GitGuardian and Dependabot; root-owned releases | Add signed release provenance and independently verified reproducible-build metadata |
 
 ## Blast radius and FAIR planning estimate
 
@@ -170,9 +174,10 @@ costs.
    restarts and are bounded at 20,000 active pseudonymous keys, but a distributed
    source flood can fill that allowance and make new identities fail closed.
    Cloudflare/nginx enforcement and database latency alerts remain necessary.
-8. **Supply-chain visibility is incomplete.** CI and continuous scanners use
-   immutable action/image revisions and their first remote runs passed. No SBOM,
-   immutable Nui revision or signed release provenance exists.
+8. **Release provenance is incomplete.** CI and continuous scanners use
+   immutable action/image/Nui revisions, and native plus npm SBOMs capture the
+   actual build inventory. The SBOMs and release are not signed, no SLSA
+   attestation is emitted, and reproducibility has not been independently tested.
 
 ### Low
 

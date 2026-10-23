@@ -139,10 +139,10 @@ The build is clean under `-Wall -Wextra -Wpedantic`.
 ctest --test-dir build --output-on-failure
 ```
 
-Eleven suites cover unit validation, frontend assets, the nginx candidate,
-Prometheus rules, incident-runbook integrity, real Chromium behavior, live
-security/API behavior, shared persistent rate limits, concurrent global quota
-enforcement, and migration-ledger integrity. The six
+Twelve suites cover unit validation, frontend assets, the nginx candidate,
+Prometheus rules, incident-runbook integrity, CycloneDX SBOM generation, real
+Chromium behavior, live security/API behavior, shared persistent rate limits,
+concurrent global quota enforcement, and migration-ledger integrity. The six
 database-backed suites use
 a config with `APP_ENV=test` whose
 actual PostgreSQL database and login-role names both end in `_test`. Missing
@@ -158,7 +158,9 @@ offline navigation. CI installs its pinned browser runtime; locally run
 GitHub Actions runs the full build and all live suites against a disposable
 PostgreSQL database, plus ShellCheck, Cppcheck, npm audit, and CodeQL. Workflow
 actions and the PostgreSQL service image are pinned to immutable revisions;
-Dependabot proposes weekly action and frontend dependency updates.
+Dependabot proposes weekly action and frontend dependency updates. Successful CI
+also publishes native/runtime and full npm CycloneDX inventories for the exact
+commit; see [`docs/SUPPLY_CHAIN.md`](docs/SUPPLY_CHAIN.md).
 
 ## Run
 

@@ -48,6 +48,10 @@ rollback notes where applicable.
   data-access scenario, GDPR decision clock, evidence/recovery criteria and six
   owned follow-up actions. The result is conditional until live paging and the
   emergency maintenance deny are exercised.
+- Nui pinned to its reviewed full upstream commit plus validated CycloneDX
+  inventories for direct/native runtime components and the complete npm lock
+  graph. CI retains commit-named artifacts and deploy installs read-only copies
+  with each release.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -85,9 +89,8 @@ High risk remain open.
   policy.
 - GDPR data export/delete, privacy notice, retention controls, subprocessor list
   and audit-log access policy.
-- Pin Nui itself to an immutable commit, generate an SBOM, and add
-  signed/reproducible release metadata. Observe and triage the first remote CI
-  and CodeQL runs after push.
+- Add signed/SLSA release provenance and reproducible-build metadata. Observe and
+  triage the first remote SBOM CI run after push.
 
 ## P2 — editor quality and responsive UX
 

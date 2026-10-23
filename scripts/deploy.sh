@@ -49,6 +49,7 @@ sudo env -i PATH="$DEPLOY_COMMAND_PATH" ./build/nuigraph-studio check-config "$T
 sudo env -i PATH="$DEPLOY_COMMAND_PATH" ENV_FILE="$TEST_CONFIG" ./scripts/migrate.sh
 sudo env -i PATH="$DEPLOY_COMMAND_PATH" ENV_FILE="$TEST_CONFIG" NUIGRAPH_REQUIRE_LIVE_TESTS=1 \
   ctest --test-dir build --output-on-failure
+node scripts/generate_sbom.mjs build/sbom
 
 sudo env -i PATH="$DEPLOY_COMMAND_PATH" ENV_FILE="$MIGRATION_CONFIG" ./scripts/migrate.sh
 sudo -u postgres psql -v ON_ERROR_STOP=1 -d nuigraph_studio \
@@ -59,6 +60,11 @@ release_id="$(git rev-parse --short=12 HEAD)-$(date -u +'%Y%m%dT%H%M%SZ')"
 release="$RELEASES/$release_id"
 sudo install -d -o root -g root -m 0755 "$DEPLOY_ROOT" "$RELEASES" "$release"
 sudo install -o root -g root -m 0555 build/nuigraph-studio "$release/nuigraph-studio"
+sudo install -d -o root -g root -m 0555 "$release/sbom"
+sudo install -o root -g root -m 0444 \
+  build/sbom/nuigraph-native.cdx.json \
+  build/sbom/nuigraph-npm.cdx.json \
+  "$release/sbom/"
 sudo cp -a public "$release/public"
 sudo chown -R root:root "$release/public"
 sudo find "$release/public" -type d -exec chmod 0555 {} +

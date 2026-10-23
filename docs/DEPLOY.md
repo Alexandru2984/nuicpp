@@ -24,7 +24,9 @@ database, requires every live test to run, applies production migrations with
 the owner role, reapplies the DML-only runtime grants, and then publishes a
 root-owned release under `/opt/nuigraph-studio/releases/`. The `current` symlink
 changes atomically. A failed restart or health check restores the previous
-symlink and restarts the previous release.
+symlink and restarts the previous release. Each release also contains read-only
+native and npm CycloneDX inventories under `sbom/`; generation failure stops the
+deploy before production migration.
 
 On a fresh host, install Playwright's OS packages once after `npm ci`:
 
@@ -39,6 +41,18 @@ Monitoring is not installed implicitly by application deploy. After reviewing
 the local-only trust boundary, wire the scrape and validated rules using
 [`MONITORING.md`](MONITORING.md), configure a real Alertmanager receiver, and
 send a test alert.
+
+Review the release inventory when dependencies change:
+
+```bash
+node scripts/generate_sbom.mjs build/sbom
+less build/sbom/nuigraph-native.cdx.json
+less build/sbom/nuigraph-npm.cdx.json
+```
+
+The deploy regenerates these from the committed source and built binary. The
+format, coverage and remaining provenance limitations are documented in
+[`SUPPLY_CHAIN.md`](SUPPLY_CHAIN.md).
 
 The restart is safe under load: the service traps SIGTERM, stops accepting new
 connections, and drains in-flight requests before exiting, so a save in progress

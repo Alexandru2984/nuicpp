@@ -326,6 +326,11 @@ documented in `DEPLOY.md`.
 - Schema migrations are serialised and transactional. An owner-only ledger
   records each filename and SHA-256 checksum; an applied file that changes makes
   deploy fail rather than silently rewriting schema history.
+- Nui is fetched by a reviewed full Git commit rather than a mutable tag. Every
+  successful CI/deploy build generates validated CycloneDX inventories for the
+  direct/native runtime and the complete locked npm graph. Release copies are
+  root-owned and read-only; they are inventories, not signed provenance. See
+  `SUPPLY_CHAIN.md`.
 - The Ubuntu `libpqxx 7.10` header documents a shared-library double-free on
   normal exit for its header-defined type-name strings. The service links the
   package-provided static `libpqxx.a` so these objects have one owner; OpenSSL,

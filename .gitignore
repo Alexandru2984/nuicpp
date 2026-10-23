@@ -1,4 +1,5 @@
 /build/
+/.ci/
 /nui-frontend/build/
 /nui-frontend/node_modules/
 /nui-frontend/test-results/

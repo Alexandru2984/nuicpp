@@ -76,6 +76,7 @@ add_test(NAME nuigraph-browser-e2e COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_
 add_test(NAME nuigraph-nginx-config COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_nginx_config.sh)
 add_test(NAME nuigraph-prometheus-rules COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_prometheus_rules.sh)
 add_test(NAME nuigraph-incident-response COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_incident_response.sh)
+add_test(NAME nuigraph-sbom COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_sbom.sh)
 add_test(NAME nuigraph-security-smoke COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_security_smoke.sh)
 add_test(NAME nuigraph-api-integration COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_api_integration.sh)
 add_test(NAME nuigraph-rate-limits COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_rate_limits.sh)
@@ -86,6 +87,7 @@ set_tests_properties(
     nuigraph-nginx-config
     nuigraph-prometheus-rules
     nuigraph-incident-response
+    nuigraph-sbom
     PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(nuigraph-prometheus-rules PROPERTIES SKIP_RETURN_CODE 77)
