@@ -49,6 +49,15 @@ test.describe("desktop security and offline lifecycle", () => {
 
     await expect(page.locator("#canvas")).toBeVisible();
     await expect(page.locator("#diagram-title")).toHaveValue("Untitled diagram");
+    expect(await page.evaluate(() => typeof globalThis.NuiGraphReview?.analyzeDiagram)).toBe("function");
+    const browserReview = await page.evaluate(() => globalThis.NuiGraphReview.analyzeDiagram({
+      nodes: [{ key: "lonely", title: "" }],
+      edges: []
+    }));
+    expect(browserReview.findings.map((finding) => finding.code)).toEqual([
+      "missing_node_title",
+      "orphan_node"
+    ]);
     await waitForControlledWorker(page);
 
     await expect.poll(async () => page.evaluate(() => caches.keys())).toEqual([
@@ -68,6 +77,7 @@ test.describe("desktop security and offline lifecycle", () => {
     });
     expect(cachedPaths.some((path) => path.startsWith("/api/"))).toBe(false);
     expect(cachedPaths).toContain("/offline.html");
+    expect(cachedPaths).toContain("/diagram-review.js");
 
     const title = page.locator("#diagram-title");
     await title.focus();

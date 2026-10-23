@@ -34,6 +34,9 @@ Nui is now pinned to the full commit behind its reviewed release tag. Native,
 linked Ubuntu and complete npm-lock CycloneDX inventories are validated in CTest,
 retained by CI and installed read-only with a release; signing and provenance
 remain open.
+Architecture review now executes entirely in the browser with no external data
+flow. Its linear, non-recursive graph traversal is covered beyond the configured
+node limit, and all finding text is rendered as text rather than markup.
 
 ## Executive verdict
 

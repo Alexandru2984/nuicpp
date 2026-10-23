@@ -11,8 +11,23 @@
     });
   }
 
-  const script = document.createElement("script");
-  script.src = `/editor.js${assetQuery}`;
-  script.defer = true;
-  document.head.appendChild(script);
+  const attachEditor = () => {
+    const script = document.createElement("script");
+    script.src = `/editor.js${assetQuery}`;
+    script.defer = true;
+    document.head.appendChild(script);
+  };
+
+  if (globalThis.NuiGraphReview) {
+    attachEditor();
+  } else {
+    const review = document.createElement("script");
+    review.src = `/diagram-review.js${assetQuery}`;
+    review.defer = true;
+    review.onload = attachEditor;
+    // The editor remains usable if the optional review engine is unavailable;
+    // its command reports that state instead of blocking the whole canvas.
+    review.onerror = attachEditor;
+    document.head.appendChild(review);
+  }
 })();

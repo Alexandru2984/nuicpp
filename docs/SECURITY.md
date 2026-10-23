@@ -226,6 +226,16 @@ Enforced in the validation layer before anything reaches SQL:
 All SQL uses parameter binding (`tx.exec(sql, pqxx::params{...})`). There is no
 string-concatenated SQL in the codebase, and no shell execution at all.
 
+## Browser-local diagram review
+
+Diagram Review is a deterministic static asset with no network calls. It reads
+the in-memory diagram without mutating it and checks structural properties in
+O(V+E) time. Cycle detection uses iterative traversals so an allowed deep graph
+cannot exhaust the JavaScript call stack. Finding labels and messages are added
+to the dialog with `textContent`; diagram titles, keys and labels are never
+treated as HTML. Selecting Focus only changes the local canvas selection and
+viewport. No diagram content is sent to a third-party analysis service.
+
 ## Error handling
 
 `sendStorageError()` distinguishes validation errors, whose messages are meant
@@ -279,7 +289,7 @@ Two rules that are security-relevant, not just performance:
 - The service worker (`public/sw.js`) never touches `/api/`, `/login`,
   `/logout`, `/health`, `/live`, or `/ready`. The Cache API is origin-wide and
   outlives the session cookie, so caching those would hand one visitor's diagrams
-  to the next person using the same browser profile. Only eight static
+  to the next person using the same browser profile. Only nine static
   shell/offline assets are cached.
 
 At startup the app hashes every regular, non-symlink file under `public/` and

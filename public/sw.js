@@ -12,6 +12,7 @@ const asset = (path) => `${path}?v=${ASSET_VERSION}`;
 const SHELL = [
   asset("/styles.css"),
   asset("/app.js"),
+  asset("/diagram-review.js"),
   asset("/editor.js"),
   asset("/offline.html"),
   asset("/offline.js"),

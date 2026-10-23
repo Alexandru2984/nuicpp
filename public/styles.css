@@ -1018,6 +1018,79 @@ body.dirty .draft-status { color: var(--warn); }
   width: min(520px, 100%);
 }
 
+.diagram-review {
+  width: min(720px, 100%);
+  max-height: min(78dvh, 760px);
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: var(--shadow-lift);
+  padding: 16px;
+}
+
+.diagram-review h2 + p { margin: 4px 0 0; }
+
+.review-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.review-badge {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: capitalize;
+}
+
+.review-badge.review-error { border-color: var(--danger); color: var(--danger-text); }
+.review-badge.review-warning { border-color: var(--warn); color: var(--text); }
+.review-badge.review-info { border-color: var(--accent); color: var(--text); }
+
+.review-findings {
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.review-finding {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  padding: 10px;
+}
+
+.review-finding.review-error { border-left-color: var(--danger); }
+.review-finding.review-warning { border-left-color: var(--warn); }
+.review-finding.review-info { border-left-color: var(--accent); }
+.review-finding strong { color: var(--text-strong); font-size: 12px; text-transform: capitalize; }
+.review-finding p { margin: 3px 0 0; color: var(--muted); font-size: 13px; line-height: 1.4; }
+.review-finding button { flex: 0 0 auto; }
+
+.review-clean {
+  border: 1px solid color-mix(in srgb, var(--good) 65%, var(--line));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--good) 8%, var(--panel-2));
+  padding: 18px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
 .mobile-customizer > p { margin: 0; }
 
 .mobile-action-choices {
@@ -1063,7 +1136,7 @@ button.primary {
     padding: 12px 8px calc(8px + env(safe-area-inset-bottom));
   }
 
-  .command-palette, .mobile-customizer {
+  .command-palette, .mobile-customizer, .diagram-review {
     width: 100%;
     max-height: min(82dvh, 720px);
     border-radius: 18px;
@@ -1071,6 +1144,7 @@ button.primary {
   }
 
   .command-item { min-height: var(--tap); }
+  .review-finding { align-items: flex-start; }
 }
 
 .shortcut-list {

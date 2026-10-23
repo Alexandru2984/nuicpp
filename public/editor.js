@@ -326,6 +326,7 @@
       { id: "paste", label: "Paste selection", shortLabel: "Paste", category: "Edit", shortcut: "Ctrl / Cmd + V", enabled: () => Boolean(state.clipboard?.nodes?.length) && !state.readOnly, run: pasteSelected },
       { id: "delete", label: "Delete selection", shortLabel: "Delete", category: "Edit", mobile: true, enabled: () => Boolean(state.selected) && !state.readOnly, run: deleteSelected },
       { id: "layout", label: "Auto layout", shortLabel: "Layout", category: "Arrange", keywords: "organize graph", mobile: true, enabled: () => Boolean(state.current?.nodes?.length) && !state.readOnly, run: autoLayout },
+      { id: "review", label: "Review diagram quality", shortLabel: "Review", category: "Analyze", keywords: "lint cycle orphan duplicate missing label", mobile: true, enabled: () => Boolean(state.current), run: showDiagramReview },
       { id: "fit", label: "Zoom to fit", shortLabel: "Fit", category: "View", keywords: "frame center canvas", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: zoomToFit },
       { id: "tool-select", label: "Use select tool", shortLabel: "Select", category: "Tools", keywords: "pointer", mobile: true, run: () => triggerTool("select") },
       { id: "tool-pan", label: "Use pan tool", shortLabel: "Pan", category: "Tools", keywords: "move canvas hand", mobile: true, run: () => triggerTool("pan") },
@@ -747,6 +748,127 @@
     });
     update();
     choices.querySelector("input")?.focus();
+  }
+
+  function focusReviewTarget(target) {
+    if (!state.current || !target) return false;
+    let center = null;
+    if (target.type === "node") {
+      const node = state.current.nodes.find((candidate) => candidate.key === target.key);
+      if (!node) return false;
+      state.selected = { type: "node", key: node.key };
+      center = nodeCenter(node);
+    } else if (target.type === "edge") {
+      const edge = state.current.edges.find((candidate) => candidate.key === target.key);
+      if (!edge) return false;
+      const source = state.current.nodes.find((node) => node.key === edge.source);
+      const destination = state.current.nodes.find((node) => node.key === edge.target);
+      if (!source || !destination) return false;
+      const a = nodeCenter(source);
+      const b = nodeCenter(destination);
+      center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      state.selected = { type: "edge", key: edge.key };
+    }
+    if (!center) return false;
+    state.edgeSource = null;
+    state.zoom = Math.max(1, state.zoom);
+    const rect = canvas.getBoundingClientRect();
+    state.pan.x = rect.width / 2 - center.x * state.zoom;
+    state.pan.y = rect.height / 2 - center.y * state.zoom;
+    setTool("select");
+    render();
+    return true;
+  }
+
+  function showDiagramReview() {
+    if (!state.current) return;
+    const analyzer = globalThis.NuiGraphReview?.analyzeDiagram;
+    if (typeof analyzer !== "function") {
+      toast("Diagram review is unavailable; reload the editor assets.", "error");
+      return;
+    }
+    const review = analyzer(state.current);
+    const previousFocus = document.activeElement;
+    const overlay = document.createElement("div");
+    overlay.className = "command-palette-overlay diagram-review-overlay";
+    const dialog = document.createElement("section");
+    dialog.className = "diagram-review";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", "diagram-review-title");
+
+    const head = document.createElement("div");
+    head.className = "command-palette-head";
+    const heading = document.createElement("div");
+    const title = document.createElement("h2");
+    title.id = "diagram-review-title";
+    title.textContent = "Diagram review";
+    const subtitle = document.createElement("p");
+    subtitle.className = "muted";
+    subtitle.textContent = review.summary.total
+      ? `${review.summary.total} actionable finding${review.summary.total === 1 ? "" : "s"}`
+      : "No structural issues found";
+    heading.append(title, subtitle);
+    const closeButton = mobileBarButton("Close");
+    head.append(heading, closeButton);
+
+    const summary = document.createElement("div");
+    summary.className = "review-summary";
+    for (const severity of ["error", "warning", "info"]) {
+      const badge = document.createElement("span");
+      badge.className = `review-badge review-${severity}`;
+      badge.textContent = `${review.summary[severity]} ${severity}${review.summary[severity] === 1 ? "" : "s"}`;
+      summary.appendChild(badge);
+    }
+
+    const list = document.createElement("div");
+    list.className = "review-findings";
+    if (!review.findings.length) {
+      const clean = document.createElement("div");
+      clean.className = "review-clean";
+      clean.textContent = "The graph has connected, titled nodes and no duplicate or invalid edges.";
+      list.appendChild(clean);
+    }
+    for (const finding of review.findings) {
+      const item = document.createElement("article");
+      item.className = `review-finding review-${finding.severity}`;
+      const copy = document.createElement("div");
+      const label = document.createElement("strong");
+      label.textContent = finding.code.replaceAll("_", " ");
+      const message = document.createElement("p");
+      message.textContent = finding.message;
+      copy.append(label, message);
+      item.appendChild(copy);
+      if (finding.target) {
+        const focus = mobileBarButton("Focus");
+        focus.onclick = () => {
+          if (focusReviewTarget(finding.target)) overlay.closeDialog();
+        };
+        item.appendChild(focus);
+      }
+      list.appendChild(item);
+    }
+
+    dialog.append(head, summary, list);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+    const close = () => {
+      overlay.remove();
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+    overlay.closeDialog = close;
+    closeButton.onclick = close;
+    overlay.onclick = (evt) => { if (evt.target === overlay) close(); };
+    overlay.addEventListener("keydown", (evt) => {
+      if (evt.key === "Escape") {
+        evt.preventDefault();
+        evt.stopPropagation();
+        close();
+        return;
+      }
+      trapDialogFocus(evt, dialog);
+    });
+    closeButton.focus();
   }
 
   const SHORTCUTS = [

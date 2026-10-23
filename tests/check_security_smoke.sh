@@ -263,6 +263,12 @@ for marker in 'name="description"' 'rel="canonical"' 'property="og:title"' 'name
   fi
 done
 
+review_script="$(curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/diagram-review.js")"
+if ! grep -q 'NuiGraphReview' <<<"$review_script"; then
+  echo "expected the local diagram review engine to be served" >&2
+  exit 1
+fi
+
 robots="$(curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/robots.txt")"
 for rule in 'Disallow: /api/' 'Disallow: /d/' 'Disallow: /login' 'Disallow: /metrics' 'Sitemap: http://127.0.0.1:'; do
   if ! grep -q "$rule" <<<"$robots"; then

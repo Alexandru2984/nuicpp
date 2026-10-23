@@ -56,6 +56,10 @@ rollback notes where applicable.
   with two locally persisted quick actions. The mobile layout now removes both
   scrolling toolbars, reserves space in zoom-to-fit and keeps coarse-pointer
   controls at least 44px; Chromium covers focus restoration and customisation.
+- Browser-local architecture review with iterative cycle detection, orphan,
+  endpoint, duplicate, self-loop, title and edge-label rules. Findings use safe
+  text rendering and can centre their affected object; unit and Chromium tests
+  cover deep graphs, the shipped asset and the offline cache.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -141,8 +145,8 @@ High risk remain open.
 
 ## P4 — differentiated product features
 
-- Architecture validation rules and linting (cycles, orphan nodes, missing
-  labels, trust-boundary checks).
+- Expand architecture linting with trust-boundary policy, naming conventions,
+  configurable rule sets and CI/SARIF report export.
 - Diagram-as-code round trips, Git sync and reviewable semantic diffs.
 - Template marketplace with signed/curated templates and organisation libraries.
 - Presentation mode, guided walkthroughs, comments-to-tasks and share analytics
