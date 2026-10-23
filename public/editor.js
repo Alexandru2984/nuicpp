@@ -1072,6 +1072,8 @@
     ["Drag on empty canvas", "Rubber-band select"],
     ["Shift + drag", "Rubber-band adds to selection"],
     ["Drag a corner handle", "Resize the selected node"],
+    ["Arrow keys", "Move selected nodes by one grid step"],
+    ["Shift + Arrow", "Move selected nodes by five grid steps"],
     ["Long press (touch)", "Add to selection"],
     ["Middle drag / Pan tool", "Pan the canvas"],
     ["Wheel / pinch", "Zoom"],
@@ -1226,8 +1228,18 @@
     return JSON.parse(JSON.stringify(state.current));
   }
 
-  function pushHistory() {
+  let keyboardNudgeSignature = null;
+  let keyboardNudgeTimer = null;
+
+  function endKeyboardNudge() {
+    window.clearTimeout(keyboardNudgeTimer);
+    keyboardNudgeTimer = null;
+    keyboardNudgeSignature = null;
+  }
+
+  function pushHistory(continueKeyboardNudge = false) {
     if (!state.current || state.readOnly) return;
+    if (!continueKeyboardNudge) endKeyboardNudge();
     state.history.push(cloneDiagram());
     if (state.history.length > 80) state.history.shift();
     state.future = [];
@@ -1327,6 +1339,7 @@
   }
 
   function undo() {
+    endKeyboardNudge();
     if (!state.history.length || !state.current) return;
     state.future.push(cloneDiagram());
     restoreSnapshot(state.history.pop());
@@ -1334,6 +1347,7 @@
   }
 
   function redo() {
+    endKeyboardNudge();
     if (!state.future.length || !state.current) return;
     state.history.push(cloneDiagram());
     restoreSnapshot(state.future.pop());
@@ -1740,6 +1754,41 @@
     markDirty();
     render();
     toast(`${updates.length} node${updates.length === 1 ? "" : "s"} arranged.`);
+  }
+
+  function nudgeSelectedNodes(deltaX, deltaY) {
+    if (!state.current || state.readOnly) return;
+    const keys = selectedNodeKeys();
+    if (!keys.length) return;
+    const selected = new Set(keys);
+    const nodes = state.current.nodes.filter((node) => selected.has(node.key));
+    if (!nodes.length) return;
+
+    const boundedX = clamp(
+      deltaX,
+      Math.max(...nodes.map((node) => -100000 - node.x)),
+      Math.min(...nodes.map((node) => 100000 - node.x))
+    );
+    const boundedY = clamp(
+      deltaY,
+      Math.max(...nodes.map((node) => -100000 - node.y)),
+      Math.min(...nodes.map((node) => 100000 - node.y))
+    );
+    if (boundedX === 0 && boundedY === 0) return;
+
+    const signature = `${state.current.id || "new"}:${keys.slice().sort().join("|")}`;
+    if (keyboardNudgeSignature !== signature) {
+      pushHistory(true);
+      keyboardNudgeSignature = signature;
+    }
+    for (const node of nodes) {
+      node.x += boundedX;
+      node.y += boundedY;
+    }
+    markDirty();
+    render();
+    window.clearTimeout(keyboardNudgeTimer);
+    keyboardNudgeTimer = window.setTimeout(endKeyboardNudge, 400);
   }
 
   function isNodeSelected(key) {
@@ -2825,6 +2874,7 @@
   }
 
   async function openDiagram(id) {
+    endKeyboardNudge();
     state.current = await api(`/api/diagrams/${id}`);
     setReadOnly(state.current.can_edit === false);
     maybeRestoreDraft();
@@ -2839,6 +2889,7 @@
   }
 
   async function openDiagramBySlug(slug) {
+    endKeyboardNudge();
     state.current = await api(`/api/diagrams/slug/${slug}`);
     setReadOnly(state.current.can_edit === false);
     maybeRestoreDraft();
@@ -2870,6 +2921,7 @@
 
   async function saveDiagram() {
     if (!state.current || state.readOnly) return;
+    endKeyboardNudge();
     const draftId = state.current.id;
     state.current.title = el("diagram-title").value.trim() || "Untitled diagram";
     try {
@@ -3377,6 +3429,18 @@
           !document.querySelector('[role="dialog"]') && selectedFrameNodes().length) {
         evt.preventDefault();
         frameSelection();
+        return;
+      }
+      if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(evt.key) &&
+          !evt.ctrlKey && !evt.metaKey && !evt.altKey &&
+          (evt.target === canvas || evt.target === document.body) &&
+          !document.querySelector('[role="dialog"]') && selectedNodeKeys().length && !state.readOnly) {
+        evt.preventDefault();
+        const step = (state.snap ? state.gridSize : 1) * (evt.shiftKey ? 5 : 1);
+        nudgeSelectedNodes(
+          evt.key === "ArrowLeft" ? -step : evt.key === "ArrowRight" ? step : 0,
+          evt.key === "ArrowUp" ? -step : evt.key === "ArrowDown" ? step : 0
+        );
         return;
       }
       const editWithEnter = evt.key === "Enter" && (evt.target === canvas || evt.target === document.body);

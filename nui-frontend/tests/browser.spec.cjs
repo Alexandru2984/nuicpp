@@ -300,6 +300,18 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(startShape).toHaveAttribute("width", "222");
       await expect(serviceShape).toHaveAttribute("width", "222");
 
+      const startXBeforeNudge = Number(await startShape.getAttribute("x"));
+      const serviceXBeforeNudge = Number(await serviceShape.getAttribute("x"));
+      await page.locator("#canvas").focus();
+      await page.keyboard.press("ArrowRight");
+      await page.keyboard.press("ArrowRight");
+      await expect(startShape).toHaveAttribute("x", String(startXBeforeNudge + 128));
+      await expect(serviceShape).toHaveAttribute("x", String(serviceXBeforeNudge + 128));
+      await page.keyboard.press("Control+z");
+      await expect(startShape).toHaveAttribute("x", String(startXBeforeNudge));
+      await expect(serviceShape).toHaveAttribute("x", String(serviceXBeforeNudge));
+      await expect(startShape).toHaveAttribute("fill", "#123456");
+
       await page.keyboard.press("Control+z");
       await expect(startGroup.locator(".node-subtitle")).toHaveText(originalBatchProperties.startType);
       await expect(serviceGroup.locator(".node-subtitle")).toHaveText(originalBatchProperties.serviceType);

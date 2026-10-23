@@ -32,6 +32,8 @@ admin account for maintenance.
 - Multi-selection inspector summarises type, colour and selection bounds, then
   applies type, colour, width and height changes to every selected node as one
   undoable edit.
+- Keyboard movement for one or many selected nodes uses the active grid step;
+  `Shift+Arrow` moves five steps and held-key repeats collapse into one undo.
 - Eight resize handles on a single selected node, honouring the same 72x48 to
   600x400 bounds the server clamps to.
 - Alignment guides while dragging: edges and centres latch onto neighbouring

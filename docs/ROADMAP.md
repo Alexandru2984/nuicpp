@@ -96,6 +96,9 @@ rollback notes where applicable.
 - Configurable 8/16/32/64 px grid shared by rendering, node creation, dragging
   and resizing. The preference stays local and can be changed from the desktop
   toolbar or cycled from the command palette/mobile actions.
+- Keyboard movement for single and multi-node selections, with grid-aware Arrow
+  steps, five-step Shift acceleration, server-equivalent coordinate bounds and
+  key-repeat coalescing into one undo entry.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -151,7 +154,7 @@ High risk remain open.
   selective restore and duplicate-as-branch.
 - Autosave to the server with visible sync state, offline mutation queue and
   conflict-resolution UI.
-- WCAG 2.2 AA pass: keyboard canvas navigation, screen-reader object tree,
+- WCAG 2.2 AA pass: screen-reader object tree,
   high-contrast/forced-colour mode, focus trapping for sheets/dialogs and
   accessible status announcements.
 - Romanian plus English localisation, locale-aware dates and RTL-ready layout.
