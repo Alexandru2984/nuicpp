@@ -282,6 +282,38 @@ do
   fi
 done
 
+root_html="$(curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/")"
+if [[ "$root_html" =~ /styles[.]css\?v=([0-9a-f]{16}) ]]; then
+  asset_version="${BASH_REMATCH[1]}"
+else
+  echo "editor shell is missing its content-derived asset version" >&2
+  exit 1
+fi
+
+versioned_headers="$(curl --noproxy '*' -sS -D - -o /dev/null \
+  "http://127.0.0.1:${PORT}/styles.css?v=${asset_version}")"
+for expected in \
+  "cache-control: public, max-age=31536000, immutable" \
+  "cdn-cache-control: public, max-age=31536000, immutable" \
+  "cloudflare-cdn-cache-control: public, max-age=31536000, immutable"
+do
+  if ! grep -qi "^${expected}" <<<"$versioned_headers"; then
+    echo "expected $expected on content-versioned static assets" >&2
+    exit 1
+  fi
+done
+
+worker_body="$(curl --noproxy '*' -fsS \
+  "http://127.0.0.1:${PORT}/sw.js?v=${asset_version}")"
+if ! grep -q "const ASSET_VERSION = \"${asset_version}\"" <<<"$worker_body"; then
+  echo "service worker does not share the shell asset version" >&2
+  exit 1
+fi
+if grep -q '__ASSET_VERSION__' <<<"$worker_body"; then
+  echo "service worker exposed an unresolved asset-version placeholder" >&2
+  exit 1
+fi
+
 if ! curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/offline.js" >/dev/null; then
   echo "offline script is not served" >&2
   exit 1

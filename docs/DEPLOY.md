@@ -220,10 +220,12 @@ curl -sS -o /dev/null -w '%{http_code}\n' --resolve nuicpp.micutu.com:443:<origi
 
 ## Static assets and caching
 
-Static files are served with `ETag`, mandatory browser revalidation and matching
-`CDN-Cache-Control`/`Cloudflare-CDN-Cache-Control` headers. `/sw.js` instead
-sends `no-store` at all three layers, and registration sets
-`updateViaCache: none`.
+The app computes one release digest over the complete `public/` tree and uses it
+as `?v=` on shell assets. An exact current digest is immutable for one year at
+browser and CDN layers; unversioned, stale and invented values use `ETag` plus
+mandatory revalidation. `/sw.js` stays `no-store` at all three layers,
+registration uses `updateViaCache: none`, and its versioned registration URL
+changes with the same digest.
 
 Cloudflare was observed rewriting `/sw.js` to `Cache-Control: max-age=14400`.
 Origin headers cannot override a matching Cache Rule. In the Cloudflare zone,
@@ -234,6 +236,8 @@ the hostname's existing cached assets once after changing the rules. Then verify
 ```bash
 curl -sSI https://nuicpp.micutu.com/sw.js | grep -Ei 'cache-control|cf-cache-status'
 # expect Cache-Control: no-store, max-age=0 and DYNAMIC/BYPASS (never a 4h TTL)
+curl -fsS https://nuicpp.micutu.com/ | grep -oE '/styles[.]css[?]v=[0-9a-f]{16}'
+# request that exact URL and expect max-age=31536000, immutable
 ```
 
 Cloudflare documents that Cache Response Rules and Edge/Browser TTL settings can

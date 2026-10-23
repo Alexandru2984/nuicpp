@@ -32,6 +32,8 @@ rollback notes where applicable.
 - Self-contained nginx candidate validation in CTest/CI, covering syntax, ACME,
   origin guard, request correlation, redacted capability logs and restrictive
   CSP before the production files can be copied.
+- Content-derived release URLs and service-worker cache names across both editor
+  shells, with immutable caching only for the exact current asset digest.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -45,9 +47,9 @@ High risk remain open.
   origin-guard, correlation and redacted-log invariants now pass an isolated
   `nginx -t` in CTest/CI before either live file can be copied; the final live
   `nginx -t` and reload remain an explicit operator step.
-- Correct the account-level Cloudflare cache rule and version static asset URLs;
-  origin headers and service-worker updates are now deterministic unless a Cache
-  Rule overrides them.
+- Correct the account-level Cloudflare cache rule and purge stale objects;
+  content-versioned URLs, origin headers and service-worker updates are now
+  deterministic unless a Cache Rule overrides them.
 - Ship the actual WASM artifact or formally remove it from the primary path; fail
   release assembly when the chosen shell is incomplete.
 - Add a real-browser regression test for CSP, offline navigation and worker

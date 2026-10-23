@@ -203,6 +203,35 @@ std::string sha256Hex(const std::string& data) {
     return bytesToHex(digest, len);
 }
 
+std::string computeAssetVersion(const std::string& projectRoot) {
+    const std::filesystem::path publicRoot =
+        std::filesystem::path(projectRoot) / "public";
+    std::error_code ec;
+    std::vector<std::filesystem::path> files;
+    for (std::filesystem::recursive_directory_iterator it(publicRoot, ec), end;
+         it != end && !ec; it.increment(ec)) {
+        if (it->is_regular_file(ec) && !it->is_symlink(ec)) {
+            files.push_back(it->path());
+        }
+    }
+    if (ec || files.empty()) {
+        throw std::runtime_error("public asset tree is missing or unreadable");
+    }
+    std::sort(files.begin(), files.end());
+
+    std::string material;
+    for (const auto& path : files) {
+        const auto relative = std::filesystem::relative(path, publicRoot, ec).generic_string();
+        if (ec) {
+            throw std::runtime_error("public asset path cannot be normalised");
+        }
+        const auto body = readTextFile(path.string());
+        material += std::to_string(relative.size()) + ":" + relative;
+        material += std::to_string(body.size()) + ":" + body;
+    }
+    return sha256Hex(material).substr(0, 16);
+}
+
 std::string contentTypeFor(const std::string& path) {
     if (path.ends_with(".html")) return "text/html; charset=utf-8";
     if (path.ends_with(".js")) return "application/javascript";
@@ -236,9 +265,10 @@ void replaceAll(std::string& value, const std::string& from, const std::string& 
 }
 
 std::string nuiShellPage(const std::string& projectRoot, const std::string& baseUrl,
-                         bool indexable) {
+                         bool indexable, const std::string& assetVersion) {
     auto page = readTextFile(projectRoot + "/public/nui/index.html");
     replaceAll(page, "https://nuicpp.micutu.com", htmlEscape(normalizedBaseUrl(baseUrl)));
+    replaceAll(page, "__ASSET_VERSION__", htmlEscape(assetVersion));
     if (!indexable) {
         replaceAll(page, "content=\"index, follow\"",
                    "content=\"noindex, nofollow, noarchive\"");
@@ -347,7 +377,7 @@ Diagram defaultDiagram() {
 } // namespace
 
 Routes::Routes(const Config& cfg, PostgresStorage& storage)
-    : cfg_(cfg), storage_(storage) {}
+    : cfg_(cfg), storage_(storage), assetVersion_(computeAssetVersion(cfg.projectRoot)) {}
 
 // The vhost sets these too, but the app must not depend on a proxy staying
 // configured correctly to be safe. httplib keeps the first value for a header,
@@ -373,14 +403,9 @@ void Routes::applySecurityHeaders(httplib::Response& res) const {
                    "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
 }
 
-// Static assets carry no content hash in their names, and the app sent no
-// caching headers at all, so Cloudflare applied its own default and a CSS or JS
-// deploy could take hours to reach visitors.
-//
-// no-cache does not mean "do not store": caches may keep the response but must
-// revalidate, so an unchanged file still costs only a 304 while a changed one
-// is picked up on the next request. The CDN-specific headers keep that contract
-// separate from browser caching. Cache Rules can still override origin headers,
+// Shell URLs carry a digest of the complete public asset tree. Only an exact
+// current digest gets immutable caching; unversioned, stale or attacker-chosen
+// query values must revalidate. Cache Rules can still override origin headers,
 // which is why the matching Cloudflare rule is documented in DEPLOY.md.
 void Routes::serveStatic(const httplib::Request& req, httplib::Response& res,
                          const std::string& path, bool noStore) const {
@@ -393,12 +418,18 @@ void Routes::serveStatic(const httplib::Request& req, httplib::Response& res,
         return;
     }
 
+    replaceAll(body, "__ASSET_VERSION__", assetVersion_);
+
     const auto etag = "\"" + sha256Hex(body).substr(0, 32) + "\"";
     res.set_header("ETag", etag);
     if (noStore) {
         res.set_header("Cache-Control", "no-store, max-age=0");
         res.set_header("CDN-Cache-Control", "no-store");
         res.set_header("Cloudflare-CDN-Cache-Control", "no-store");
+    } else if (req.has_param("v") && req.get_param_value("v") == assetVersion_) {
+        res.set_header("Cache-Control", "public, max-age=31536000, immutable");
+        res.set_header("CDN-Cache-Control", "public, max-age=31536000, immutable");
+        res.set_header("Cloudflare-CDN-Cache-Control", "public, max-age=31536000, immutable");
     } else {
         res.set_header("Cache-Control", "public, no-cache, must-revalidate");
         res.set_header("CDN-Cache-Control", "no-cache");
@@ -812,9 +843,9 @@ void Routes::registerRoutes(httplib::Server& server) {
         serveStatic(req, res, cfg_.projectRoot + "/public/icons/" + name);
     });
 
-    server.Get("/login", [](const httplib::Request&, httplib::Response& res) {
+    server.Get("/login", [this](const httplib::Request&, httplib::Response& res) {
         res.set_header("X-Robots-Tag", "noindex, nofollow, noarchive");
-        res.set_content(renderLoginPage(""), "text/html; charset=utf-8");
+        res.set_content(renderLoginPage("", assetVersion_), "text/html; charset=utf-8");
     });
     server.Post("/login", [this](const httplib::Request& req, httplib::Response& res) {
         res.set_header("X-Robots-Tag", "noindex, nofollow, noarchive");
@@ -823,13 +854,13 @@ void Routes::registerRoutes(httplib::Server& server) {
         try {
             if (!storage_.consumeRateLimit(limiterKey, 8, kLoginFailureWindow)) {
                 res.status = 429;
-                res.set_content(renderLoginPage("Too many login attempts. Try again later."), "text/html; charset=utf-8");
+                res.set_content(renderLoginPage("Too many login attempts. Try again later.", assetVersion_), "text/html; charset=utf-8");
                 logSecurityEvent(req, res, "admin_login", "rate_limited");
                 return;
             }
         } catch (const std::exception&) {
             res.status = 503;
-            res.set_content(renderLoginPage("Sign-in validation is temporarily unavailable."), "text/html; charset=utf-8");
+            res.set_content(renderLoginPage("Sign-in validation is temporarily unavailable.", assetVersion_), "text/html; charset=utf-8");
             logSecurityEvent(req, res, "rate_limit_storage", "error");
             return;
         }
@@ -847,7 +878,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             }
         } else {
             res.status = 401;
-            res.set_content(renderLoginPage("Invalid credentials"), "text/html; charset=utf-8");
+            res.set_content(renderLoginPage("Invalid credentials", assetVersion_), "text/html; charset=utf-8");
             logSecurityEvent(req, res, "admin_login", "failed");
         }
     });
@@ -867,10 +898,10 @@ void Routes::registerRoutes(httplib::Server& server) {
             return;
         }
         if (nuiShellReady(cfg_.projectRoot)) {
-            res.set_content(nuiShellPage(cfg_.projectRoot, cfg_.baseUrl, true), "text/html; charset=utf-8");
+            res.set_content(nuiShellPage(cfg_.projectRoot, cfg_.baseUrl, true, assetVersion_), "text/html; charset=utf-8");
             return;
         }
-        res.set_content(renderEditorPage(username, cfg_.baseUrl), "text/html; charset=utf-8");
+        res.set_content(renderEditorPage(username, cfg_.baseUrl, true, assetVersion_), "text/html; charset=utf-8");
     });
     server.Get(R"(/d/([A-Za-z0-9-]+))", [this](const httplib::Request& req, httplib::Response& res) {
         // Share slugs are bearer capabilities. Search indexing would both leak
@@ -878,14 +909,14 @@ void Routes::registerRoutes(httplib::Server& server) {
         res.set_header("X-Robots-Tag", "noindex, nofollow, noarchive");
         logSecurityEvent(req, res, "share_view", "allowed");
         if (nuiShellReady(cfg_.projectRoot)) {
-            res.set_content(nuiShellPage(cfg_.projectRoot, cfg_.baseUrl, false), "text/html; charset=utf-8");
+            res.set_content(nuiShellPage(cfg_.projectRoot, cfg_.baseUrl, false, assetVersion_), "text/html; charset=utf-8");
             return;
         }
-        res.set_content(renderEditorPage("guest", cfg_.baseUrl, false), "text/html; charset=utf-8");
+        res.set_content(renderEditorPage("guest", cfg_.baseUrl, false, assetVersion_), "text/html; charset=utf-8");
     });
     server.Get("/docs", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, true)) return;
-        res.set_content(renderDocsPage(cfg_.baseUrl), "text/html; charset=utf-8");
+        res.set_content(renderDocsPage(cfg_.baseUrl, assetVersion_), "text/html; charset=utf-8");
     });
 
     server.Get("/api/session", [this](const httplib::Request& req, httplib::Response& res) {

@@ -32,7 +32,7 @@ complete.
 ## Evidence snapshot
 
 - `main` was clean and three commits ahead of `origin/main` at assessment start.
-- Release build and 48 C++ tests passed. All eight CTest suites, including the five
+- Release build and 49 C++ tests passed. All eight CTest suites, including the five
   live suites, passed against a disposable PostgreSQL 18 database with isolated
   `_test` identities. JavaScript syntax checks, ShellCheck and Cppcheck passed.
 - `npm audit --package-lock-only --audit-level=low` reported zero known
@@ -143,10 +143,10 @@ costs.
    and now passes a self-contained `nginx -t` plus static security invariants in
    CTest/CI. Production remains drifted until that candidate is installed and
    passes the host-wide final test before reload.
-5. **CDN cache drift.** Live static responses contradict the documented caching
-   contract. The origin now sends explicit CDN revalidation headers and
-   `no-store` for the worker, but the observed Cloudflare rule can override them;
-   correct that account-level rule and purge existing objects.
+5. **CDN cache drift.** The app now derives versioned shell/worker URLs from the
+   complete public asset tree, serves matching assets as immutable and keeps the
+   worker `no-store`. The observed Cloudflare rule can still override that
+   contract; correct the account-level rule and purge existing objects.
 6. **One secret serves four purposes.** Session signing, CSRF derivation, guest
    ownership and rate-limit pseudonymisation share `SESSION_SECRET`. Rotation
    logs everyone out, permanently orphans guest diagrams and resets active

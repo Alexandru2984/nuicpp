@@ -14,6 +14,13 @@ std::string normalizedBaseUrl(std::string baseUrl) {
     return baseUrl;
 }
 
+std::string assetUrl(const std::string& path, const std::string& assetVersion) {
+    if (assetVersion.empty()) {
+        return path;
+    }
+    return path + "?v=" + htmlEscape(assetVersion);
+}
+
 std::string publicMetadata(const std::string& title, const std::string& canonicalUrl,
                            bool indexable) {
     std::string metadata =
@@ -41,7 +48,7 @@ std::string publicMetadata(const std::string& title, const std::string& canonica
 
 } // namespace
 
-std::string renderLoginPage(const std::string& error) {
+std::string renderLoginPage(const std::string& error, const std::string& assetVersion) {
     return std::string(R"HTML(<!doctype html>
 <html lang="en">
 <head>
@@ -50,7 +57,7 @@ std::string renderLoginPage(const std::string& error) {
   <meta name="description" content="Administrator sign-in for NuiGraph Studio.">
   <meta name="robots" content="noindex, nofollow, noarchive">
   <title>NuiGraph Studio Login</title>
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href=")HTML" + assetUrl("/styles.css", assetVersion) + R"HTML(">
 </head>
 <body class="login-body">
   <main class="login-shell">
@@ -69,7 +76,8 @@ std::string renderLoginPage(const std::string& error) {
 </html>)HTML";
 }
 
-std::string renderEditorPage(const std::string& username, const std::string& baseUrl, bool indexable) {
+std::string renderEditorPage(const std::string& username, const std::string& baseUrl,
+                             bool indexable, const std::string& assetVersion) {
     const auto canonicalUrl = normalizedBaseUrl(baseUrl) + "/";
     return std::string(R"HTML(<!doctype html>
 <html lang="en">
@@ -78,10 +86,10 @@ std::string renderEditorPage(const std::string& username, const std::string& bas
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NuiGraph Studio</title>
 )HTML") + publicMetadata("NuiGraph Studio — Browser Diagram Editor", canonicalUrl, indexable) + R"HTML(  <meta name="theme-color" content="#0b0f14">
-  <link rel="stylesheet" href="/styles.css">
-  <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="/icons/icon.svg">
+  <link rel="stylesheet" href=")HTML" + assetUrl("/styles.css", assetVersion) + R"HTML(">
+  <link rel="manifest" href=")HTML" + assetUrl("/manifest.webmanifest", assetVersion) + R"HTML(">
+  <link rel="icon" href=")HTML" + assetUrl("/icons/icon.svg", assetVersion) + R"HTML(" type="image/svg+xml">
+  <link rel="apple-touch-icon" href=")HTML" + assetUrl("/icons/icon.svg", assetVersion) + R"HTML(">
 </head>
 <body>
   <div id="app" data-user=")HTML" + htmlEscape(username) + R"HTML(">
@@ -180,12 +188,12 @@ std::string renderEditorPage(const std::string& username, const std::string& bas
     </aside>
   </div>
   <input id="import-file" type="file" accept="application/json,.json" hidden>
-  <script src="/app.js"></script>
+  <script src=")HTML" + assetUrl("/app.js", assetVersion) + R"HTML("></script>
 </body>
 </html>)HTML";
 }
 
-std::string renderDocsPage(const std::string& baseUrl) {
+std::string renderDocsPage(const std::string& baseUrl, const std::string& assetVersion) {
     const auto canonicalUrl = normalizedBaseUrl(baseUrl) + "/docs";
     return std::string(R"HTML(<!doctype html>
 <html lang="en">
@@ -193,7 +201,7 @@ std::string renderDocsPage(const std::string& baseUrl) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NuiGraph Studio Docs</title>
-)HTML") + publicMetadata("NuiGraph Studio Documentation", canonicalUrl, true) + R"HTML(  <link rel="stylesheet" href="/styles.css">
+)HTML") + publicMetadata("NuiGraph Studio Documentation", canonicalUrl, true) + R"HTML(  <link rel="stylesheet" href=")HTML" + assetUrl("/styles.css", assetVersion) + R"HTML(">
 </head>
 <body class="docs-body">
   <main class="docs">

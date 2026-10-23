@@ -6,16 +6,18 @@
 // response there would hand one visitor's diagrams to the next person using
 // the same browser profile. Those requests are never touched.
 
-const VERSION = "ngs-v2";
+const ASSET_VERSION = "__ASSET_VERSION__";
+const VERSION = `ngs-${ASSET_VERSION}`;
+const asset = (path) => `${path}?v=${ASSET_VERSION}`;
 const SHELL = [
-  "/styles.css",
-  "/app.js",
-  "/editor.js",
-  "/offline.html",
-  "/offline.js",
-  "/manifest.webmanifest",
-  "/icons/icon.svg",
-  "/icons/icon-maskable.svg"
+  asset("/styles.css"),
+  asset("/app.js"),
+  asset("/editor.js"),
+  asset("/offline.html"),
+  asset("/offline.js"),
+  asset("/manifest.webmanifest"),
+  asset("/icons/icon.svg"),
+  asset("/icons/icon-maskable.svg")
 ];
 
 self.addEventListener("install", (event) => {
@@ -57,7 +59,7 @@ self.addEventListener("fetch", (event) => {
   // username, so a cached copy is only ever an offline fallback.
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request).catch(() => caches.match("/offline.html").then((r) => r || Response.error()))
+      fetch(request).catch(() => caches.match(asset("/offline.html")).then((r) => r || Response.error()))
     );
     return;
   }

@@ -47,6 +47,7 @@ private:
 
     const Config& cfg_;
     PostgresStorage& storage_;
+    std::string assetVersion_;
 };
 
 } // namespace nuigraph

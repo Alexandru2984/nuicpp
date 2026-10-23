@@ -65,8 +65,9 @@ admin account for maintenance.
 - Graceful shutdown on SIGTERM/SIGINT: the listener stops and in-flight requests
   drain before exit, so a restart cannot truncate a save.
 - Structured access logging with ISO 8601 timestamps.
-- Static assets use `ETag` and mandatory revalidation; the service-worker script
-  is never stored and its registration bypasses the HTTP cache for updates.
+- Static asset URLs and the service-worker cache name use a content-derived
+  release digest; matching assets are immutable, while the worker is never
+  stored and its registration bypasses the HTTP cache for updates.
 - Search metadata, canonical URLs, `robots.txt`, and `sitemap.xml` cover the
   public editor and documentation; bearer share links, auth, API, and probes
   are explicitly excluded from indexing.

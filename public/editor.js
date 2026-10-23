@@ -1,8 +1,9 @@
 (() => {
-  if (!document.querySelector('link[href="/styles.css"]')) {
+  const assetQuery = document.currentScript ? new URL(document.currentScript.src).search : "";
+  if (!document.querySelector('link[href^="/styles.css"]')) {
     const css = document.createElement("link");
     css.rel = "stylesheet";
-    css.href = "/styles.css";
+    css.href = `/styles.css${assetQuery}`;
     document.head.appendChild(css);
   }
 

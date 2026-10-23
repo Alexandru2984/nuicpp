@@ -280,13 +280,15 @@ Two rules that are security-relevant, not just performance:
   to the next person using the same browser profile. Only eight static
   shell/offline assets are cached.
 
-Static assets use `ETag` plus `Cache-Control: public, no-cache,
-must-revalidate`, meaning "store, but revalidate". `CDN-Cache-Control` and
-`Cloudflare-CDN-Cache-Control` carry the same edge requirement. The worker
-script is stricter: every cache layer receives `no-store`, registration uses
-`updateViaCache: none`, and changing the shell bumps its Cache API version.
-Cloudflare Cache Rules can override origin headers, so the matching browser and
-edge rule is an operator control documented in `DEPLOY.md`.
+At startup the app hashes every regular, non-symlink file under `public/` and
+injects the first 64 digest bits into shell URLs, manifest/icon references and
+the service-worker cache name. An exact `?v=<current digest>` receives a one-year
+`immutable` policy at browser and CDN layers. Missing, stale or invented versions
+keep `ETag` plus mandatory revalidation. The worker script is stricter: every
+cache layer receives `no-store`, registration uses `updateViaCache: none`, and
+its URL also changes with the release digest. Cloudflare Cache Rules can override
+origin headers, so the matching account-level rule remains an operator control
+documented in `DEPLOY.md`.
 
 ## Process hardening
 

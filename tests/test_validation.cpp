@@ -562,6 +562,20 @@ void testRequestIdsAndLogFieldsAreSafe() {
             "log fields must not permit line or key injection");
 }
 
+void testRenderedPagesVersionStaticAssets() {
+    constexpr auto version = "0123456789abcdef";
+    const auto editor = renderEditorPage("guest", "https://example.test", true, version);
+    require(editor.find("/styles.css?v=0123456789abcdef") != std::string::npos,
+            "editor stylesheet should use the release asset version");
+    require(editor.find("/app.js?v=0123456789abcdef") != std::string::npos,
+            "editor bootstrap should use the release asset version");
+    require(renderLoginPage("", version).find("/styles.css?v=0123456789abcdef") != std::string::npos,
+            "login stylesheet should use the release asset version");
+    require(renderDocsPage("https://example.test", version).find(
+                "/styles.css?v=0123456789abcdef") != std::string::npos,
+            "docs stylesheet should use the release asset version");
+}
+
 void testRateLimiterSlidingWindow() {
     RateLimiter limiter;
     limiter.allow("ip", 3, 10, 100);
@@ -692,11 +706,12 @@ int main() {
         testRateLimiterEvictionKeepsThrottledKeys();
         testSensitivePathsAreRedacted();
         testRequestIdsAndLogFieldsAreSafe();
+        testRenderedPagesVersionStaticAssets();
         testSeoMetadata();
     } catch (const std::exception& e) {
         std::cerr << "test failed: " << e.what() << '\n';
         return EXIT_FAILURE;
     }
-        std::cout << "nuigraph validation tests passed (48 tests)\n";
+        std::cout << "nuigraph validation tests passed (49 tests)\n";
     return EXIT_SUCCESS;
 }
