@@ -18,12 +18,22 @@ git pull                                   # if deploying from a remote
 ```
 
 The deploy refuses a dirty tree, builds the committed source, validates both
-runtime and test configs, migrates an isolated `_test` database, requires every
-live test to run, audits the frontend dependency lock, applies production
-migrations with the owner role, reapplies the DML-only runtime grants, and then
-publishes a root-owned release under `/opt/nuigraph-studio/releases/`. The
-`current` symlink changes atomically. A failed restart or health check restores
-the previous symlink and restarts the previous release.
+runtime and test configs, installs the exact frontend lockfile, audits it,
+ensures the pinned Chromium runtime is present, migrates an isolated `_test`
+database, requires every live test to run, applies production migrations with
+the owner role, reapplies the DML-only runtime grants, and then publishes a
+root-owned release under `/opt/nuigraph-studio/releases/`. The `current` symlink
+changes atomically. A failed restart or health check restores the previous
+symlink and restarts the previous release.
+
+On a fresh host, install Playwright's OS packages once after `npm ci`:
+
+```bash
+sudo nui-frontend/node_modules/.bin/playwright install-deps chromium
+```
+
+Routine deploys only verify/download the browser binary in the unprivileged
+operator cache; they do not silently change host packages.
 
 The restart is safe under load: the service traps SIGTERM, stops accepting new
 connections, and drains in-flight requests before exiting, so a save in progress

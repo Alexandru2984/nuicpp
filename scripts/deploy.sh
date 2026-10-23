@@ -37,6 +37,9 @@ done
 
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release -j "$(nproc)"
+npm ci --prefix nui-frontend --ignore-scripts
+npm audit --prefix nui-frontend --audit-level=high
+nui-frontend/node_modules/.bin/playwright install chromium
 sudo env -i PATH="$DEPLOY_COMMAND_PATH" ./build/nuigraph-studio check-config "$APP_CONFIG"
 sudo env -i PATH="$DEPLOY_COMMAND_PATH" ./build/nuigraph-studio check-config "$TEST_CONFIG"
 
@@ -45,7 +48,6 @@ sudo env -i PATH="$DEPLOY_COMMAND_PATH" ./build/nuigraph-studio check-config "$T
 sudo env -i PATH="$DEPLOY_COMMAND_PATH" ENV_FILE="$TEST_CONFIG" ./scripts/migrate.sh
 sudo env -i PATH="$DEPLOY_COMMAND_PATH" ENV_FILE="$TEST_CONFIG" NUIGRAPH_REQUIRE_LIVE_TESTS=1 \
   ctest --test-dir build --output-on-failure
-npm audit --prefix nui-frontend --audit-level=high
 
 sudo env -i PATH="$DEPLOY_COMMAND_PATH" ENV_FILE="$MIGRATION_CONFIG" ./scripts/migrate.sh
 sudo -u postgres psql -v ON_ERROR_STOP=1 -d nuigraph_studio \
