@@ -482,6 +482,28 @@ body.dirty .draft-status { color: var(--warn); }
 
 .check-row input { width: auto; min-height: 0; }
 
+.selection-summary {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+
+.selection-summary .muted { font-size: 12px; line-height: 1.45; }
+
+.batch-property {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(76px, 42%);
+  align-items: center;
+  gap: 8px;
+}
+
+.batch-property > input { min-width: 0; }
+
+#apply-batch-properties { width: 100%; }
+
 .versions { margin-top: 16px; }
 
 .version-item {

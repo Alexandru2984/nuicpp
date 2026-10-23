@@ -88,6 +88,9 @@ rollback notes where applicable.
   or a customisable mobile action. Empty node labels are rejected, edge labels
   can be cleared, untrusted text is never interpreted as markup, and edits
   persist to local drafts and undo in one step.
+- Multi-selection inspector with type/colour counts and geometric bounds, plus
+  batch type, colour, width and height updates committed as one undoable draft
+  operation. The same property sheet is available in the phone layout.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -129,7 +132,6 @@ High risk remain open.
 
 ## P2 — editor quality and responsive UX
 
-- Multi-select inspector and batch property edits.
 - Rulers, configurable grid and selection framing.
 - Orthogonal/smart edge routing, ports/anchors, curved connectors, waypoints and
   collision avoidance.

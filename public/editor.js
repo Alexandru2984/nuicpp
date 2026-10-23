@@ -2444,11 +2444,96 @@
     }, overlayLayer);
   }
 
+  function selectedBatchNodes() {
+    if (!state.current || state.selected?.type !== "nodes") return [];
+    const keys = new Set(state.selected.keys);
+    return state.current.nodes.filter((node) => keys.has(node.key));
+  }
+
+  function resetBatchPropertyControls(nodes, signature) {
+    el("multi-node-props").dataset.selection = signature;
+    el("batch-type").value = "";
+    const defaults = [
+      ["color", nodes.every((node) => node.color === nodes[0].color) ? nodes[0].color : "#38bdf8"],
+      ["width", nodes.every((node) => node.width === nodes[0].width)
+        ? Math.round(nodes[0].width)
+        : Math.round(nodes.reduce((sum, node) => sum + node.width, 0) / nodes.length)],
+      ["height", nodes.every((node) => node.height === nodes[0].height)
+        ? Math.round(nodes[0].height)
+        : Math.round(nodes.reduce((sum, node) => sum + node.height, 0) / nodes.length)]
+    ];
+    for (const [property, value] of defaults) {
+      el(`batch-${property}-enabled`).checked = false;
+      el(`batch-${property}`).value = String(value);
+    }
+  }
+
+  function updateBatchControlAvailability() {
+    for (const property of ["color", "width", "height"]) {
+      const enabled = el(`batch-${property}-enabled`);
+      enabled.disabled = state.readOnly;
+      el(`batch-${property}`).disabled = state.readOnly || !enabled.checked;
+    }
+    el("batch-type").disabled = state.readOnly;
+    el("apply-batch-properties").disabled = state.readOnly;
+  }
+
+  function applyBatchProperties() {
+    const nodes = selectedBatchNodes();
+    if (state.readOnly || nodes.length < 2) return;
+    const type = el("batch-type").value;
+    const setColor = el("batch-color-enabled").checked;
+    const setWidth = el("batch-width-enabled").checked;
+    const setHeight = el("batch-height-enabled").checked;
+    if (!type && !setColor && !setWidth && !setHeight) {
+      toast("Choose at least one batch property.");
+      return;
+    }
+    if (type && !nodeTypes.includes(type)) {
+      toast("Choose a supported node type.", "error");
+      return;
+    }
+
+    const widthInput = el("batch-width");
+    const heightInput = el("batch-height");
+    if ((setWidth && !widthInput.reportValidity()) || (setHeight && !heightInput.reportValidity())) return;
+    const color = el("batch-color").value;
+    if (setColor && !/^#[0-9a-f]{6}$/i.test(color)) {
+      toast("Choose a valid node colour.", "error");
+      return;
+    }
+    const width = Number(widthInput.value);
+    const height = Number(heightInput.value);
+    const changed = nodes.some((node) =>
+      (type && node.type !== type) ||
+      (setColor && node.color !== color) ||
+      (setWidth && node.width !== width) ||
+      (setHeight && node.height !== height));
+    if (!changed) {
+      toast("Selected nodes already have those properties.");
+      return;
+    }
+
+    pushHistory();
+    for (const node of nodes) {
+      if (type) node.type = type;
+      if (setColor) node.color = color;
+      if (setWidth) node.width = width;
+      if (setHeight) node.height = height;
+    }
+    markDirty();
+    el("multi-node-props").dataset.selection = "";
+    render();
+    toast(`${nodes.length} nodes updated.`);
+  }
+
   function renderProperties() {
     const empty = el("selection-empty");
     const nodeProps = el("node-props");
+    const multiNodeProps = el("multi-node-props");
     const edgeProps = el("edge-props");
     nodeProps.classList.add("hidden");
+    multiNodeProps.classList.add("hidden");
     edgeProps.classList.add("hidden");
     empty.classList.remove("hidden");
     empty.textContent = "No selection";
@@ -2464,7 +2549,23 @@
       el("prop-width").value = Math.round(node.width);
       el("prop-height").value = Math.round(node.height);
     } else if (state.selected.type === "nodes") {
-      empty.textContent = `${state.selected.keys.length} nodes selected`;
+      const nodes = selectedBatchNodes();
+      if (nodes.length < 2) return;
+      empty.classList.add("hidden");
+      multiNodeProps.classList.remove("hidden");
+      const minX = Math.min(...nodes.map((node) => node.x));
+      const minY = Math.min(...nodes.map((node) => node.y));
+      const maxX = Math.max(...nodes.map((node) => node.x + node.width));
+      const maxY = Math.max(...nodes.map((node) => node.y + node.height));
+      const typeCount = new Set(nodes.map((node) => node.type)).size;
+      const colorCount = new Set(nodes.map((node) => node.color)).size;
+      el("multi-node-count").textContent = `${nodes.length} nodes selected`;
+      el("multi-node-summary").textContent = `${typeCount} type${typeCount === 1 ? "" : "s"} · ${colorCount} color${colorCount === 1 ? "" : "s"} · ${Math.round(maxX - minX)} × ${Math.round(maxY - minY)} bounds`;
+      const signature = `${state.current.id || "new"}:${nodes.map((node) => node.key).sort().join("|")}`;
+      if (multiNodeProps.dataset.selection !== signature) {
+        resetBatchPropertyControls(nodes, signature);
+      }
+      updateBatchControlAvailability();
     } else if (state.selected.type === "edge") {
       const edge = state.current.edges.find((e) => e.key === state.selected.key);
       if (!edge) return;
@@ -2923,11 +3024,17 @@
 
   function initBindings() {
     nodeTypes.forEach((type) => {
-      const opt = document.createElement("option");
-      opt.value = type;
-      opt.textContent = type;
-      el("prop-type").appendChild(opt);
+      for (const selectId of ["prop-type", "batch-type"]) {
+        const opt = document.createElement("option");
+        opt.value = type;
+        opt.textContent = type;
+        el(selectId).appendChild(opt);
+      }
     });
+    for (const property of ["color", "width", "height"]) {
+      el(`batch-${property}-enabled`).addEventListener("change", updateBatchControlAvailability);
+    }
+    el("apply-batch-properties").onclick = applyBatchProperties;
     document.querySelectorAll(".toolbox button[data-tool]").forEach((btn) => btn.onclick = () => {
       setTool(btn.dataset.tool);
       if (btn.dataset.tool === "node" && state.current) {

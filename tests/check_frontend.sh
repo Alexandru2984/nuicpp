@@ -26,6 +26,9 @@ grep -Fq 'Ctrl / Cmd + K' public/editor.js
 grep -Fq 'Find and focus node' public/editor.js
 grep -Fq 'Edit selected label' public/editor.js
 grep -Fq 'className = "inline-label-editor"' public/editor.js
+grep -Fq 'applyBatchProperties' public/editor.js
+grep -Fq 'id="multi-node-props"' src/ui/NuiApp.cpp
+grep -Fq 'id = "multi-node-props"' nui-frontend/frontend/source/frontend/main_page.cpp
 grep -Fq 'Share link lifetime' public/editor.js
 grep -Fq 'NODE_NAVIGATOR_RESULT_LIMIT = 100' public/editor.js
 grep -Fq 'evt.key === "/"' public/editor.js

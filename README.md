@@ -28,6 +28,9 @@ admin account for maintenance.
   selections can align to six axes or distribute equal centre spacing.
 - Multi-select by Shift-click, by rubber-band drag on empty canvas (Shift-drag
   extends), or by long-press on touch.
+- Multi-selection inspector summarises type, colour and selection bounds, then
+  applies type, colour, width and height changes to every selected node as one
+  undoable edit.
 - Eight resize handles on a single selected node, honouring the same 72x48 to
   600x400 bounds the server clamps to.
 - Alignment guides while dragging: edges and centres latch onto neighbouring

@@ -118,6 +118,26 @@ Nui::ElementRenderer MainPage::render() {
                     label{}(span{}("Width"), input{id = "prop-width", type = "number", min = "72", max = "600"}()),
                     label{}(span{}("Height"), input{id = "prop-height", type = "number", min = "48", max = "400"}())
                 ),
+                div{id = "multi-node-props", class_ = "prop-block hidden"}(
+                    div{class_ = "selection-summary"}(
+                        strong{id = "multi-node-count"}("Multiple nodes selected"),
+                        span{id = "multi-node-summary", class_ = "muted"}()
+                    ),
+                    label{}(span{}("Type"), select{id = "batch-type"}(option{value = ""}("Keep current types"))),
+                    label{class_ = "batch-property"}(
+                        span{class_ = "check-row"}(input{id = "batch-color-enabled", type = "checkbox"}(), span{}(" Set color")),
+                        input{id = "batch-color", type = "color", value = "#38bdf8", disabled = true}()
+                    ),
+                    label{class_ = "batch-property"}(
+                        span{class_ = "check-row"}(input{id = "batch-width-enabled", type = "checkbox"}(), span{}(" Set width")),
+                        input{id = "batch-width", type = "number", min = "72", max = "600", value = "170", disabled = true}()
+                    ),
+                    label{class_ = "batch-property"}(
+                        span{class_ = "check-row"}(input{id = "batch-height-enabled", type = "checkbox"}(), span{}(" Set height")),
+                        input{id = "batch-height", type = "number", min = "48", max = "400", value = "82", disabled = true}()
+                    ),
+                    button{id = "apply-batch-properties", class_ = "primary", type = "button"}("Apply to selected nodes")
+                ),
                 div{id = "edge-props", class_ = "prop-block hidden"}(
                     label{}(span{}("Label"), input{id = "edge-label", maxLength = "160"}()),
                     label{}(span{}("Color"), input{id = "edge-color", type = "color"}()),

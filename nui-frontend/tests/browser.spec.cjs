@@ -233,6 +233,67 @@ test.describe("desktop security and offline lifecycle", () => {
       await page.keyboard.press("Control+z");
       await expect(serviceShape).toHaveAttribute("x", originalServiceX);
 
+      const originalBatchProperties = {
+        startType: await startGroup.locator(".node-subtitle").textContent(),
+        serviceType: await serviceGroup.locator(".node-subtitle").textContent(),
+        startFill: await startShape.getAttribute("fill"),
+        serviceFill: await serviceShape.getAttribute("fill"),
+        startWidth: await startShape.getAttribute("width"),
+        serviceWidth: await serviceShape.getAttribute("width")
+      };
+      await serviceShape.dispatchEvent("pointerdown", {
+        bubbles: true,
+        clientX: 300,
+        clientY: 100,
+        detail: 1,
+        pointerId: 921,
+        pointerType: "mouse"
+      });
+      await page.evaluate(() => window.dispatchEvent(new PointerEvent("pointerup", {
+        bubbles: true,
+        pointerId: 921,
+        pointerType: "mouse"
+      })));
+      await startShape.dispatchEvent("pointerdown", {
+        bubbles: true,
+        clientX: 100,
+        clientY: 100,
+        detail: 1,
+        pointerId: 922,
+        pointerType: "mouse",
+        shiftKey: true
+      });
+      await page.evaluate(() => window.dispatchEvent(new PointerEvent("pointerup", {
+        bubbles: true,
+        pointerId: 922,
+        pointerType: "mouse"
+      })));
+
+      const batchInspector = page.locator("#multi-node-props");
+      await expect(batchInspector).toBeVisible();
+      await expect(page.locator("#multi-node-count")).toHaveText("2 nodes selected");
+      await expect(page.locator("#multi-node-summary")).toContainText("bounds");
+      await page.locator("#batch-type").selectOption("api");
+      await page.locator("#batch-color-enabled").check();
+      await page.locator("#batch-color").fill("#123456");
+      await page.locator("#batch-width-enabled").check();
+      await page.locator("#batch-width").fill("222");
+      await page.locator("#apply-batch-properties").click();
+      await expect(startGroup.locator(".node-subtitle")).toHaveText("api");
+      await expect(serviceGroup.locator(".node-subtitle")).toHaveText("api");
+      await expect(startShape).toHaveAttribute("fill", "#123456");
+      await expect(serviceShape).toHaveAttribute("fill", "#123456");
+      await expect(startShape).toHaveAttribute("width", "222");
+      await expect(serviceShape).toHaveAttribute("width", "222");
+
+      await page.keyboard.press("Control+z");
+      await expect(startGroup.locator(".node-subtitle")).toHaveText(originalBatchProperties.startType);
+      await expect(serviceGroup.locator(".node-subtitle")).toHaveText(originalBatchProperties.serviceType);
+      await expect(startShape).toHaveAttribute("fill", originalBatchProperties.startFill);
+      await expect(serviceShape).toHaveAttribute("fill", originalBatchProperties.serviceFill);
+      await expect(startShape).toHaveAttribute("width", originalBatchProperties.startWidth);
+      await expect(serviceShape).toHaveAttribute("width", originalBatchProperties.serviceWidth);
+
       const edgeGroup = page.locator("#edges > g").first();
       const originalEdgeLabel = await edgeGroup.locator(".edge-label").textContent();
       await edgeGroup.locator(".edge-hit").dispatchEvent("pointerdown", {
@@ -370,6 +431,19 @@ test.describe("phone layout", () => {
     await expect(page.locator(".sheet-scrim")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.locator(".project-panel")).not.toBeVisible();
+
+    await page.getByRole("button", { name: "Properties", exact: true }).click();
+    await page.evaluate(() => {
+      document.querySelector("#selection-empty").classList.add("hidden");
+      document.querySelector("#multi-node-props").classList.remove("hidden");
+      document.querySelector("#multi-node-count").textContent = "2 nodes selected";
+    });
+    await expect(page.locator("#multi-node-props")).toBeVisible();
+    await expect(page.locator("#multi-node-count")).toHaveText("2 nodes selected");
+    expect(await page.locator("#apply-batch-properties").evaluate((button) =>
+      button.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".properties")).not.toBeVisible();
 
     await page.getByRole("button", { name: "Commands", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
