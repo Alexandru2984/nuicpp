@@ -18,6 +18,8 @@ required_record_text=(
   'request_id'
   'PUBLIC_ACCESS=false'
   'SESSION_SECRET'
+  'SESSION_SIGNING_SECRET_PREVIOUS'
+  'tests/check_key_rotation.sh'
   '72'
   'hours after awareness'
   '2026-10-26 10:18 EEST'

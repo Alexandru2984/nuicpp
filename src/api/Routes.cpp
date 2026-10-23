@@ -469,11 +469,19 @@ std::string Routes::makeCookie(const httplib::Request& req, const std::string& u
 std::string Routes::makeSessionValue(const std::string& username, int maxAgeSeconds) const {
     auto expiry = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count() + maxAgeSeconds;
-    std::string payload = username + "." + std::to_string(expiry);
-    return payload + "." + hmacHex(cfg_.sessionSecret, payload);
+    return makeSessionValueUntil(username, expiry);
 }
 
-bool Routes::verifySession(const httplib::Request& req, std::string* username) const {
+std::string Routes::makeSessionValueUntil(const std::string& username, long long expiry) const {
+    std::string payload = username + "." + std::to_string(expiry);
+    return payload + "." + hmacHex(cfg_.sessionSigningSecret, payload);
+}
+
+bool Routes::verifySession(const httplib::Request& req, std::string* username,
+                           bool* usedPreviousKey, long long* expiryAt) const {
+    if (usedPreviousKey) {
+        *usedPreviousKey = false;
+    }
     auto session = cookieValue(req, "ngs_session");
     auto parts = split(session, '.');
     if (parts.size() != 3 || parts[0].empty()) {
@@ -487,21 +495,32 @@ bool Routes::verifySession(const httplib::Request& req, std::string* username) c
     }
     auto now = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
-    if (expiry < now) {
+    if (expiry <= now) {
         return false;
     }
     std::string payload = parts[0] + "." + parts[1];
-    auto expected = hexToBytes(hmacHex(cfg_.sessionSecret, payload));
     auto actual = hexToBytes(parts[2]);
-    if (!constantTimeEquals(actual, expected)) {
+    const auto current = hexToBytes(hmacHex(cfg_.sessionSigningSecret, payload));
+    const bool currentMatches = constantTimeEquals(actual, current);
+    bool previousMatches = false;
+    if (!cfg_.previousSessionSigningSecret.empty()) {
+        const auto previous = hexToBytes(
+            hmacHex(cfg_.previousSessionSigningSecret, payload));
+        previousMatches = constantTimeEquals(actual, previous);
+    }
+    if (!currentMatches && !previousMatches) {
         return false;
     }
+    if (usedPreviousKey) {
+        *usedPreviousKey = previousMatches && !currentMatches;
+    }
     if (username) *username = parts[0];
+    if (expiryAt) *expiryAt = expiry;
     return true;
 }
 
 std::string Routes::csrfTokenForSession(const std::string& session) const {
-    return hmacHex(cfg_.sessionSecret, session + ".csrf");
+    return hmacHex(cfg_.csrfSecret, session + ".csrf");
 }
 
 bool Routes::verifyCsrf(const httplib::Request& req) const {
@@ -530,14 +549,14 @@ bool Routes::ensureCsrf(const httplib::Request& req, httplib::Response& res) {
 bool Routes::ensureWriteRateLimit(const httplib::Request& req, httplib::Response& res, bool creation) {
     const auto ip = clientIp(req);
     try {
-        const auto writeKey = hmacHex(cfg_.sessionSecret, "rate-limit:v1:write:" + ip);
+        const auto writeKey = hmacHex(cfg_.rateLimitSecret, "rate-limit:v1:write:" + ip);
         if (!storage_.consumeRateLimit(writeKey, 240, 10 * 60)) {
             logSecurityEvent(req, res, "write_rate_limited", "blocked");
             sendJson(res, 429, errorJson("too many write requests"));
             return false;
         }
         if (creation) {
-            const auto createKey = hmacHex(cfg_.sessionSecret, "rate-limit:v1:create:" + ip);
+            const auto createKey = hmacHex(cfg_.rateLimitSecret, "rate-limit:v1:create:" + ip);
             if (!storage_.consumeRateLimit(createKey, 40, 10 * 60)) {
                 logSecurityEvent(req, res, "create_rate_limited", "blocked");
                 sendJson(res, 429, errorJson("too many create requests"));
@@ -562,7 +581,7 @@ std::string Routes::ownerHashForRequest(const httplib::Request& req) const {
     if (!verifySession(req, &username) || username == cfg_.authUsername) {
         return {};
     }
-    return hmacHex(cfg_.sessionSecret, "owner:" + username);
+    return hmacHex(cfg_.ownerHashSecret, "owner:" + username);
 }
 
 bool Routes::canEditDiagram(const httplib::Request& req, long diagramId) {
@@ -869,7 +888,7 @@ void Routes::registerRoutes(httplib::Server& server) {
     server.Post("/login", [this](const httplib::Request& req, httplib::Response& res) {
         res.set_header("X-Robots-Tag", "noindex, nofollow, noarchive");
         auto ip = clientIp(req);
-        const auto limiterKey = hmacHex(cfg_.sessionSecret, "rate-limit:v1:login:" + ip);
+        const auto limiterKey = hmacHex(cfg_.rateLimitSecret, "rate-limit:v1:login:" + ip);
         try {
             if (!storage_.consumeRateLimit(limiterKey, 8, kLoginFailureWindow)) {
                 res.status = 429;
@@ -960,7 +979,9 @@ void Routes::registerRoutes(httplib::Server& server) {
 
     server.Get("/api/session", [this](const httplib::Request& req, httplib::Response& res) {
         std::string username;
-        if (!verifySession(req, &username)) {
+        bool usedPreviousKey = false;
+        long long sessionExpiry = 0;
+        if (!verifySession(req, &username, &usedPreviousKey, &sessionExpiry)) {
             if (!cfg_.publicAccess) {
                 sendJson(res, 401, errorJson("authentication required"));
                 return;
@@ -976,6 +997,14 @@ void Routes::registerRoutes(httplib::Server& server) {
             return;
         }
         auto session = cookieValue(req, "ngs_session");
+        if (usedPreviousKey) {
+            const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            const auto maxAge = static_cast<int>(std::max(1LL, sessionExpiry - now));
+            session = makeSessionValueUntil(username, sessionExpiry);
+            res.set_header("Set-Cookie", sessionCookie(req, session, maxAge));
+            logSecurityEvent(req, res, "session_rekey", "succeeded");
+        }
         sendJson(res, 200, {{"username", username}, {"public_access", cfg_.publicAccess}, {"csrf_token", csrfTokenForSession(session)}});
     });
 

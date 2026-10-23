@@ -20,7 +20,10 @@ LOG_B="$TMP_DIR/server-b.log"
 TEST_TITLE_PREFIX="ngs-ratetest-"
 TEST_AUTH_SALT="$(openssl rand -hex 16)"
 TEST_AUTH_DIGEST="$(openssl rand -hex 32)"
-TEST_SESSION_SECRET="$(openssl rand -hex 32)"
+TEST_SIGNING_SECRET="$(openssl rand -hex 32)"
+TEST_CSRF_SECRET="$(openssl rand -hex 32)"
+TEST_OWNER_SECRET="$(openssl rand -hex 32)"
+TEST_RATE_LIMIT_SECRET="$(openssl rand -hex 32)"
 PIDS=()
 
 stop_instances() {
@@ -60,7 +63,10 @@ write_env() {
       "DATABASE_URL=$DATABASE_URL" \
       'AUTH_USERNAME=admin' \
       "AUTH_PASSWORD_HASH=pbkdf2_sha256\$150000\$${TEST_AUTH_SALT}\$${TEST_AUTH_DIGEST}" \
-      "SESSION_SECRET=${TEST_SESSION_SECRET}" \
+      "SESSION_SIGNING_SECRET=${TEST_SIGNING_SECRET}" \
+      "CSRF_SECRET=${TEST_CSRF_SECRET}" \
+      "OWNER_HASH_SECRET=${TEST_OWNER_SECRET}" \
+      "RATE_LIMIT_SECRET=${TEST_RATE_LIMIT_SECRET}" \
       'PUBLIC_ACCESS=true' \
       'MAX_DIAGRAMS_PER_GUEST=60' \
       "PROJECT_ROOT=$ROOT_DIR"

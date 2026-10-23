@@ -47,7 +47,7 @@ own rate-limit bucket by sending a forged header.
 Sessions are stateless, signed cookies — there is no server-side session store.
 
 ```
-ngs_session = <username>.<unix-expiry>.<HMAC-SHA256(SESSION_SECRET, "username.expiry")>
+ngs_session = <username>.<unix-expiry>.<HMAC-SHA256(SESSION_SIGNING_SECRET, "username.expiry")>
 ```
 
 - Verification checks the expiry first, then compares the HMAC in constant time.
@@ -62,9 +62,14 @@ ngs_session = <username>.<unix-expiry>.<HMAC-SHA256(SESSION_SECRET, "username.ex
   user-chosen and cannot collide with `AUTH_USERNAME`, which is what separates
   guest from admin.
 
-`SESSION_SECRET` is the single key behind sessions, CSRF tokens, and ownership
-hashes. Rotating it logs everyone out **and orphans every guest-owned diagram**,
-because owner hashes are derived from it. Rotate only deliberately.
+Session signing, CSRF derivation, stable guest ownership and rate-limit
+pseudonymisation use four required, mutually distinct secrets. A planned signing
+rotation may temporarily configure `SESSION_SIGNING_SECRET_PREVIOUS`; a valid
+old cookie is re-signed with the current key on its next `/api/session` request.
+The original expiry is preserved rather than extending authorization. Remove the
+previous key after at most seven days. In a compromise, omit it to revoke old
+cookies immediately. `OWNER_HASH_SECRET` must remain stable unless a database
+ownership migration has been designed and tested.
 
 ## Authentication
 
@@ -99,19 +104,19 @@ characters from a restricted alphabet are accepted, so a forged header cannot
 inject a log line. Application access, exception and security-event records
 carry the ID.
 
-Security events cover admin login outcomes, logout, authorization/CSRF denials,
-write/create throttling, quota/capacity exhaustion, revision conflicts,
-share-page views and storage failures. They record actor class, redacted route,
-source IP and outcome, but never usernames, cookies, CSRF values, passwords,
-request bodies or share capabilities. Source IPs are personal data; journal and
-nginx retention/access still need an explicit privacy policy.
+Security events cover admin login outcomes, logout, session re-signing,
+authorization/CSRF denials, write/create throttling, quota/capacity exhaustion,
+revision conflicts, share-page views and storage failures. They record actor
+class, redacted route, source IP and outcome, but never usernames, cookies, CSRF
+values, passwords, request bodies or share capabilities. Source IPs are personal
+data; journal and nginx retention/access still need an explicit privacy policy.
 
 ## Authorization
 
 Every diagram row carries an owner hash:
 
 ```
-owner_hash = HMAC-SHA256(SESSION_SECRET, "owner:" + session_username)
+owner_hash = HMAC-SHA256(OWNER_HASH_SECRET, "owner:" + session_username)
 ```
 
 The raw session value never reaches the database, so a database dump does not
@@ -162,13 +167,17 @@ Two subtleties worth preserving:
 Every mutating JSON endpoint requires `X-CSRF-Token`, issued by `/api/session`:
 
 ```
-csrf = HMAC-SHA256(SESSION_SECRET, session_cookie_value + ".csrf")
+csrf = HMAC-SHA256(CSRF_SECRET, session_cookie_value + ".csrf")
 ```
 
 It is bound to the exact session cookie, so a token from one session is useless
 with another. Verification requires a valid session first, then a constant-time
 compare. Because the token lives in a header, `SameSite=Lax` plus the header
 requirement means a cross-site form post cannot mutate anything.
+
+Persistent rate-limit bucket keys use `RATE_LIMIT_SECRET`. Rotating it starts new
+pseudonymous identities; old database rows become unreachable and expire within
+their normal 10-minute window instead of containing reusable client data.
 
 ## Id parsing
 

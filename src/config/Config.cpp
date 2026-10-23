@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace nuigraph {
@@ -210,6 +211,16 @@ void validatePasswordHash(const std::string& encoded) {
     }
 }
 
+void validateSecret(const char* name, const std::string& value, bool optional = false) {
+    if (optional && value.empty()) {
+        return;
+    }
+    if (!isHex(value) || value.size() < 64 || value.size() > 256) {
+        throw std::runtime_error(
+            std::string(name) + " must contain 32 to 128 random bytes encoded as hex");
+    }
+}
+
 void validateConfig(const Config& cfg) {
     if (cfg.appEnv != "production" && cfg.appEnv != "development" && cfg.appEnv != "test") {
         throw std::runtime_error("APP_ENV must be production, development or test");
@@ -246,8 +257,27 @@ void validateConfig(const Config& cfg) {
         throw std::runtime_error("AUTH_USERNAME contains unsupported characters");
     }
     validatePasswordHash(cfg.authPasswordHash);
-    if (!isHex(cfg.sessionSecret) || cfg.sessionSecret.size() < 64 || cfg.sessionSecret.size() > 256) {
-        throw std::runtime_error("SESSION_SECRET must contain 32 to 128 random bytes encoded as hex");
+    validateSecret("SESSION_SIGNING_SECRET", cfg.sessionSigningSecret);
+    validateSecret("SESSION_SIGNING_SECRET_PREVIOUS", cfg.previousSessionSigningSecret, true);
+    validateSecret("CSRF_SECRET", cfg.csrfSecret);
+    validateSecret("OWNER_HASH_SECRET", cfg.ownerHashSecret);
+    validateSecret("RATE_LIMIT_SECRET", cfg.rateLimitSecret);
+    std::unordered_set<std::string> secrets;
+    for (const auto* secret : {
+             &cfg.sessionSigningSecret,
+             &cfg.csrfSecret,
+             &cfg.ownerHashSecret,
+             &cfg.rateLimitSecret}) {
+        if (!secrets.insert(*secret).second) {
+            throw std::runtime_error("security secrets must be distinct");
+        }
+    }
+    if (!cfg.previousSessionSigningSecret.empty() &&
+        (cfg.previousSessionSigningSecret == cfg.sessionSigningSecret ||
+         cfg.previousSessionSigningSecret == cfg.csrfSecret ||
+         cfg.previousSessionSigningSecret == cfg.rateLimitSecret)) {
+        throw std::runtime_error(
+            "SESSION_SIGNING_SECRET_PREVIOUS must differ from signing, CSRF and rate-limit secrets");
     }
     if (cfg.projectRoot.empty() || cfg.projectRoot.front() != '/') {
         throw std::runtime_error("PROJECT_ROOT must be an absolute path");
@@ -282,7 +312,15 @@ Config Config::load(const std::string& envPath) {
     cfg.databaseUrl = getValue(file, "DATABASE_URL");
     cfg.authUsername = getValue(file, "AUTH_USERNAME", cfg.authUsername);
     cfg.authPasswordHash = getValue(file, "AUTH_PASSWORD_HASH");
-    cfg.sessionSecret = getValue(file, "SESSION_SECRET");
+    if (!getValue(file, "SESSION_SECRET").empty()) {
+        throw std::runtime_error(
+            "SESSION_SECRET is no longer supported; configure the four purpose-specific secrets");
+    }
+    cfg.sessionSigningSecret = getValue(file, "SESSION_SIGNING_SECRET");
+    cfg.previousSessionSigningSecret = getValue(file, "SESSION_SIGNING_SECRET_PREVIOUS");
+    cfg.csrfSecret = getValue(file, "CSRF_SECRET");
+    cfg.ownerHashSecret = getValue(file, "OWNER_HASH_SECRET");
+    cfg.rateLimitSecret = getValue(file, "RATE_LIMIT_SECRET");
     cfg.publicAccess = getBool(file, "PUBLIC_ACCESS", cfg.publicAccess);
     cfg.frontendShell = parseFrontendShell(
         getValue(file, "FRONTEND_SHELL", frontendShellName(cfg.frontendShell)));

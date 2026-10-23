@@ -115,7 +115,10 @@ jobs:
           umask 077
           test_auth_salt="$(openssl rand -hex 16)"
           test_auth_digest="$(openssl rand -hex 32)"
-          test_session_secret="$(openssl rand -hex 32)"
+          test_signing_secret="$(openssl rand -hex 32)"
+          test_csrf_secret="$(openssl rand -hex 32)"
+          test_owner_secret="$(openssl rand -hex 32)"
+          test_rate_limit_secret="$(openssl rand -hex 32)"
           printf '%s\n' \
             'APP_ENV=test' \
             'APP_HOST=127.0.0.1' \
@@ -124,7 +127,10 @@ jobs:
             'DATABASE_URL=postgresql://nuigraph_test:test-password@127.0.0.1:5432/nuigraph_studio_test' \
             'AUTH_USERNAME=ci_admin' \
             "AUTH_PASSWORD_HASH=pbkdf2_sha256\$100000\$${test_auth_salt}\$${test_auth_digest}" \
-            "SESSION_SECRET=${test_session_secret}" \
+            "SESSION_SIGNING_SECRET=${test_signing_secret}" \
+            "CSRF_SECRET=${test_csrf_secret}" \
+            "OWNER_HASH_SECRET=${test_owner_secret}" \
+            "RATE_LIMIT_SECRET=${test_rate_limit_secret}" \
             'PUBLIC_ACCESS=true' \
             'FRONTEND_SHELL=server' \
             'MAX_NODES_PER_DIAGRAM=1000' \

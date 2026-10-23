@@ -20,7 +20,11 @@ struct Config {
     std::string databaseUrl;
     std::string authUsername = "admin";
     std::string authPasswordHash;
-    std::string sessionSecret;
+    std::string sessionSigningSecret;
+    std::string previousSessionSigningSecret;
+    std::string csrfSecret;
+    std::string ownerHashSecret;
+    std::string rateLimitSecret;
     bool publicAccess = false;
     FrontendShell frontendShell = FrontendShell::Server;
     int maxNodesPerDiagram = 1000;

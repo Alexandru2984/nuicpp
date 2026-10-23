@@ -68,9 +68,9 @@ fi
 
 session_json="$(curl --noproxy '*' -fsS -c "$COOKIE_JAR" "http://127.0.0.1:${PORT}/api/session")"
 guest_user="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["username"])' "$session_json")"
-# Same derivation as ownerHashForRequest(): HMAC-SHA256(SESSION_SECRET, "owner:" + username).
+# Same derivation as ownerHashForRequest(): HMAC-SHA256(OWNER_HASH_SECRET, "owner:" + username).
 TEST_OWNER_HASH="$(printf 'owner:%s' "$guest_user" \
-  | openssl dgst -sha256 -hmac "$(live_test_env_value SESSION_SECRET)" -r | cut -d' ' -f1)"
+  | openssl dgst -sha256 -hmac "$(live_test_env_value OWNER_HASH_SECRET)" -r | cut -d' ' -f1)"
 
 diagrams_json="$(curl --noproxy '*' -fsS -b "$COOKIE_JAR" "http://127.0.0.1:${PORT}/api/diagrams")"
 python3 - "$diagrams_json" <<'PY'
@@ -232,7 +232,8 @@ for series in \
   'nuigraph_security_events_total{event="sharing_change",outcome="enabled"}' \
   'nuigraph_security_events_total{event="sharing_change",outcome="disabled"}' \
   'nuigraph_security_events_total{event="sharing_change",outcome="rotated"}' \
-  'nuigraph_security_events_total{event="sharing_change",outcome="expiry_updated"}'
+  'nuigraph_security_events_total{event="sharing_change",outcome="expiry_updated"}' \
+  'nuigraph_security_events_total{event="session_rekey",outcome="succeeded"}'
 do
   if ! grep -Fq "$series" <<<"$metrics_body"; then
     echo "expected bounded sharing metric $series" >&2

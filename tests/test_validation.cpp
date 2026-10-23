@@ -26,7 +26,6 @@ Config testConfig() {
     Config cfg;
     cfg.databaseUrl = "postgresql://unused";
     cfg.authPasswordHash = "unused";
-    cfg.sessionSecret = "unused";
     cfg.maxNodesPerDiagram = 2;
     cfg.maxEdgesPerDiagram = 2;
     cfg.maxImportBytes = 1024;
@@ -60,7 +59,17 @@ std::string tmpEnvPath() {
 // literals that secret scanners cannot distinguish from real credentials.
 const std::string kValidPasswordHash =
     "pbkdf2_sha256$150000$" + std::string(32, 'a') + "$" + std::string(64, 'b');
-const std::string kValidSessionSecret(64, 'c');
+const std::string kValidSigningSecret(64, 'c');
+const std::string kValidCsrfSecret(64, 'd');
+const std::string kValidOwnerSecret(64, 'e');
+const std::string kValidRateLimitSecret(64, 'f');
+
+std::string validSecrets() {
+    return "SESSION_SIGNING_SECRET=" + kValidSigningSecret + "\n"
+           "CSRF_SECRET=" + kValidCsrfSecret + "\n"
+           "OWNER_HASH_SECRET=" + kValidOwnerSecret + "\n"
+           "RATE_LIMIT_SECRET=" + kValidRateLimitSecret + "\n";
+}
 
 std::string validConfig(const std::string& extra = "") {
     return "APP_ENV=test\n"
@@ -70,7 +79,7 @@ std::string validConfig(const std::string& extra = "") {
            "DATABASE_URL=postgresql://unused\n"
            "AUTH_USERNAME=admin\n"
            "AUTH_PASSWORD_HASH=" + kValidPasswordHash + "\n"
-           "SESSION_SECRET=" + kValidSessionSecret + "\n"
+           + validSecrets() +
            "PROJECT_ROOT=/tmp\n" + extra;
 }
 
@@ -238,24 +247,27 @@ void testConfigMissingRequiredFields() {
 
     // missing DATABASE_URL
     writeEnvFile(path, "APP_ENV=test\nAPP_HOST=127.0.0.1\nAUTH_PASSWORD_HASH=" +
-                       kValidPasswordHash + "\nSESSION_SECRET=" + kValidSessionSecret + "\n");
+                       kValidPasswordHash + "\n" + validSecrets());
     bool threw = false;
     try { Config::load(path); } catch (const std::runtime_error&) { threw = true; }
     require(threw, "missing DATABASE_URL should throw");
 
     // missing AUTH_PASSWORD_HASH
-    writeEnvFile(path, "APP_ENV=test\nAPP_HOST=127.0.0.1\nDATABASE_URL=postgresql://x\nSESSION_SECRET=" +
-                       kValidSessionSecret + "\n");
+    writeEnvFile(path, "APP_ENV=test\nAPP_HOST=127.0.0.1\nDATABASE_URL=postgresql://x\n" +
+                       validSecrets());
     threw = false;
     try { Config::load(path); } catch (const std::runtime_error&) { threw = true; }
     require(threw, "missing AUTH_PASSWORD_HASH should throw");
 
-    // missing SESSION_SECRET
+    // missing one of the purpose-specific secrets
     writeEnvFile(path, "APP_ENV=test\nAPP_HOST=127.0.0.1\nDATABASE_URL=postgresql://x\nAUTH_PASSWORD_HASH=" +
-                       kValidPasswordHash + "\n");
+                       kValidPasswordHash + "\n"
+                       "CSRF_SECRET=" + kValidCsrfSecret + "\n"
+                       "OWNER_HASH_SECRET=" + kValidOwnerSecret + "\n"
+                       "RATE_LIMIT_SECRET=" + kValidRateLimitSecret + "\n");
     threw = false;
     try { Config::load(path); } catch (const std::runtime_error&) { threw = true; }
-    require(threw, "missing SESSION_SECRET should throw");
+    require(threw, "missing session signing secret should throw");
 
     std::remove(path.c_str());
 }
@@ -267,12 +279,12 @@ void testConfigQuotedValues() {
         "APP_HOST=127.0.0.1\n"
         "DATABASE_URL=\"postgresql://quoted\"\n"
         "AUTH_PASSWORD_HASH='" + kValidPasswordHash + "'\n"
-        "SESSION_SECRET=" + kValidSessionSecret + "\n"
+        + validSecrets() +
         "PROJECT_ROOT=/tmp\n");
     auto cfg = Config::load(path);
     require(cfg.databaseUrl == "postgresql://quoted", "double quotes should be stripped");
     require(cfg.authPasswordHash == kValidPasswordHash, "single quotes should be stripped");
-    require(cfg.sessionSecret == kValidSessionSecret, "unquoted values should work");
+    require(cfg.sessionSigningSecret == kValidSigningSecret, "unquoted values should work");
     std::remove(path.c_str());
 }
 
@@ -287,7 +299,7 @@ void testConfigCommentAndBlankLines() {
         "DATABASE_URL=postgresql://test\n"
         "\n"
         "AUTH_PASSWORD_HASH=" + kValidPasswordHash + "\n"
-        "SESSION_SECRET=" + kValidSessionSecret + "\n"
+        + validSecrets() +
         "PROJECT_ROOT=/tmp\n");
     auto cfg = Config::load(path);
     require(cfg.databaseUrl == "postgresql://test", "comments and blanks should be ignored");
@@ -330,8 +342,21 @@ void testConfigRejectsUnsafeLimits() {
 }
 
 void testConfigRejectsWeakSecrets() {
-    require(configThrows(validConfig("SESSION_SECRET=abcd\n")),
-            "short session secrets should throw");
+    require(!configThrows(validConfig(
+        "SESSION_SIGNING_SECRET_PREVIOUS=" + std::string(64, '9') + "\n")),
+        "a distinct previous signing key should be accepted during rotation");
+    require(!configThrows(validConfig(
+        "SESSION_SIGNING_SECRET_PREVIOUS=" + kValidOwnerSecret + "\n")),
+        "the legacy signing key may equal the stable owner key during migration");
+    require(configThrows(validConfig("SESSION_SIGNING_SECRET=abcd\n")),
+            "short signing secrets should throw");
+    require(configThrows(validConfig("CSRF_SECRET=" + kValidSigningSecret + "\n")),
+            "reused purpose-specific secrets should throw");
+    require(configThrows(validConfig("SESSION_SECRET=" + kValidSigningSecret + "\n")),
+            "legacy shared secrets should fail closed");
+    require(configThrows(validConfig(
+        "SESSION_SIGNING_SECRET_PREVIOUS=" + kValidSigningSecret + "\n")),
+        "the previous signing key must differ from the current signing key");
     require(configThrows(validConfig("AUTH_PASSWORD_HASH=pbkdf2_sha256$1$aa$bb\n")),
             "weak password hashes should throw");
 }

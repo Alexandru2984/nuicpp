@@ -73,7 +73,15 @@ requireValue(/^[0-9a-f]{40}$/.test(npmGitProperty?.value ?? ""), "npm SBOM has n
 
 for (const [label, bom] of [["native", nativeBom], ["npm", npmBom]]) {
   const serialized = JSON.stringify(bom);
-  for (const secretName of ["DATABASE_URL", "SESSION_SECRET", "AUTH_PASSWORD_HASH"]) {
+  for (const secretName of [
+    "DATABASE_URL",
+    "SESSION_SIGNING_SECRET",
+    "SESSION_SIGNING_SECRET_PREVIOUS",
+    "CSRF_SECRET",
+    "OWNER_HASH_SECRET",
+    "RATE_LIMIT_SECRET",
+    "AUTH_PASSWORD_HASH"
+  ]) {
     requireValue(!serialized.includes(secretName), `${label} SBOM contains configuration secret name ${secretName}`);
   }
 }

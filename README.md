@@ -89,16 +89,18 @@ admin account for maintenance.
 - Separate `/live` process and PostgreSQL-backed `/ready` probes; `/health`
   remains a compatibility alias for liveness. Dependency errors are not exposed.
 - Loopback-only Prometheus telemetry for bounded HTTP/security/create, latency,
-  row/logical/database-capacity and connection-pool signals, with validated alert rules and
-  an operator response runbook in [`docs/MONITORING.md`](docs/MONITORING.md).
+  row/logical/database-capacity and connection-pool signals, with validated
+  alert rules and an operator response runbook in
+  [`docs/MONITORING.md`](docs/MONITORING.md).
 
 ### Security
 
 Summarised here, detailed in [`docs/SECURITY.md`](docs/SECURITY.md).
 
 - Cloudflare-only ingress enforced at nginx; direct-to-origin requests get `403`.
-- HMAC-signed, `HttpOnly`, `SameSite=Lax` session cookies; 8-hour admin sessions,
-  7-day guest sessions.
+- Purpose-separated HMAC keys for `HttpOnly`, `SameSite=Lax` sessions, CSRF,
+  stable guest ownership and rate-limit pseudonyms; planned signing-key rotation
+  transparently re-signs active 8-hour admin and 7-day guest sessions.
 - PBKDF2-SHA256 admin password with constant-time comparison.
 - Per-session ownership by HMAC-derived owner hash; read and edit both checked
   by diagram id on every path that emits diagram content, including duplicate.
@@ -154,11 +156,11 @@ The build is clean under `-Wall -Wextra -Wpedantic`.
 ctest --test-dir build --output-on-failure
 ```
 
-Thirteen suites cover unit validation, frontend assets, the nginx candidate,
+Fourteen suites cover unit validation, frontend assets, the nginx candidate,
 Prometheus rules, incident-runbook integrity, CycloneDX SBOM generation, real
 Chromium behavior, live security/API behavior, shared persistent rate limits,
-concurrent row/logical-byte quota enforcement, and migration-ledger integrity. The seven
-database-backed suites use
+concurrent row/logical-byte quota enforcement, signing-key rotation, and
+migration-ledger integrity. The eight database-backed suites use
 a config with `APP_ENV=test` whose
 actual PostgreSQL database and login-role names both end in `_test`. Missing
 local prerequisites appear as **Not Run**, not as false passes; deployment sets
@@ -197,7 +199,9 @@ values are documented in [`docs/DEPLOY.md`](docs/DEPLOY.md#2-environment):
 
 ```
 APP_ENV  APP_HOST  APP_PORT  APP_BASE_URL  DATABASE_URL
-AUTH_USERNAME  AUTH_PASSWORD_HASH  SESSION_SECRET  PUBLIC_ACCESS  FRONTEND_SHELL
+AUTH_USERNAME  AUTH_PASSWORD_HASH  SESSION_SIGNING_SECRET
+SESSION_SIGNING_SECRET_PREVIOUS  CSRF_SECRET  OWNER_HASH_SECRET
+RATE_LIMIT_SECRET  PUBLIC_ACCESS  FRONTEND_SHELL
 MAX_NODES_PER_DIAGRAM  MAX_EDGES_PER_DIAGRAM  MAX_VERSIONS_PER_DIAGRAM
 MAX_IMPORT_BYTES  MAX_DIAGRAMS_PER_GUEST  MAX_DIAGRAMS_TOTAL
 MAX_LOGICAL_BYTES_PER_GUEST  MAX_LOGICAL_BYTES_TOTAL  DB_POOL_SIZE

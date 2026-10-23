@@ -33,6 +33,10 @@ rollback notes where applicable.
 - PostgreSQL-backed GCRA limits for login, writes and creation, using
   pseudonymous bounded keys; counters are atomic across instances, survive
   restart and fail closed when their decision cannot be persisted.
+- Purpose-separated secrets for session signing, CSRF, stable guest ownership
+  and rate-limit pseudonyms. The legacy shared key is rejected; a bounded
+  previous-signing-key window upgrades active cookies and has a live restart,
+  ownership-continuity and retirement test.
 - Self-contained nginx candidate validation in CTest/CI, covering syntax, ACME,
   origin guard, request correlation, redacted capability logs and restrictive
   CSP before the production files can be copied.
@@ -108,8 +112,8 @@ High risk remain open.
 - User accounts with email verification or OIDC, passkeys/WebAuthn and MFA for
   the administrator; convert a guest workspace into an account without data loss.
 - Server-side admin sessions with device list, last-used metadata and individual
-  revocation. Use a `__Host-` cookie and split signing, CSRF and stable ownership
-  keys.
+  revocation. Move to a `__Host-` cookie and preserve the implemented
+  purpose-specific keys.
 - Workspaces, invitations and roles (`owner`, `editor`, `viewer`) with a central
   policy layer and negative authorization tests.
 - Trash/soft delete, restore window, permanent-delete workflow and retention

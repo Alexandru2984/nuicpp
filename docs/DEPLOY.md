@@ -149,7 +149,11 @@ operator's exported variables cannot override the files being checked.
 | `DATABASE_URL` | `postgresql://nuigraph_app:…@localhost/nuigraph_studio` | Runtime role, never the owner role |
 | `AUTH_USERNAME` | admin login name | Guest usernames are `guest_<hex>` and cannot collide |
 | `AUTH_PASSWORD_HASH` | `pbkdf2_sha256$<iters>$<salt>$<hash>` | |
-| `SESSION_SECRET` | 32+ random bytes, hex | See the rotation warning below |
+| `SESSION_SIGNING_SECRET` | 32+ random bytes, hex | Current cookie-signing key |
+| `SESSION_SIGNING_SECRET_PREVIOUS` | empty normally | Old signing key during a planned rotation, for 7 days maximum |
+| `CSRF_SECRET` | distinct 32+ random bytes, hex | CSRF derivation only |
+| `OWNER_HASH_SECRET` | stable distinct 32+ random bytes, hex | Guest ownership; see migration warning below |
+| `RATE_LIMIT_SECRET` | distinct 32+ random bytes, hex | Pseudonymous limiter identities only |
 | `PUBLIC_ACCESS` | `true` | Anonymous visitors may create diagrams |
 | `FRONTEND_SHELL` | `server` | Use `nui` only with a complete WASM bundle and matching reviewed CSP |
 | `MAX_NODES_PER_DIAGRAM` | `1000` | |
@@ -163,9 +167,22 @@ operator's exported variables cannot override the files being checked.
 | `DB_POOL_SIZE` | `8` | Pooled connections; see sizing below |
 | `PROJECT_ROOT` | `/opt/nuigraph-studio/current` | Root-owned release/static root |
 
-**Rotating `SESSION_SECRET` logs everyone out and orphans every guest-owned
-diagram**, because owner hashes are derived from it. Only the admin account
-would retain edit access. Rotate deliberately, never as routine hygiene.
+All four active secrets must be distinct. For the first split-key deployment,
+copy the old `SESSION_SECRET` value into both `OWNER_HASH_SECRET` and
+`SESSION_SIGNING_SECRET_PREVIOUS`, generate fresh signing/CSRF/rate-limit keys,
+and remove the legacy variable (the app rejects it). Equality between the
+previous signing key and owner key is the sole transitional exception. Active
+old cookies are re-signed without extending their original expiry on
+`/api/session`; remove the previous signing key after seven days.
+During a signing-key compromise, do not configure the previous key: immediate
+revocation takes priority over session continuity.
+
+Never rotate `OWNER_HASH_SECRET` without a tested database re-key migration;
+changing it directly makes existing guest sessions unable to match their rows.
+Rotating `CSRF_SECRET` only requires clients to fetch a new session response.
+Rotating `RATE_LIMIT_SECRET` resets pseudonymous identities while old rows expire
+within 10 minutes. Generate each new value independently with
+`openssl rand -hex 32` and keep the configuration mode `0600`.
 
 `DB_POOL_SIZE` must stay comfortably below PostgreSQL's `max_connections` minus
 what the other projects on this host use. Eight is enough that 60 concurrent

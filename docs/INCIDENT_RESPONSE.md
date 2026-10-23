@@ -27,9 +27,9 @@ is the VPS operator until another named owner takes over in the incident record.
    - block an abusive source at the edge;
    - switch `current` to a known-good root-owned release;
    - for confirmed host compromise, remove the origin from service and isolate it.
-4. Confirm whether admin credentials, `SESSION_SECRET`, database credentials,
-   bearer share links or backup credentials may have been read. Treat readable
-   secrets as compromised, not merely suspicious.
+4. Confirm whether admin credentials, any session/CSRF/ownership/rate-limit key,
+   database credentials, bearer share links or backup credentials may have been
+   read. Treat readable secrets as compromised, not merely suspicious.
 5. Assign an incident lead and a communications owner. For SEV-1, start a
    15-minute update cadence until contained.
 
@@ -50,9 +50,12 @@ is the VPS operator until another named owner takes over in the incident record.
 
 1. Patch or roll back the entry point before restoring public traffic.
 2. Rotate credentials in dependency order: database and infrastructure tokens,
-   admin password, then session-signing material. Current `SESSION_SECRET`
-   rotation orphans guest-owned diagrams; preserve the old key offline if a
-   controlled ownership migration is required, never keep both active casually.
+   admin password, then purpose-specific application keys. For compromised
+   signing material, omit `SESSION_SIGNING_SECRET_PREVIOUS` so every old cookie
+   fails immediately. Use that previous-key window only for planned rotation and
+   remove it within seven days. Keep `OWNER_HASH_SECRET` stable unless a tested
+   database re-key is part of the incident plan; rotate CSRF and rate-limit keys
+   independently.
 3. Restore only from a verified backup into an isolated database, validate schema
    and counts, and test read/write/version flows before cutover.
 4. Run build, unit, isolated integration, security smoke, rate-limit, migration,

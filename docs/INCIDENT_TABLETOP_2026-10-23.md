@@ -42,6 +42,11 @@ missing backup control as healthy.
   rate-limit identities. Rotating it invalidates sessions but also orphans guest
   ownership unless the old key is retained offline for a controlled migration.
 
+Post-exercise remediation now splits those purposes into four required keys.
+This paragraph remains the historical starting condition that produced IR-006;
+`SESSION_SIGNING_SECRET_PREVIOUS` is the bounded planned-rotation window and
+`tests/check_key_rotation.sh` is the current technical verification.
+
 ## Scenario, timeline and decisions
 
 Exercise time starts at 10:00 EEST on 2026-10-23.
@@ -123,7 +128,7 @@ Traffic remains closed until all applicable criteria are evidenced:
 | IR-003 | Security logs are local and no retention/access policy or tamper-resistant copy is defined. | P1 | VPS operator | 2026-11-20 | Approve the policy and demonstrate restricted, integrity-checked export. |
 | IR-004 | There is no breach-assessment template or maintained data inventory for fast affected-record estimates. | P1 | Data controller | 2026-11-20 | Review a completed blank template and inventory without user content. |
 | IR-005 | A single stateless admin identity has no MFA, device list or individual session revocation. | P1 | Maintainer | 2026-12-15 | Negative authorization tests plus revoke-one-session and MFA tests pass. |
-| IR-006 | One `SESSION_SECRET` couples revocation to guest ownership and rate-limit identity. | P1 | Maintainer | 2026-12-15 | Split keys, document rotation and prove an ownership migration on disposable data. |
+| IR-006 | At exercise time one `SESSION_SECRET` coupled revocation to guest ownership and rate-limit identity; remediated locally after the exercise. | P1 | Maintainer | 2026-12-15 | Split-key config, documented bounded rotation and disposable live continuity/retirement test pass. |
 
 The deferred offsite-backup item remains a separate open High risk. It was not
 tested, assigned a fictional success state or removed from the roadmap.

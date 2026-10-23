@@ -56,6 +56,10 @@ Retained user content now has transactional per-guest and global logical-byte
 ceilings in addition to row quotas. A trigger-maintained singleton serialises
 growth across app instances; rejected writes roll back revisions and snapshots;
 delete/prune release capacity; usage and capacity have a validated alert.
+Session signing, CSRF derivation, stable guest ownership and rate-limit
+pseudonymisation now use distinct required keys. Planned signing rotation can
+re-sign old cookies during an explicit bounded window; emergency rotation omits
+the old key. A live restart test proves ownership continuity and key retirement.
 
 ## Executive verdict
 
@@ -124,7 +128,7 @@ complete.
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Denial of service | An attacker rotates guest cookies and source addresses, fills the global row/byte or active limiter-key allowance, or saturates DB workers/storage. | High | Medium | Cloudflare/nginx limits, bounded shared GCRA buckets, payload caps, pool cap, atomic per-session/global row and logical-byte quotas | Retention/cleanup; Turnstile for suspicious creation; deploy and wire the checked-in storage, limiter-capacity and latency alerts |
 | 2 | Information disclosure | App, DB, backups, journals, or an enabled bearer link expose private diagram content. Legacy links stay active until deliberately expired, rotated or revoked. | Medium | High | Private-by-default creation, optional DB-clock expiry, explicit rotate/revoke, 128-bit slugs, owner checks, least-privilege DB role, CSP, origin guard | Deploy the lifecycle changes; review legacy links; encrypted and access-controlled backups; retention policy |
-| 3 | Spoofing / elevation | Theft or forgery of the single admin session grants access to all diagrams. Stateless sessions have no individual revocation and one secret also derives guest ownership. | Low | High | HMAC cookies, Secure/HttpOnly/SameSite, PBKDF2, login throttles | `__Host-` cookie; server-side admin session revocation; MFA/passkey; split signing and ownership keys; alert on admin login |
+| 3 | Spoofing / elevation | Theft or forgery of the single admin session grants access to all diagrams. Stateless sessions have no individual revocation. | Low | High | Purpose-separated HMAC keys, bounded signing-key rollover, Secure/HttpOnly/SameSite cookies, PBKDF2, login throttles | `__Host-` cookie; server-side admin session revocation; MFA/passkey; alert on admin login |
 | 4 | Tampering | Concurrent editors attempt to overwrite, delete or restore over newer work. | Low | Medium | Atomic revision increments, strong ETags, mandatory `If-Match`, `412` rejection, bounded history and local draft preservation | Add a merge/recovery UI before real-time collaboration |
 | 5 | Repudiation | A shared admin credential prevents attribution to one person, and local logs can be altered after host compromise. | Medium | Medium | Correlated nginx/app request IDs; structured actor-class login/share/auth/CSRF/quota/storage events; redacted routes | Central/tamper-resistant audit storage, retention/access policy, individual admin identities and alerts |
 | 6 | Supply chain | A compromised package source or CI account introduces a malicious dependency or substitutes build output. | Low | Medium | Immutable Nui/action/service refs; npm lock integrity and audit; native plus npm CycloneDX inventories; CodeQL, Cppcheck, ShellCheck, GitGuardian and Dependabot; root-owned releases | Add signed release provenance and independently verified reproducible-build metadata |
@@ -196,10 +200,12 @@ costs.
    complete public asset tree, serves matching assets as immutable and keeps the
    worker `no-store`. The observed Cloudflare rule can still override that
    contract; correct the account-level rule and purge existing objects.
-6. **One secret serves four purposes.** Session signing, CSRF derivation, guest
-   ownership and rate-limit pseudonymisation share `SESSION_SECRET`. Rotation
-   logs everyone out, permanently orphans guest diagrams and resets active
-   rate-limit identities.
+6. **One secret served four purposes (remediated locally).** Four required,
+   distinct secrets now isolate session signing, CSRF, stable guest ownership
+   and rate-limit pseudonyms. A bounded optional previous signing key upgrades
+   cookies without changing the owner hash; incident rotation can fail closed by
+   omitting it. Production configuration and the planned seven-day retirement
+   still need to accompany deployment.
 7. **Rate limiting adds a database dependency.** Shared GCRA buckets now survive
    restarts and are bounded at 20,000 active pseudonymous keys, but a distributed
    source flood can fill that allowance and make new identities fail closed.
