@@ -248,6 +248,11 @@ to the dialog with `textContent`; diagram titles, keys and labels are never
 treated as HTML. Selecting Focus only changes the local canvas selection and
 viewport. No diagram content is sent to a third-party analysis service.
 
+The node navigator follows the same browser-local boundary. Search terms are
+matched only against the open diagram's in-memory titles, types and keys. Node
+values are inserted with `textContent`, never interpreted as markup, and only
+the first 100 controls are rendered while the full bounded node set is searched.
+
 ## Error handling
 
 `sendStorageError()` distinguishes validation errors, whose messages are meant

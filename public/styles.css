@@ -937,7 +937,7 @@ body.dirty .draft-status { color: var(--warn); }
   background: color-mix(in srgb, var(--scrim) 88%, transparent);
 }
 
-.command-palette, .mobile-customizer, .sharing-dialog {
+.command-palette, .mobile-customizer, .sharing-dialog, .node-navigator {
   width: min(640px, 100%);
   max-height: min(72dvh, 680px);
   display: grid;
@@ -1159,7 +1159,7 @@ button.primary {
     padding: 12px 8px calc(8px + env(safe-area-inset-bottom));
   }
 
-  .command-palette, .mobile-customizer, .diagram-review, .sharing-dialog {
+  .command-palette, .mobile-customizer, .diagram-review, .sharing-dialog, .node-navigator {
     width: 100%;
     max-height: min(82dvh, 720px);
     border-radius: 18px;

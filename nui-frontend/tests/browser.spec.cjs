@@ -117,6 +117,53 @@ test.describe("desktop security and offline lifecycle", () => {
 
       await expect(page.locator("#share-diagram")).toBeEnabled();
       await expect(page.locator("#share-diagram")).toHaveAttribute("title", "Enable sharing");
+
+      const unsafeNodeTitle = 'Service <img src=x onerror="globalThis.__nodeNavigatorXss=1">';
+      await page.evaluate(async ({ id, title }) => {
+        const session = await (await fetch("/api/session", { credentials: "same-origin" })).json();
+        const diagram = await (await fetch(`/api/diagrams/${id}`, { credentials: "same-origin" })).json();
+        diagram.nodes.find((node) => node.key === "node_service").title = title;
+        const response = await fetch(`/api/diagrams/${id}`, {
+          method: "PUT",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-Token": session.csrf_token,
+            "If-Match": `"diagram-${id}-r${diagram.revision}"`
+          },
+          body: JSON.stringify(diagram)
+        });
+        if (!response.ok) throw new Error(`Could not prepare navigator fixture: ${response.status}`);
+      }, { id: sharingTestId, title: unsafeNodeTitle });
+      await page.reload({ waitUntil: "networkidle" });
+      await expect(page.locator("#share-diagram")).toBeEnabled();
+
+      await page.locator("#share-diagram").focus();
+      await page.keyboard.press("/");
+      const nodeNavigator = page.getByRole("dialog", { name: "Node navigator" });
+      await expect(nodeNavigator).toBeVisible();
+      const nodeSearch = nodeNavigator.getByRole("combobox", { name: "Search nodes" });
+      await expect(nodeSearch).toBeFocused();
+      await nodeSearch.fill("node_service");
+      const serviceOption = nodeNavigator.getByRole("option", { name: /Service.*node_service/ });
+      await expect(serviceOption).toBeVisible();
+      await expect(serviceOption).toContainText(unsafeNodeTitle);
+      await expect(serviceOption.locator("img")).toHaveCount(0);
+      expect(await page.evaluate(() => globalThis.__nodeNavigatorXss)).toBeUndefined();
+      await page.keyboard.press("Enter");
+      await expect(nodeNavigator).not.toBeVisible();
+      await expect(page.locator('#nodes > g[data-key="node_service"]')).toHaveClass(/selected/);
+      await expect(page.locator("#share-diagram")).toBeFocused();
+
+      await page.keyboard.press("/");
+      await nodeSearch.fill("definitely no such node");
+      await expect(nodeNavigator.getByText("No matching nodes", { exact: true })).toBeVisible();
+      await page.keyboard.press("Enter");
+      await expect(nodeNavigator).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(nodeNavigator).not.toBeVisible();
+      await expect(page.locator("#share-diagram")).toBeFocused();
+
       await page.locator("#share-diagram").click();
       const sharingDialog = page.getByRole("dialog", { name: "Share diagram" });
       await expect(sharingDialog).toBeVisible();
@@ -213,6 +260,7 @@ test.describe("phone layout", () => {
     await page.keyboard.press("Enter");
     const customizer = page.getByRole("dialog", { name: "Customize mobile action bar" });
     await expect(customizer).toBeVisible();
+    await expect(customizer.getByLabel("Find and focus node", { exact: true })).toBeVisible();
     await customizer.getByLabel("Add node", { exact: true }).uncheck();
     await customizer.getByLabel("Zoom to fit", { exact: true }).check();
     await customizer.getByRole("button", { name: "Apply", exact: true }).click();

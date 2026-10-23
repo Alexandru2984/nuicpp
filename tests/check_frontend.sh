@@ -20,6 +20,9 @@ grep -Fq 'script.src = `/editor.js' public/app.js
 grep -Fq 'review.src = `/diagram-review.js' public/app.js
 grep -Fq 'css.href = `/styles.css' public/editor.js
 grep -Fq 'Ctrl / Cmd + K' public/editor.js
+grep -Fq 'Find and focus node' public/editor.js
+grep -Fq 'NODE_NAVIGATOR_RESULT_LIMIT = 100' public/editor.js
+grep -Fq 'evt.key === "/"' public/editor.js
 grep -Fq 'nuigraph:mobile-actions:v1' public/editor.js
 grep -Fq 'className = "command-palette-overlay"' public/editor.js
 test "$(grep -Fc 'if (state.current.nodes?.length) zoomToFit();' public/editor.js)" -eq 2

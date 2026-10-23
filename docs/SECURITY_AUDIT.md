@@ -5,7 +5,7 @@
 checked-in nginx/systemd configuration, the running service, and non-sensitive
 production metadata. Diagram content and secret values were not inspected.
 
-**Remediation update, 2026-10-22:** CI, CodeQL, dependency automation and SEO
+**Remediation updates, 2026-10-22 through 2026-10-23:** CI, CodeQL, dependency automation and SEO
 privacy controls were pushed; their remote CI, CodeQL and secret-scanning checks
 passed. Later hardening remains local until pushed and deployed. The operator
 explicitly deferred offsite backup work, so the corresponding High finding
@@ -42,6 +42,9 @@ disable 128-bit bearer links through CSRF-protected, ETag-conditional endpoints;
 revoked routes return `404`, re-enable never revives an old token, and lifecycle
 events remain redacted. Existing links stay enabled through migration for
 compatibility, and production retains the old behavior until deployment.
+Large diagrams now have a bounded, browser-local node navigator that searches
+in-memory titles, types and keys, renders untrusted values as text, restores
+keyboard focus and reuses the reviewed canvas centring path.
 
 ## Executive verdict
 

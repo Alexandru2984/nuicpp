@@ -65,6 +65,9 @@ rollback notes where applicable.
   redacted lifecycle events, private visitor forks and cross-session negative
   authorization tests. Existing links remain active through migration for
   compatibility.
+- Bounded browser-local node navigator with title/type/key search, direct canvas
+  centring, `/` shortcut, command-palette and mobile-action access, safe text
+  rendering, focus restoration and Chromium interaction coverage.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -107,8 +110,7 @@ High risk remain open.
 ## P2 — editor quality and responsive UX
 
 - Inline node/edge label editing, multi-select inspector and batch property edits.
-- Align/distribute actions, rulers, configurable grid, selection framing and
-  navigator/search across nodes.
+- Align/distribute actions, rulers, configurable grid and selection framing.
 - Orthogonal/smart edge routing, ports/anchors, curved connectors, waypoints and
   collision avoidance.
 - Groups, frames, layers, lock/hide controls, reusable components and multiple

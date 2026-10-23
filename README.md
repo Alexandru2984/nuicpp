@@ -33,6 +33,8 @@ admin account for maintenance.
   nodes within 6 screen pixels, and the guide spans every box it lines up.
 - Searchable command palette on `Ctrl/Cmd+K`, including editing, canvas, export,
   panel and appearance actions; keyboard shortcuts remain available from `?`.
+- Instant node navigator on `/` searches titles, types and stable keys, then
+  selects and centres a result without leaving the canvas or using the network.
 - Browser-local Diagram Review detects empty diagrams, missing titles or labels,
   orphan nodes, invalid or duplicate edges, self-loops and directed cycles, then
   focuses the selected finding without sending diagram content to another service.
@@ -162,8 +164,8 @@ See the deploy runbook for the isolated test-database setup.
 
 The Chromium suite exercises desktop and phone layouts, CSP enforcement,
 service-worker replacement, cache isolation from authenticated APIs, and a real
-offline navigation. It also verifies the local review engine, command-palette
-focus restoration, mobile action customisation, 44px touch targets and
+offline navigation. It also verifies the local review engine, node navigator,
+command-palette focus restoration, mobile action customisation, 44px touch targets and
 persistence across reload. CI
 installs its pinned browser runtime; locally run
 `nui-frontend/node_modules/.bin/playwright install chromium` after `npm ci`.

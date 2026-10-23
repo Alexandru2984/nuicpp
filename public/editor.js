@@ -329,6 +329,7 @@
       { id: "delete", label: "Delete selection", shortLabel: "Delete", category: "Edit", mobile: true, enabled: () => Boolean(state.selected) && !state.readOnly, run: deleteSelected },
       { id: "layout", label: "Auto layout", shortLabel: "Layout", category: "Arrange", keywords: "organize graph", mobile: true, enabled: () => Boolean(state.current?.nodes?.length) && !state.readOnly, run: autoLayout },
       { id: "review", label: "Review diagram quality", shortLabel: "Review", category: "Analyze", keywords: "lint cycle orphan duplicate missing label", mobile: true, enabled: () => Boolean(state.current), run: showDiagramReview },
+      { id: "find-node", label: "Find and focus node", shortLabel: "Find", category: "Analyze", keywords: "navigate search locate jump", shortcut: "/", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: openNodeNavigator },
       { id: "fit", label: "Zoom to fit", shortLabel: "Fit", category: "View", keywords: "frame center canvas", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: zoomToFit },
       { id: "tool-select", label: "Use select tool", shortLabel: "Select", category: "Tools", keywords: "pointer", mobile: true, run: () => triggerTool("select") },
       { id: "tool-pan", label: "Use pan tool", shortLabel: "Pan", category: "Tools", keywords: "move canvas hand", mobile: true, run: () => triggerTool("pan") },
@@ -782,6 +783,170 @@
     return true;
   }
 
+  // Keep an empty search useful without attempting to mount an unbounded
+  // number of controls. Filtering still considers every node and the live
+  // status reports the full match count.
+  const NODE_NAVIGATOR_RESULT_LIMIT = 100;
+
+  function openNodeNavigator() {
+    const nodes = Array.isArray(state.current?.nodes) ? state.current.nodes : [];
+    if (!nodes.length) return;
+    const existing = document.querySelector(".node-navigator-overlay");
+    if (existing) {
+      existing.querySelector("input")?.focus();
+      return;
+    }
+    closeDialog(".command-palette-overlay");
+    document.querySelector(".shortcuts-overlay")?.remove();
+    sheetControls.closeAll(false);
+
+    const previousFocus = document.activeElement;
+    const overlay = document.createElement("div");
+    overlay.className = "command-palette-overlay node-navigator-overlay";
+    const dialog = document.createElement("section");
+    dialog.className = "node-navigator";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", "node-navigator-title");
+
+    const head = document.createElement("div");
+    head.className = "command-palette-head";
+    const title = document.createElement("h2");
+    title.id = "node-navigator-title";
+    title.textContent = "Node navigator";
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "command-close";
+    closeButton.textContent = "Close";
+    head.append(title, closeButton);
+
+    const input = document.createElement("input");
+    input.type = "search";
+    input.className = "command-search";
+    input.placeholder = "Search by title, type, or key...";
+    input.autocomplete = "off";
+    input.setAttribute("aria-label", "Search nodes");
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-autocomplete", "list");
+    input.setAttribute("aria-controls", "node-navigator-results");
+    input.setAttribute("aria-expanded", "true");
+
+    const status = document.createElement("div");
+    status.className = "command-status";
+    status.setAttribute("aria-live", "polite");
+    const list = document.createElement("div");
+    list.id = "node-navigator-results";
+    list.className = "command-results";
+    list.setAttribute("role", "listbox");
+    dialog.append(head, input, status, list);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    let visible = [];
+    let activeIndex = 0;
+    const closeNavigator = () => {
+      overlay.remove();
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+    overlay.closeDialog = closeNavigator;
+    closeButton.onclick = closeNavigator;
+    overlay.onclick = (evt) => { if (evt.target === overlay) closeNavigator(); };
+
+    const updateActive = () => {
+      const buttons = [...list.querySelectorAll(".node-navigator-item")];
+      buttons.forEach((button, index) => {
+        const active = index === activeIndex;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", String(active));
+      });
+      const active = buttons[activeIndex];
+      if (active) {
+        input.setAttribute("aria-activedescendant", active.id);
+        active.scrollIntoView({ block: "nearest" });
+      } else {
+        input.removeAttribute("aria-activedescendant");
+      }
+    };
+
+    const chooseVisible = (index) => {
+      const node = visible[index];
+      if (node && focusReviewTarget({ type: "node", key: node.key })) closeNavigator();
+    };
+
+    const renderNodes = () => {
+      const words = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      const matching = nodes.filter((node) => {
+        const haystack = `${node.title || ""} ${node.type || ""} ${node.key || ""}`.toLowerCase();
+        return words.every((word) => haystack.includes(word));
+      });
+      visible = matching.slice(0, NODE_NAVIGATOR_RESULT_LIMIT);
+      activeIndex = Math.min(activeIndex, Math.max(0, visible.length - 1));
+      list.replaceChildren();
+      for (const [index, node] of visible.entries()) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.id = `node-navigator-option-${index}`;
+        button.className = "command-item node-navigator-item";
+        button.setAttribute("role", "option");
+
+        const copy = document.createElement("span");
+        copy.className = "command-copy";
+        const label = document.createElement("strong");
+        label.textContent = node.title || "Untitled node";
+        const metadata = document.createElement("small");
+        metadata.textContent = `${node.type || "node"} - ${node.key}`;
+        copy.append(label, metadata);
+        button.appendChild(copy);
+        button.onclick = () => chooseVisible(index);
+        button.onpointerenter = () => {
+          activeIndex = index;
+          updateActive();
+        };
+        list.appendChild(button);
+      }
+      if (!visible.length) {
+        const empty = document.createElement("div");
+        empty.className = "command-empty";
+        empty.textContent = "No matching nodes";
+        list.appendChild(empty);
+      }
+      status.textContent = matching.length > visible.length
+        ? `Showing ${visible.length} of ${matching.length} nodes`
+        : `${matching.length} node${matching.length === 1 ? "" : "s"}`;
+      updateActive();
+    };
+
+    input.oninput = () => {
+      activeIndex = 0;
+      renderNodes();
+    };
+    overlay.addEventListener("keydown", (evt) => {
+      if (evt.key === "Escape") {
+        evt.preventDefault();
+        evt.stopPropagation();
+        closeNavigator();
+        return;
+      }
+      if (evt.key === "ArrowDown" || evt.key === "ArrowUp") {
+        evt.preventDefault();
+        if (visible.length) {
+          activeIndex = (activeIndex + (evt.key === "ArrowDown" ? 1 : -1) + visible.length) % visible.length;
+          updateActive();
+        }
+        return;
+      }
+      if (evt.key === "Enter" && document.activeElement === input) {
+        evt.preventDefault();
+        chooseVisible(activeIndex);
+        return;
+      }
+      trapDialogFocus(evt, dialog);
+    });
+
+    renderNodes();
+    input.focus();
+  }
+
   function showDiagramReview() {
     if (!state.current) return;
     const analyzer = globalThis.NuiGraphReview?.analyzeDiagram;
@@ -875,6 +1040,7 @@
 
   const SHORTCUTS = [
     ["Ctrl / Cmd + K", "Open command palette"],
+    ["/", "Find and focus a node"],
     ["Ctrl / Cmd + S", "Save diagram"],
     ["Ctrl / Cmd + Z", "Undo"],
     ["Ctrl / Cmd + Y", "Redo"],
@@ -2736,7 +2902,12 @@
         else openCommandPalette();
         return;
       }
-      if (evt.target.matches("input, textarea, select")) return;
+      if (evt.target.matches("input, textarea, select") || evt.target.isContentEditable) return;
+      if (evt.key === "/" && !evt.ctrlKey && !evt.metaKey && !evt.altKey) {
+        evt.preventDefault();
+        openNodeNavigator();
+        return;
+      }
       if (evt.key === "Delete" || evt.key === "Backspace") deleteSelected();
       if (evt.key === "Escape") { state.selected = null; state.edgeSource = null; render(); }
       if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "s") { evt.preventDefault(); saveDiagram(); }
