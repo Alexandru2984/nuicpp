@@ -288,6 +288,12 @@ if ! grep -q 'NuiGraphReview' <<<"$review_script"; then
   exit 1
 fi
 
+arrange_script="$(curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/diagram-arrange.js")"
+if ! grep -q 'NuiGraphArrange' <<<"$arrange_script"; then
+  echo "expected the local diagram arrangement engine to be served" >&2
+  exit 1
+fi
+
 robots="$(curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/robots.txt")"
 for rule in 'Disallow: /api/' 'Disallow: /d/' 'Disallow: /login' 'Disallow: /metrics' 'Sitemap: http://127.0.0.1:'; do
   if ! grep -q "$rule" <<<"$robots"; then

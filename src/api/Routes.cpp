@@ -810,6 +810,9 @@ void Routes::registerRoutes(httplib::Server& server) {
     server.Get("/diagram-review.js", [this](const httplib::Request& req, httplib::Response& res) {
         serveStatic(req, res, cfg_.projectRoot + "/public/diagram-review.js");
     });
+    server.Get("/diagram-arrange.js", [this](const httplib::Request& req, httplib::Response& res) {
+        serveStatic(req, res, cfg_.projectRoot + "/public/diagram-arrange.js");
+    });
     server.Get("/editor.js", [this](const httplib::Request& req, httplib::Response& res) {
         serveStatic(req, res, cfg_.projectRoot + "/public/editor.js");
     });

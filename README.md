@@ -24,7 +24,8 @@ admin account for maintenance.
   updates in the browser.
 - Node types: `process`, `decision`, `database`, `service`, `api`, `note`,
   `external`. Directed and undirected labelled edges with colours and arrowheads.
-- Snap-to-grid, simple auto-layout, minimap, copy/paste, undo/redo.
+- Snap-to-grid, simple auto-layout, minimap, copy/paste, undo/redo. Multi-node
+  selections can align to six axes or distribute equal centre spacing.
 - Multi-select by Shift-click, by rubber-band drag on empty canvas (Shift-drag
   extends), or by long-press on touch.
 - Eight resize handles on a single selected node, honouring the same 72x48 to
@@ -164,8 +165,9 @@ See the deploy runbook for the isolated test-database setup.
 
 The Chromium suite exercises desktop and phone layouts, CSP enforcement,
 service-worker replacement, cache isolation from authenticated APIs, and a real
-offline navigation. It also verifies the local review engine, node navigator,
-command-palette focus restoration, mobile action customisation, 44px touch targets and
+offline navigation. It also verifies the local review and arrangement engines,
+node navigator, undoable multi-node alignment, command-palette focus restoration,
+mobile action customisation, 44px touch targets and
 persistence across reload. CI
 installs its pinned browser runtime; locally run
 `nui-frontend/node_modules/.bin/playwright install chromium` after `npm ci`.

@@ -68,6 +68,10 @@ rollback notes where applicable.
 - Bounded browser-local node navigator with title/type/key search, direct canvas
   centring, `/` shortcut, command-palette and mobile-action access, safe text
   rendering, focus restoration and Chromium interaction coverage.
+- Undoable multi-node alignment on six axes and horizontal/vertical equal-centre
+  distribution through the command palette and customisable mobile actions. A
+  pure local geometry engine has deterministic generated tests, finite-number
+  guards and live Chromium coverage.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -110,7 +114,7 @@ High risk remain open.
 ## P2 — editor quality and responsive UX
 
 - Inline node/edge label editing, multi-select inspector and batch property edits.
-- Align/distribute actions, rulers, configurable grid and selection framing.
+- Rulers, configurable grid and selection framing.
 - Orthogonal/smart edge routing, ports/anchors, curved connectors, waypoints and
   collision avoidance.
 - Groups, frames, layers, lock/hide controls, reusable components and multiple

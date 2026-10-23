@@ -253,6 +253,12 @@ matched only against the open diagram's in-memory titles, types and keys. Node
 values are inserted with `textContent`, never interpreted as markup, and only
 the first 100 controls are rendered while the full bounded node set is searched.
 
+Alignment and distribution also run in a deterministic browser-local module
+with no network calls. The pure geometry function rejects unknown modes and
+non-finite coordinates, does not mutate its inputs and returns only key/x/y
+updates. The editor looks those updates up with `Map`, avoiding object-prototype
+keys, records one undo snapshot and then applies them to the selected nodes.
+
 ## Error handling
 
 `sendStorageError()` distinguishes validation errors, whose messages are meant

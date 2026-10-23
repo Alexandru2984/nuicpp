@@ -45,6 +45,9 @@ compatibility, and production retains the old behavior until deployment.
 Large diagrams now have a bounded, browser-local node navigator that searches
 in-memory titles, types and keys, renders untrusted values as text, restores
 keyboard focus and reuses the reviewed canvas centring path.
+Multi-node alignment and distribution now use a pure local geometry engine with
+finite-number validation, prototype-safe key lookup and one-step undo. Generated
+unit cases plus Chromium cover the invariants and user interaction.
 
 ## Executive verdict
 

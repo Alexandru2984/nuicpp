@@ -50,6 +50,7 @@ test.describe("desktop security and offline lifecycle", () => {
     await expect(page.locator("#canvas")).toBeVisible();
     await expect(page.locator("#diagram-title")).toHaveValue("Untitled diagram");
     expect(await page.evaluate(() => typeof globalThis.NuiGraphReview?.analyzeDiagram)).toBe("function");
+    expect(await page.evaluate(() => typeof globalThis.NuiGraphArrange?.arrangeNodes)).toBe("function");
     const browserReview = await page.evaluate(() => globalThis.NuiGraphReview.analyzeDiagram({
       nodes: [{ key: "lonely", title: "" }],
       edges: []
@@ -78,6 +79,7 @@ test.describe("desktop security and offline lifecycle", () => {
     expect(cachedPaths.some((path) => path.startsWith("/api/"))).toBe(false);
     expect(cachedPaths).toContain("/offline.html");
     expect(cachedPaths).toContain("/diagram-review.js");
+    expect(cachedPaths).toContain("/diagram-arrange.js");
 
     const title = page.locator("#diagram-title");
     await title.focus();
@@ -163,6 +165,39 @@ test.describe("desktop security and offline lifecycle", () => {
       await page.keyboard.press("Escape");
       await expect(nodeNavigator).not.toBeVisible();
       await expect(page.locator("#share-diagram")).toBeFocused();
+
+      const startGroup = page.locator('#nodes > g[data-key="node_start"]');
+      const serviceGroup = page.locator('#nodes > g[data-key="node_service"]');
+      const startShape = startGroup.locator(".node-shape");
+      const serviceShape = serviceGroup.locator(".node-shape");
+      const originalServiceX = await serviceShape.getAttribute("x");
+      await expect(serviceGroup).toHaveClass(/selected/);
+      await startShape.dispatchEvent("pointerdown", {
+        bubbles: true,
+        clientX: 100,
+        clientY: 100,
+        pointerId: 919,
+        pointerType: "mouse",
+        shiftKey: true
+      });
+      await page.evaluate(() => window.dispatchEvent(new PointerEvent("pointerup", {
+        bubbles: true,
+        pointerId: 919,
+        pointerType: "mouse"
+      })));
+      await expect(startGroup).toHaveClass(/selected/);
+      await expect(serviceGroup).toHaveClass(/selected/);
+
+      await page.keyboard.press("Control+k");
+      const commandPalette = page.getByRole("dialog", { name: "Command palette" });
+      await commandPalette.getByRole("combobox", { name: "Search commands" }).fill("align selected nodes left");
+      await expect(commandPalette.getByRole("option", { name: /Align selected nodes left/ })).toBeEnabled();
+      await page.keyboard.press("Enter");
+      await expect(commandPalette).not.toBeVisible();
+      await expect(serviceShape).toHaveAttribute("x", await startShape.getAttribute("x"));
+
+      await page.keyboard.press("Control+z");
+      await expect(serviceShape).toHaveAttribute("x", originalServiceX);
 
       await page.locator("#share-diagram").click();
       const sharingDialog = page.getByRole("dialog", { name: "Share diagram" });
@@ -261,6 +296,7 @@ test.describe("phone layout", () => {
     const customizer = page.getByRole("dialog", { name: "Customize mobile action bar" });
     await expect(customizer).toBeVisible();
     await expect(customizer.getByLabel("Find and focus node", { exact: true })).toBeVisible();
+    await expect(customizer.getByLabel("Align selected nodes left", { exact: true })).toBeVisible();
     await customizer.getByLabel("Add node", { exact: true }).uncheck();
     await customizer.getByLabel("Zoom to fit", { exact: true }).check();
     await customizer.getByRole("button", { name: "Apply", exact: true }).click();

@@ -328,6 +328,14 @@
       { id: "paste", label: "Paste selection", shortLabel: "Paste", category: "Edit", shortcut: "Ctrl / Cmd + V", enabled: () => Boolean(state.clipboard?.nodes?.length) && !state.readOnly, run: pasteSelected },
       { id: "delete", label: "Delete selection", shortLabel: "Delete", category: "Edit", mobile: true, enabled: () => Boolean(state.selected) && !state.readOnly, run: deleteSelected },
       { id: "layout", label: "Auto layout", shortLabel: "Layout", category: "Arrange", keywords: "organize graph", mobile: true, enabled: () => Boolean(state.current?.nodes?.length) && !state.readOnly, run: autoLayout },
+      { id: "align-left", label: "Align selected nodes left", shortLabel: "Left", category: "Arrange", keywords: "multi selection position", mobile: true, enabled: () => canArrangeSelection(2), run: () => arrangeSelection("align-left") },
+      { id: "align-center", label: "Align selected nodes horizontally", shortLabel: "H center", category: "Arrange", keywords: "multi selection center position", mobile: true, enabled: () => canArrangeSelection(2), run: () => arrangeSelection("align-center") },
+      { id: "align-right", label: "Align selected nodes right", shortLabel: "Right", category: "Arrange", keywords: "multi selection position", mobile: true, enabled: () => canArrangeSelection(2), run: () => arrangeSelection("align-right") },
+      { id: "align-top", label: "Align selected nodes top", shortLabel: "Top", category: "Arrange", keywords: "multi selection position", mobile: true, enabled: () => canArrangeSelection(2), run: () => arrangeSelection("align-top") },
+      { id: "align-middle", label: "Align selected nodes vertically", shortLabel: "V middle", category: "Arrange", keywords: "multi selection center position", mobile: true, enabled: () => canArrangeSelection(2), run: () => arrangeSelection("align-middle") },
+      { id: "align-bottom", label: "Align selected nodes bottom", shortLabel: "Bottom", category: "Arrange", keywords: "multi selection position", mobile: true, enabled: () => canArrangeSelection(2), run: () => arrangeSelection("align-bottom") },
+      { id: "distribute-horizontal", label: "Distribute selected nodes horizontally", shortLabel: "Space H", category: "Arrange", keywords: "multi selection equal spacing", mobile: true, enabled: () => canArrangeSelection(3), run: () => arrangeSelection("distribute-horizontal") },
+      { id: "distribute-vertical", label: "Distribute selected nodes vertically", shortLabel: "Space V", category: "Arrange", keywords: "multi selection equal spacing", mobile: true, enabled: () => canArrangeSelection(3), run: () => arrangeSelection("distribute-vertical") },
       { id: "review", label: "Review diagram quality", shortLabel: "Review", category: "Analyze", keywords: "lint cycle orphan duplicate missing label", mobile: true, enabled: () => Boolean(state.current), run: showDiagramReview },
       { id: "find-node", label: "Find and focus node", shortLabel: "Find", category: "Analyze", keywords: "navigate search locate jump", shortcut: "/", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: openNodeNavigator },
       { id: "fit", label: "Zoom to fit", shortLabel: "Fit", category: "View", keywords: "frame center canvas", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: zoomToFit },
@@ -1467,6 +1475,37 @@
     if (state.selected.type === "node") return [state.selected.key];
     if (state.selected.type === "nodes") return state.selected.keys;
     return [];
+  }
+
+  function canArrangeSelection(minimum) {
+    return !state.readOnly && selectedNodeKeys().length >= minimum;
+  }
+
+  function arrangeSelection(mode) {
+    if (!state.current || state.readOnly) return;
+    const arrangeNodes = globalThis.NuiGraphArrange?.arrangeNodes;
+    if (typeof arrangeNodes !== "function") {
+      toast("Selection arrangement is unavailable; reload the editor assets.", "error");
+      return;
+    }
+    const updates = arrangeNodes(state.current.nodes, selectedNodeKeys(), mode)
+      .filter((update) => typeof update?.key === "string" &&
+        Number.isFinite(update.x) && Number.isFinite(update.y));
+    if (!updates.length) {
+      toast("The selected nodes are already arranged.");
+      return;
+    }
+    pushHistory();
+    const byKey = new Map(updates.map((update) => [update.key, update]));
+    for (const node of state.current.nodes) {
+      const update = byKey.get(node.key);
+      if (!update) continue;
+      node.x = update.x;
+      node.y = update.y;
+    }
+    markDirty();
+    render();
+    toast(`${updates.length} node${updates.length === 1 ? "" : "s"} arranged.`);
   }
 
   function isNodeSelected(key) {

@@ -18,16 +18,31 @@
     document.head.appendChild(script);
   };
 
+  const attachArrange = () => {
+    if (globalThis.NuiGraphArrange) {
+      attachEditor();
+      return;
+    }
+    const arrange = document.createElement("script");
+    arrange.src = `/diagram-arrange.js${assetQuery}`;
+    arrange.defer = true;
+    arrange.onload = attachEditor;
+    // A missing optional engine must not prevent basic editing. Its commands
+    // remain visible but report that the release assets need to be reloaded.
+    arrange.onerror = attachEditor;
+    document.head.appendChild(arrange);
+  };
+
   if (globalThis.NuiGraphReview) {
-    attachEditor();
+    attachArrange();
   } else {
     const review = document.createElement("script");
     review.src = `/diagram-review.js${assetQuery}`;
     review.defer = true;
-    review.onload = attachEditor;
+    review.onload = attachArrange;
     // The editor remains usable if the optional review engine is unavailable;
     // its command reports that state instead of blocking the whole canvas.
-    review.onerror = attachEditor;
+    review.onerror = attachArrange;
     document.head.appendChild(review);
   }
 })();

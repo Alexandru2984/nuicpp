@@ -13,6 +13,7 @@ const SHELL = [
   asset("/styles.css"),
   asset("/app.js"),
   asset("/diagram-review.js"),
+  asset("/diagram-arrange.js"),
   asset("/editor.js"),
   asset("/offline.html"),
   asset("/offline.js"),
