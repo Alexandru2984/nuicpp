@@ -4,7 +4,7 @@ Order matters: reliability and privacy foundations come before collaboration and
 growth. Each item should ship as a small reviewed commit with tests, migration and
 rollback notes where applicable.
 
-## Completed locally through 2026-10-22
+## Completed locally through 2026-10-23
 
 - GitHub Actions build and all live integration/security suites against a
   disposable PostgreSQL 18 database; ShellCheck, Cppcheck and npm audit run in
@@ -44,6 +44,10 @@ rollback notes where applicable.
   latency, security, creation, readiness, storage and DB-pool signals, plus
   promtool-validated alert rules and response procedures. Live collector and
   Alertmanager wiring remains an operator step.
+- First incident-response tabletop with a timed SEV-1 credential-compromise and
+  data-access scenario, GDPR decision clock, evidence/recovery criteria and six
+  owned follow-up actions. The result is conditional until live paging and the
+  emergency maintenance deny are exercised.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -63,7 +67,6 @@ High risk remain open.
 - Wire the checked-in Prometheus scrape/rules to the host collector and a tested
   Alertmanager receiver. Backup freshness remains deferred with the offsite
   backup work and must not be represented by a fake success signal.
-- Perform and record the first incident-response tabletop.
 
 ## P1 — privacy, identity and trustworthy sharing
 

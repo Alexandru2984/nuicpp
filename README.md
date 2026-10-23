@@ -139,10 +139,10 @@ The build is clean under `-Wall -Wextra -Wpedantic`.
 ctest --test-dir build --output-on-failure
 ```
 
-Ten suites cover unit validation, frontend assets, the nginx candidate,
-Prometheus rules, real Chromium behavior, live security/API behavior, shared
-persistent rate limits, concurrent global quota enforcement, and
-migration-ledger integrity. The six
+Eleven suites cover unit validation, frontend assets, the nginx candidate,
+Prometheus rules, incident-runbook integrity, real Chromium behavior, live
+security/API behavior, shared persistent rate limits, concurrent global quota
+enforcement, and migration-ledger integrity. The six
 database-backed suites use
 a config with `APP_ENV=test` whose
 actual PostgreSQL database and login-role names both end in `_test`. Missing

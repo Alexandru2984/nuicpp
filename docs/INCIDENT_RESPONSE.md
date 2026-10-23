@@ -82,4 +82,6 @@ diagram bodies in status updates. Use stable incident IDs and aggregate counts.
 - Run a tabletop at least twice yearly and after any SEV-1 or material design
   change. Record the date and outcomes here or in the operations system.
 
-**Last tabletop:** not yet performed.
+**Last tabletop:** [2026-10-23 — NGS-TTX-2026-01](INCIDENT_TABLETOP_2026-10-23.md)
+(conditional pass; operational actions remain open). The next exercise is due by
+2027-04-23 or after a SEV-1 or material identity, sharing or deployment change.

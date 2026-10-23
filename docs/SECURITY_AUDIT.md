@@ -22,6 +22,10 @@ Aggregate Prometheus instrumentation and validated alert rules now cover the
 documented detection targets without exporting actor or diagram data. Detection
 remains ineffective until the host collector and a tested Alertmanager receiver
 are wired during an explicit operational change.
+The first incident-response tabletop produced a conditional pass: severity,
+evidence, containment, GDPR timing and recovery decisions were workable, while
+live paging, emergency traffic denial, log retention, breach inventory, admin
+revocation/MFA and key separation received named owners and due dates.
 
 ## Executive verdict
 
@@ -41,7 +45,7 @@ complete.
 ## Evidence snapshot
 
 - `main` was clean and three commits ahead of `origin/main` at assessment start.
-- Release build and 52 C++ tests passed. All ten CTest suites, including the six
+- Release build and 52 C++ tests passed. All eleven CTest suites, including the six
   live suites, passed against a disposable PostgreSQL 18 database with isolated
   `_test` identities. JavaScript syntax checks, ShellCheck and Cppcheck passed.
 - `npm audit --package-lock-only --audit-level=low` reported zero known
