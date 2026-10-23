@@ -56,6 +56,7 @@ ConnectionPool::Lease ConnectionPool::acquire() {
         // opening one the database may not have room for.
         if (!available_.wait_for(lock, std::chrono::seconds(5),
                                  [this] { return !idle_.empty() || outstanding_ < maxSize_; })) {
+            ++timeouts_;
             throw std::runtime_error("timed out waiting for a database connection");
         }
     }
@@ -75,6 +76,11 @@ void ConnectionPool::release(std::unique_ptr<pqxx::connection> conn) {
 std::size_t ConnectionPool::idleCount() {
     std::lock_guard<std::mutex> lock(mutex_);
     return idle_.size();
+}
+
+ConnectionPool::Stats ConnectionPool::stats() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return Stats{maxSize_, idle_.size(), outstanding_, timeouts_};
 }
 
 } // namespace nuigraph

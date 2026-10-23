@@ -253,6 +253,16 @@ std::string normalizedBaseUrl(std::string baseUrl) {
     return baseUrl;
 }
 
+bool isLoopbackAddress(const std::string& value) {
+    return value == "127.0.0.1" || value == "::1" || value == "::ffff:127.0.0.1";
+}
+
+bool isLocalMetricsRequest(const httplib::Request& req) {
+    const auto forwarded = req.get_header_value("X-Real-IP");
+    return forwarded.empty() ? isLoopbackAddress(req.remote_addr)
+                             : isLoopbackAddress(forwarded);
+}
+
 void replaceAll(std::string& value, const std::string& from, const std::string& to) {
     if (from.empty()) {
         return;
@@ -351,8 +361,9 @@ Diagram defaultDiagram() {
 
 } // namespace
 
-Routes::Routes(const Config& cfg, PostgresStorage& storage)
-    : cfg_(cfg), storage_(storage), assetVersion_(computeAssetVersion(cfg.projectRoot)) {}
+Routes::Routes(const Config& cfg, PostgresStorage& storage, Metrics& metrics)
+    : cfg_(cfg), storage_(storage), metrics_(metrics),
+      assetVersion_(computeAssetVersion(cfg.projectRoot)) {}
 
 // The vhost sets these too, but the app must not depend on a proxy staying
 // configured correctly to be safe. httplib keeps the first value for a header,
@@ -672,6 +683,7 @@ void Routes::sendDiagramJson(const httplib::Request& req, httplib::Response& res
 
 void Routes::logSecurityEvent(const httplib::Request& req, const httplib::Response& res,
                               const std::string& event, const std::string& outcome) const {
+    metrics_.recordSecurityEvent(event, outcome);
     std::string username;
     std::string actor = "anonymous";
     if (verifySession(req, &username)) {
@@ -729,6 +741,7 @@ void Routes::registerRoutes(httplib::Server& server) {
     server.Get("/ready", [this](const httplib::Request&, httplib::Response& res) {
         try {
             if (storage_.ping()) {
+                metrics_.recordReadiness(true);
                 sendJson(res, 200, {{"status", "ready"}, {"service", "nuigraph-studio"}});
                 return;
             }
@@ -736,7 +749,22 @@ void Routes::registerRoutes(httplib::Server& server) {
             // A dependency failure is expected operational state, not a reason
             // to disclose connection details or SQL errors to a public probe.
         }
+        metrics_.recordReadiness(false);
         sendJson(res, 503, {{"status", "unavailable"}, {"service", "nuigraph-studio"}});
+    });
+
+    server.Get("/metrics", [this](const httplib::Request& req, httplib::Response& res) {
+        res.set_header("Cache-Control", "no-store");
+        res.set_header("X-Robots-Tag", "noindex, nofollow, nosnippet");
+        if (!isLocalMetricsRequest(req)) {
+            // Behave as if the endpoint does not exist across the proxy trust
+            // boundary; nginx also denies it before proxying public traffic.
+            res.status = 404;
+            res.set_content("not found", "text/plain; charset=utf-8");
+            return;
+        }
+        res.set_content(metrics_.render(cfg_.frontendShell, storage_.operationalMetrics()),
+                        "text/plain; version=0.0.4; charset=utf-8");
     });
 
     server.Get("/robots.txt", [this](const httplib::Request&, httplib::Response& res) {
@@ -750,6 +778,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             "Disallow: /health\n"
             "Disallow: /live\n"
             "Disallow: /ready\n"
+            "Disallow: /metrics\n"
             "Disallow: /nui/\n"
             "Disallow: /offline.html\n"
             "Sitemap: " + normalizedBaseUrl(cfg_.baseUrl) + "/sitemap.xml\n";
@@ -971,6 +1000,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         }
         try {
             auto created = storage_.createDiagram(item->diagram, true, ownerHashForRequest(req));
+            metrics_.recordDiagramCreated("template");
             sendDiagramJson(req, res, 201, created);
         } catch (const std::exception& e) {
             sendStorageError(req, res, e, 400);
@@ -984,6 +1014,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         try {
             Diagram d = req.body.empty() ? defaultDiagram() : diagramFromJson(nlohmann::json::parse(req.body));
             auto created = storage_.createDiagram(d, false, ownerHashForRequest(req));
+            metrics_.recordDiagramCreated("blank");
             sendDiagramJson(req, res, 201, created);
         } catch (const std::exception& e) {
             sendStorageError(req, res, e, 400);
@@ -1065,6 +1096,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         if (!ensureCanRead(req, res, id, "diagram")) return;
         try {
             auto copy = storage_.duplicateDiagram(id, ownerHashForRequest(req));
+            metrics_.recordDiagramCreated("duplicate");
             sendDiagramJson(req, res, 201, copy);
         } catch (const std::exception& e) {
             sendStorageError(req, res, e, 404);
@@ -1163,6 +1195,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         }
         try {
             auto imported = storage_.createDiagram(diagramFromJson(nlohmann::json::parse(req.body)), true, ownerHashForRequest(req));
+            metrics_.recordDiagramCreated("import");
             sendDiagramJson(req, res, 201, imported);
         } catch (const std::exception& e) {
             sendStorageError(req, res, e, 400);

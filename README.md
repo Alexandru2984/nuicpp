@@ -11,6 +11,7 @@ admin account for maintenance.
 - **Security model:** [`docs/SECURITY.md`](docs/SECURITY.md)
 - **Security audit and threat model:** [`docs/SECURITY_AUDIT.md`](docs/SECURITY_AUDIT.md)
 - **Incident response:** [`docs/INCIDENT_RESPONSE.md`](docs/INCIDENT_RESPONSE.md)
+- **Monitoring and alert response:** [`docs/MONITORING.md`](docs/MONITORING.md)
 - **Delivery roadmap:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - **Deploy runbook:** [`docs/DEPLOY.md`](docs/DEPLOY.md)
 
@@ -73,6 +74,9 @@ admin account for maintenance.
   are explicitly excluded from indexing.
 - Separate `/live` process and PostgreSQL-backed `/ready` probes; `/health`
   remains a compatibility alias for liveness. Dependency errors are not exposed.
+- Loopback-only Prometheus telemetry for bounded HTTP/security/create, latency,
+  database-capacity and connection-pool signals, with validated alert rules and
+  an operator response runbook in [`docs/MONITORING.md`](docs/MONITORING.md).
 
 ### Security
 
@@ -135,9 +139,10 @@ The build is clean under `-Wall -Wextra -Wpedantic`.
 ctest --test-dir build --output-on-failure
 ```
 
-Nine suites cover unit validation, frontend assets, the nginx candidate, real
-Chromium behavior, live security/API behavior, shared persistent rate limits,
-concurrent global quota enforcement, and migration-ledger integrity. The six
+Ten suites cover unit validation, frontend assets, the nginx candidate,
+Prometheus rules, real Chromium behavior, live security/API behavior, shared
+persistent rate limits, concurrent global quota enforcement, and
+migration-ledger integrity. The six
 database-backed suites use
 a config with `APP_ENV=test` whose
 actual PostgreSQL database and login-role names both end in `_test`. Missing

@@ -3,6 +3,7 @@
 #include "config/Config.hpp"
 #include "storage/ConnectionPool.hpp"
 #include "domain/Diagram.hpp"
+#include "observability/Metrics.hpp"
 #include "validation/DiagramValidator.hpp"
 
 #include <nlohmann/json.hpp>
@@ -39,6 +40,7 @@ public:
     PostgresStorage(const Config& cfg, const DiagramValidator& validator);
 
     bool ping();
+    OperationalMetrics operationalMetrics();
     std::vector<nlohmann::json> listDiagrams(long limit, long offset);
     std::vector<nlohmann::json> listDiagramsForOwner(const std::string& ownerTokenHash, long limit, long offset);
     Diagram getDiagram(long id);

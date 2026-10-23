@@ -35,6 +35,11 @@ sudo nui-frontend/node_modules/.bin/playwright install-deps chromium
 Routine deploys only verify/download the browser binary in the unprivileged
 operator cache; they do not silently change host packages.
 
+Monitoring is not installed implicitly by application deploy. After reviewing
+the local-only trust boundary, wire the scrape and validated rules using
+[`MONITORING.md`](MONITORING.md), configure a real Alertmanager receiver, and
+send a test alert.
+
 The restart is safe under load: the service traps SIGTERM, stops accepting new
 connections, and drains in-flight requests before exiting, so a save in progress
 is not truncated. `journalctl` will show `stopped cleanly` before the unit goes

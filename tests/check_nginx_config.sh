@@ -39,7 +39,11 @@ require_count() {
 # log format.
 require_count "$VHOST" 'location ^~ /.well-known/acme-challenge/' 2
 require_text "$VHOST" "set \$nuicpp_origin_allowed \$from_cloudflare_origin;"
-require_count "$VHOST" "proxy_set_header X-Request-ID \$request_id;" 4
+require_count "$VHOST" "proxy_set_header X-Request-ID \$request_id;" 5
+require_text "$VHOST" 'location = /metrics {'
+require_text "$VHOST" 'allow 127.0.0.1;'
+require_text "$VHOST" 'allow ::1;'
+require_text "$VHOST" 'deny all;'
 require_text "$VHOST" 'access_log /var/log/nginx/nuicpp.access.log nuicpp_redacted;'
 require_text "$VHOST" 'ssl_certificate /etc/letsencrypt/live/nuicpp.micutu.com/fullchain.pem;'
 require_text "$VHOST" 'ssl_certificate_key /etc/letsencrypt/live/nuicpp.micutu.com/privkey.pem;'

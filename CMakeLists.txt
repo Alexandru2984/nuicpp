@@ -28,6 +28,7 @@ add_executable(nuigraph-studio
     src/App.cpp
     src/domain/Diagram.cpp
     src/domain/Templates.cpp
+    src/observability/Metrics.cpp
     src/config/Config.cpp
     src/ui/NuiApp.cpp
     src/validation/DiagramValidator.cpp
@@ -56,6 +57,7 @@ add_executable(nuigraph-tests
     tests/test_validation.cpp
     src/domain/Diagram.cpp
     src/domain/Templates.cpp
+    src/observability/Metrics.cpp
     src/config/Config.cpp
     src/ui/NuiApp.cpp
     src/validation/DiagramValidator.cpp
@@ -72,6 +74,7 @@ add_test(NAME nuigraph-validation COMMAND nuigraph-tests)
 add_test(NAME nuigraph-frontend COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_frontend.sh)
 add_test(NAME nuigraph-browser-e2e COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_browser_e2e.sh)
 add_test(NAME nuigraph-nginx-config COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_nginx_config.sh)
+add_test(NAME nuigraph-prometheus-rules COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_prometheus_rules.sh)
 add_test(NAME nuigraph-security-smoke COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_security_smoke.sh)
 add_test(NAME nuigraph-api-integration COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_api_integration.sh)
 add_test(NAME nuigraph-rate-limits COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_rate_limits.sh)
@@ -80,8 +83,10 @@ add_test(NAME nuigraph-migrations COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_m
 set_tests_properties(
     nuigraph-frontend
     nuigraph-nginx-config
+    nuigraph-prometheus-rules
     PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
+set_tests_properties(nuigraph-prometheus-rules PROPERTIES SKIP_RETURN_CODE 77)
 set_tests_properties(
     nuigraph-security-smoke
     nuigraph-browser-e2e

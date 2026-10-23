@@ -1,6 +1,7 @@
 #include "config/Config.hpp"
 #include "domain/Diagram.hpp"
 #include "domain/Templates.hpp"
+#include "observability/Metrics.hpp"
 #include "ui/NuiApp.hpp"
 #include "utils/Json.hpp"
 #include "utils/RateLimiter.hpp"
@@ -372,6 +373,43 @@ void testNuiShellRequiresACompleteRegularBundle() {
     fs::remove_all(root);
 }
 
+void testMetricsStayAggregateAndBounded() {
+    Metrics metrics;
+    metrics.observeHttp("GET", 200, 0.02);
+    metrics.observeHttp("PATCH", 503, 2.0);
+    metrics.recordSecurityEvent("admin_login", "failed");
+    metrics.recordSecurityEvent("attacker-controlled-label", "ignored");
+    metrics.recordDiagramCreated("import");
+    metrics.recordDiagramCreated("attacker-controlled-source");
+    metrics.recordReadiness(true);
+
+    OperationalMetrics operational;
+    operational.databaseUp = true;
+    operational.diagrams = 7;
+    operational.nodes = 21;
+    operational.databaseBytes = 4096;
+    operational.poolMax = 8;
+    operational.poolIdle = 3;
+    operational.poolOutstanding = 1;
+    operational.poolTimeouts = 2;
+
+    const auto body = metrics.render(FrontendShell::Server, operational);
+    require(body.find("nuigraph_build_info{frontend=\"server\"} 1") != std::string::npos,
+            "metrics should identify the selected shell");
+    require(body.find("method=\"GET\",status=\"2xx\"} 1") != std::string::npos,
+            "metrics should count successful GET requests");
+    require(body.find("method=\"OTHER\",status=\"5xx\"} 1") != std::string::npos,
+            "metrics should collapse unknown methods into a bounded label");
+    require(body.find("event=\"admin_login\",outcome=\"failed\"} 1") != std::string::npos,
+            "metrics should count known security outcomes");
+    require(body.find("source=\"import\"} 1") != std::string::npos,
+            "metrics should count successful import creations");
+    require(body.find("nuigraph_database_size_bytes 4096") != std::string::npos,
+            "metrics should include aggregate database size");
+    require(body.find("attacker-controlled") == std::string::npos,
+            "network-derived labels must never create metric cardinality");
+}
+
 // ===== New validation edge case tests =====
 
 void testEmptyTitleFails() {
@@ -723,6 +761,7 @@ int main() {
         testProductionConfigRequiresSafePathsAndHttps();
         testFrontendShellDefaultsAndRejectsUnknownModes();
         testNuiShellRequiresACompleteRegularBundle();
+        testMetricsStayAggregateAndBounded();
         // validation edge cases
         testEmptyTitleFails();
         testDuplicateNodeKeysFails();
@@ -758,6 +797,6 @@ int main() {
         std::cerr << "test failed: " << e.what() << '\n';
         return EXIT_FAILURE;
     }
-        std::cout << "nuigraph validation tests passed (51 tests)\n";
+        std::cout << "nuigraph validation tests passed (52 tests)\n";
     return EXIT_SUCCESS;
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config/Config.hpp"
+#include "observability/Metrics.hpp"
 #include "storage/PostgresStorage.hpp"
 
 #include <httplib.h>
@@ -10,7 +11,7 @@ namespace nuigraph {
 
 class Routes {
 public:
-    Routes(const Config& cfg, PostgresStorage& storage);
+    Routes(const Config& cfg, PostgresStorage& storage, Metrics& metrics);
     void registerRoutes(httplib::Server& server);
 
 private:
@@ -47,6 +48,7 @@ private:
 
     const Config& cfg_;
     PostgresStorage& storage_;
+    Metrics& metrics_;
     std::string assetVersion_;
 };
 

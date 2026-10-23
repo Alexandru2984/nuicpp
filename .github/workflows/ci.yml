@@ -50,6 +50,7 @@ jobs:
             nginx-core \
             nlohmann-json3-dev \
             postgresql-client \
+            prometheus \
             shellcheck
 
       - name: Check out pinned libpqxx

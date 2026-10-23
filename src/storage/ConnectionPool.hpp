@@ -2,6 +2,7 @@
 
 #include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <pqxx/pqxx>
@@ -23,6 +24,13 @@ namespace nuigraph {
 // pool doubles as a cap on how much of the database this service can occupy.
 class ConnectionPool {
 public:
+    struct Stats {
+        std::size_t max = 0;
+        std::size_t idle = 0;
+        std::size_t outstanding = 0;
+        std::uint64_t timeouts = 0;
+    };
+
     ConnectionPool(std::string url, std::size_t maxSize);
 
     // Borrowed connection. Returns itself to the pool when it goes out of
@@ -48,6 +56,7 @@ public:
     Lease acquire();
 
     std::size_t idleCount();
+    Stats stats();
 
 private:
     void release(std::unique_ptr<pqxx::connection> conn);
@@ -58,6 +67,7 @@ private:
     std::condition_variable available_;
     std::vector<std::unique_ptr<pqxx::connection>> idle_;
     std::size_t outstanding_ = 0;
+    std::uint64_t timeouts_ = 0;
 };
 
 } // namespace nuigraph

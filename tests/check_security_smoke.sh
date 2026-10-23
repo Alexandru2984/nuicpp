@@ -180,6 +180,52 @@ for probe in health live ready; do
   python3 -c 'import json,sys; assert json.loads(sys.argv[1])["status"] in {"live", "ready"}' "$probe_json"
 done
 
+metrics_headers="$TMP_DIR/metrics.headers"
+metrics_body="$(curl --noproxy '*' -fsS -D "$metrics_headers" \
+  "http://127.0.0.1:${PORT}/metrics")"
+for metric in \
+  nuigraph_build_info \
+  nuigraph_http_requests_total \
+  nuigraph_http_request_duration_seconds \
+  nuigraph_security_events_total \
+  nuigraph_diagram_creates_total \
+  nuigraph_database_up \
+  nuigraph_storage_capacity \
+  nuigraph_database_size_bytes \
+  nuigraph_db_pool_timeouts_total
+do
+  if ! grep -q "^# HELP ${metric}\|^${metric}" <<<"$metrics_body"; then
+    echo "expected aggregate metric $metric" >&2
+    exit 1
+  fi
+done
+if ! grep -q '^nuigraph_database_up 1$' <<<"$metrics_body"; then
+  echo "metrics scrape did not confirm a working database connection" >&2
+  exit 1
+fi
+if ! grep -Eq '^nuigraph_storage_capacity\{kind="diagrams"\} [1-9][0-9]*$' <<<"$metrics_body"; then
+  echo "metrics scrape did not expose the configured diagram capacity" >&2
+  exit 1
+fi
+if ! grep -qi '^content-type: text/plain; version=0.0.4; charset=utf-8' "$metrics_headers"; then
+  echo "metrics endpoint returned the wrong content type" >&2
+  exit 1
+fi
+if ! grep -qi '^cache-control: no-store' "$metrics_headers"; then
+  echo "metrics endpoint must not be cached" >&2
+  exit 1
+fi
+if grep -Eq 'guest_[0-9a-f]+|not-a-real-share|ci_admin' <<<"$metrics_body"; then
+  echo "metrics endpoint leaked actor or bearer data" >&2
+  exit 1
+fi
+status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' \
+  -H 'X-Real-IP: 198.51.100.20' "http://127.0.0.1:${PORT}/metrics")"
+if [[ "$status" != "404" ]]; then
+  echo "expected a proxied public metrics request to be hidden, got $status" >&2
+  exit 1
+fi
+
 headers="$(curl --noproxy '*' -sS -D - -o /dev/null "http://127.0.0.1:${PORT}/live")"
 for header in \
   "content-security-policy" \
@@ -218,7 +264,7 @@ for marker in 'name="description"' 'rel="canonical"' 'property="og:title"' 'name
 done
 
 robots="$(curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/robots.txt")"
-for rule in 'Disallow: /api/' 'Disallow: /d/' 'Disallow: /login' 'Sitemap: http://127.0.0.1:'; do
+for rule in 'Disallow: /api/' 'Disallow: /d/' 'Disallow: /login' 'Disallow: /metrics' 'Sitemap: http://127.0.0.1:'; do
   if ! grep -q "$rule" <<<"$robots"; then
     echo "expected robots.txt rule: $rule" >&2
     exit 1

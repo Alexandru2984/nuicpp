@@ -2,6 +2,7 @@
 #include "utils/Security.hpp"
 
 #include <atomic>
+#include <chrono>
 #include <csignal>
 #include <iostream>
 
@@ -22,9 +23,10 @@ extern "C" void handleStopSignal(int) {
 
 App::App(Config cfg)
     : cfg_(std::move(cfg)),
+      metrics_(),
       validator_(cfg_),
       storage_(cfg_, validator_),
-      routes_(cfg_, storage_) {}
+      routes_(cfg_, storage_, metrics_) {}
 
 int App::run() {
     if (!storage_.ping()) {
@@ -67,13 +69,19 @@ int App::run() {
 
     // One line per request. There was no access log at all, so abuse could not
     // be investigated after the fact from anything the service itself recorded.
-    server.set_logger([](const httplib::Request& req, const httplib::Response& res) {
+    server.set_logger([this](const httplib::Request& req, const httplib::Response& res) {
         // Behind nginx this is the visitor address; a direct caller has no such
         // header, so fall back to the peer rather than logging a blank field.
         auto ip = req.get_header_value("X-Real-IP");
         if (ip.empty()) {
             ip = req.remote_addr;
         }
+        double durationSeconds = 0.0;
+        if (req.start_time_ != (std::chrono::steady_clock::time_point::min)()) {
+            durationSeconds = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - req.start_time_).count();
+        }
+        metrics_.observeHttp(req.method, res.status, durationSeconds);
         std::cout << logTimestamp()
                   << " level=info method=" << sanitizeLogField(req.method)
                   << " path=" << sanitizeLogField(redactRequestPath(req.path))

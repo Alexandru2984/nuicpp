@@ -18,6 +18,10 @@ worker replacement, cache isolation and responsive phone geometry.
 The server-rendered shell is now the explicit production default; selecting Nui
 fails closed on an incomplete or symlinked bundle, and the default CSP no longer
 grants WebAssembly code generation.
+Aggregate Prometheus instrumentation and validated alert rules now cover the
+documented detection targets without exporting actor or diagram data. Detection
+remains ineffective until the host collector and a tested Alertmanager receiver
+are wired during an explicit operational change.
 
 ## Executive verdict
 
@@ -37,7 +41,7 @@ complete.
 ## Evidence snapshot
 
 - `main` was clean and three commits ahead of `origin/main` at assessment start.
-- Release build and 51 C++ tests passed. All nine CTest suites, including the six
+- Release build and 52 C++ tests passed. All ten CTest suites, including the six
   live suites, passed against a disposable PostgreSQL 18 database with isolated
   `_test` identities. JavaScript syntax checks, ShellCheck and Cppcheck passed.
 - `npm audit --package-lock-only --audit-level=low` reported zero known
@@ -142,9 +146,10 @@ costs.
    `/api/diagrams/slug/{slug}`. Historical records and nginx error messages may
    still contain capabilities; restrict retention/access and rotate exposed
    links after the share-lifecycle feature lands.
-3. **Detection gap.** Nearly 20,000 journal lines were present, but there are no
-   alert rules or on-call target. A quiet disclosure has an effectively unlimited
-   MTTD.
+3. **Detection gap.** Bounded metrics, validated alert rules and response steps
+   now exist locally, but no verified collector/Alertmanager receiver is wired
+   and there is no on-call rota. Until installation and a test alert, a quiet
+   disclosure still has an effectively unlimited MTTD.
 4. **Configuration drift.** The checked-in vhost contains the live ACME handling
    and now passes a self-contained `nginx -t` plus static security invariants in
    CTest/CI. Production remains drifted until that candidate is installed and

@@ -40,6 +40,10 @@ rollback notes where applicable.
 - Explicit frontend-shell selection: the complete server-rendered path is the
   production default with a tighter CSP, while Nui mode fails configuration and
   release checks unless its HTML, loader and non-symlink WASM artifact exist.
+- Loopback-only, no-store Prometheus telemetry with bounded labels for HTTP,
+  latency, security, creation, readiness, storage and DB-pool signals, plus
+  promtool-validated alert rules and response procedures. Live collector and
+  Alertmanager wiring remains an operator step.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -56,8 +60,9 @@ High risk remain open.
 - Correct the account-level Cloudflare cache rule and purge stale objects;
   content-versioned URLs, origin headers and service-worker updates are now
   deterministic unless a Cache Rule overrides them.
-- Add monitoring/alerts for readiness, 5xx, latency, DB pool timeouts, create
-  rates, disk growth, auth failures, restarts, certificate expiry and backups.
+- Wire the checked-in Prometheus scrape/rules to the host collector and a tested
+  Alertmanager receiver. Backup freshness remains deferred with the offsite
+  backup work and must not be represented by a fake success signal.
 - Perform and record the first incident-response tabletop.
 
 ## P1 — privacy, identity and trustworthy sharing

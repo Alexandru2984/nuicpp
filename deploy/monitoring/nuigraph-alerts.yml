@@ -1,0 +1,183 @@
+groups:
+  - name: nuigraph.availability
+    interval: 30s
+    rules:
+      - alert: NuiGraphTargetDown
+        expr: up{job="nuigraph"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: NuiGraph metrics target is down
+          runbook: docs/MONITORING.md#target-or-database-down
+
+      - alert: NuiGraphDatabaseDown
+        expr: nuigraph_database_up{job="nuigraph"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: NuiGraph cannot collect PostgreSQL telemetry
+          runbook: docs/MONITORING.md#target-or-database-down
+
+      - alert: NuiGraphReadinessFailed
+        expr: |
+          nuigraph_readiness_last_result{job="nuigraph"} == 0
+          and on ()
+          sum(nuigraph_readiness_checks_total{job="nuigraph"}) > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: NuiGraph readiness is failing
+          runbook: docs/MONITORING.md#target-or-database-down
+
+      - alert: NuiGraphHighFiveXxRate
+        expr: |
+          (
+            sum(rate(nuigraph_http_requests_total{job="nuigraph",status="5xx"}[5m]))
+            /
+            clamp_min(sum(rate(nuigraph_http_requests_total{job="nuigraph"}[5m])), 0.001)
+          ) > 0.02
+          and
+          sum(increase(nuigraph_http_requests_total{job="nuigraph",status="5xx"}[5m])) >= 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: NuiGraph HTTP 5xx ratio exceeds 2 percent
+          runbook: docs/MONITORING.md#elevated-errors-or-latency
+
+      - alert: NuiGraphHighP95Latency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(nuigraph_http_request_duration_seconds_bucket{job="nuigraph"}[10m]))
+          ) > 0.75
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: NuiGraph p95 latency exceeds 750 milliseconds
+          runbook: docs/MONITORING.md#elevated-errors-or-latency
+
+  - name: nuigraph.capacity-and-abuse
+    interval: 30s
+    rules:
+      - alert: NuiGraphDatabasePoolTimeout
+        expr: increase(nuigraph_db_pool_timeouts_total{job="nuigraph"}[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: A request timed out waiting for a NuiGraph DB connection
+          runbook: docs/MONITORING.md#database-pool-pressure
+
+      - alert: NuiGraphCreationSpike
+        expr: sum(increase(nuigraph_diagram_creates_total{job="nuigraph"}[10m])) > 30
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: NuiGraph diagram creation rate is unusually high
+          runbook: docs/MONITORING.md#abuse-or-capacity-pressure
+
+      - alert: NuiGraphAdminLoginAttack
+        expr: |
+          sum(increase(nuigraph_security_events_total{
+            job="nuigraph",event="admin_login",outcome=~"failed|rate_limited"
+          }[10m])) >= 5
+        labels:
+          severity: critical
+        annotations:
+          summary: Repeated NuiGraph administrator login failures
+          runbook: docs/MONITORING.md#authentication-attack
+
+      - alert: NuiGraphAdminLoginSucceeded
+        expr: |
+          increase(nuigraph_security_events_total{
+            job="nuigraph",event="admin_login",outcome="succeeded"
+          }[5m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: A NuiGraph administrator login succeeded
+          runbook: docs/MONITORING.md#authentication-attack
+
+      - alert: NuiGraphRateLimitStorageFailure
+        expr: |
+          increase(nuigraph_security_events_total{
+            job="nuigraph",event="rate_limit_storage",outcome="error"
+          }[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: NuiGraph persistent rate-limit storage failed
+          runbook: docs/MONITORING.md#database-pool-pressure
+
+      - alert: NuiGraphDiagramCapacityHigh
+        expr: |
+          nuigraph_storage_objects{job="nuigraph",kind="diagrams"}
+          / ignoring(kind)
+          nuigraph_storage_capacity{job="nuigraph",kind="diagrams"} > 0.8
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: NuiGraph diagram capacity is above 80 percent
+          runbook: docs/MONITORING.md#abuse-or-capacity-pressure
+
+      - alert: NuiGraphLimiterCapacityHigh
+        expr: |
+          nuigraph_storage_objects{job="nuigraph",kind="rate_limit_buckets"}
+          / ignoring(kind)
+          nuigraph_storage_capacity{job="nuigraph",kind="rate_limit_buckets"} > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: NuiGraph rate-limit identity capacity is above 80 percent
+          runbook: docs/MONITORING.md#abuse-or-capacity-pressure
+
+      - alert: NuiGraphDatabaseGrowthHigh
+        expr: deriv(nuigraph_database_size_bytes{job="nuigraph"}[1h]) > 2913
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: NuiGraph database is growing faster than 10 MiB per hour
+          runbook: docs/MONITORING.md#abuse-or-capacity-pressure
+
+  - name: nuigraph.host-and-tls
+    interval: 1m
+    rules:
+      - alert: NuiGraphUnexpectedRestart
+        expr: changes(nuigraph_process_start_time_seconds{job="nuigraph"}[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: NuiGraph restarted in the last 15 minutes
+          runbook: docs/MONITORING.md#unexpected-restart
+
+      - alert: NuiGraphCertificateExpiresSoon
+        expr: |
+          probe_ssl_earliest_cert_expiry{
+            job="blackbox-https",instance="https://nuicpp.micutu.com"
+          } - time() < 1209600
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: NuiGraph TLS certificate expires in under 14 days
+          runbook: docs/MONITORING.md#certificate-expiry
+
+      - alert: NuiGraphHostDiskLow
+        expr: |
+          node_filesystem_avail_bytes{job="node",mountpoint="/",fstype!~"tmpfs|overlay"}
+          /
+          node_filesystem_size_bytes{job="node",mountpoint="/",fstype!~"tmpfs|overlay"} < 0.15
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: NuiGraph host root filesystem has under 15 percent free
+          runbook: docs/MONITORING.md#host-disk-pressure

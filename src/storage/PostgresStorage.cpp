@@ -80,6 +80,47 @@ bool PostgresStorage::ping() {
     return !result.empty();
 }
 
+OperationalMetrics PostgresStorage::operationalMetrics() {
+    OperationalMetrics metrics;
+    metrics.diagramCapacity = static_cast<std::uint64_t>(cfg_.maxDiagramsTotal);
+    metrics.rateLimitBucketCapacity = static_cast<std::uint64_t>(kMaxPersistentRateLimitKeys);
+    try {
+        {
+            auto conn = pool_.acquire();
+            pqxx::read_transaction tx(conn.get());
+            const auto row = tx.exec(R"SQL(
+                SELECT
+                    (SELECT count(*) FROM diagrams) AS diagrams,
+                    COALESCE((SELECT n_live_tup FROM pg_stat_user_tables
+                              WHERE schemaname='public' AND relname='nodes'), 0) AS nodes,
+                    COALESCE((SELECT n_live_tup FROM pg_stat_user_tables
+                              WHERE schemaname='public' AND relname='edges'), 0) AS edges,
+                    COALESCE((SELECT n_live_tup FROM pg_stat_user_tables
+                              WHERE schemaname='public' AND relname='diagram_versions'), 0) AS versions,
+                    (SELECT count(*) FROM rate_limit_buckets) AS rate_limit_buckets,
+                    pg_database_size(current_database()) AS database_bytes
+            )SQL")[0];
+            metrics.diagrams = row["diagrams"].as<std::uint64_t>();
+            metrics.nodes = row["nodes"].as<std::uint64_t>();
+            metrics.edges = row["edges"].as<std::uint64_t>();
+            metrics.versions = row["versions"].as<std::uint64_t>();
+            metrics.activeRateLimitBuckets = row["rate_limit_buckets"].as<std::uint64_t>();
+            metrics.databaseBytes = row["database_bytes"].as<std::uint64_t>();
+            metrics.databaseUp = true;
+        }
+    } catch (const std::exception&) {
+        // Metrics must remain available during a database outage so the outage
+        // itself is observable. The public response never includes DB errors.
+    }
+
+    const auto pool = pool_.stats();
+    metrics.poolMax = pool.max;
+    metrics.poolIdle = pool.idle;
+    metrics.poolOutstanding = pool.outstanding;
+    metrics.poolTimeouts = pool.timeouts;
+    return metrics;
+}
+
 std::string PostgresStorage::uniqueSlug(pqxx::work& tx, const std::string& title) {
     auto base = slugBase(title);
     // Share slugs are bearer capabilities. Use 128 random bits so their margin

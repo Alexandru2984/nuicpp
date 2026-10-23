@@ -318,6 +318,11 @@ documented in `DEPLOY.md`.
   response enters Cache Storage, performs an offline navigation, and exercises
   both desktop and coarse-pointer phone layouts. It uses the same isolated-test
   database guard as the live API suites.
+- `/metrics` accepts loopback collectors only, is independently denied to public
+  clients by nginx, and exports fixed-label aggregate telemetry without actors,
+  request IDs, share capabilities or diagram content. It stays readable during
+  a database outage with `nuigraph_database_up 0`, so loss of the dependency is
+  itself observable. Alert rules and response steps live in `MONITORING.md`.
 - Schema migrations are serialised and transactional. An owner-only ledger
   records each filename and SHA-256 checksum; an applied file that changes makes
   deploy fail rather than silently rewriting schema history.
