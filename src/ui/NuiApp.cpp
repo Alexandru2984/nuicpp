@@ -101,7 +101,7 @@ std::string renderEditorPage(const std::string& username, const std::string& bas
       <div class="top-actions">
         <button id="new-diagram" title="New diagram">New</button>
         <button id="load-sample" title="Load sample architecture">Sample</button>
-        <button id="share-diagram" title="Copy share link">Share</button>
+        <button id="share-diagram" title="Manage sharing">Share</button>
         <button id="save-diagram" title="Save">Save</button>
         <button id="undo" title="Undo">Undo</button>
         <button id="redo" title="Redo">Redo</button>
@@ -207,7 +207,7 @@ std::string renderDocsPage(const std::string& baseUrl, const std::string& assetV
   <main class="docs">
     <a href="/">Back to editor</a>
     <h1>NuiGraph Studio</h1>
-    <p>NuiGraph Studio is a C++ powered graph and diagram editor for flowcharts, architecture maps, service graphs, and node-link diagrams. Public share links open read-only views for other visitors, who can fork a diagram into their own session.</p>
+    <p>NuiGraph Studio is a C++ powered graph and diagram editor for flowcharts, architecture maps, service graphs, and node-link diagrams. Diagrams start private. Owners can enable an unguessable read-only link, rotate it, or disable it immediately; visitors can fork an active shared diagram into their own session.</p>
     <h2>Canvas Controls</h2>
     <p>Select nodes and edges with the Select tool. Shift-click nodes for basic multi-select, or drag on empty canvas to rubber-band everything the band touches; hold Shift while dragging to add to the current selection instead of replacing it. Drag nodes to move them; edges and centres latch onto nearby nodes and a guide line shows what lined up. A single selected node gets eight resize handles; the opposite edge stays anchored and sizes are held between 72x48 and 600x400, the same range the server enforces. Use the Node tool to create nodes, Edge to connect two nodes, and Pan or middle mouse drag to move the canvas. Delete removes the selected object. Ctrl+K (or Cmd+K) opens the searchable command palette; Ctrl+S saves, Ctrl+C/Ctrl+V copy and paste selected nodes, Ctrl+Z/Ctrl+Y undo and redo, and Esc closes transient UI or clears selection. Zoom to fit, Snap, Layout, SVG, PNG, Mermaid and Sample are available from the palette. Diagram Review checks structure locally in the browser for orphan nodes, invalid or duplicate edges, missing titles or labels, self-loops and directed cycles; Focus centres the affected object. On phones a compact bottom bar keeps the canvas large; choose Customize mobile action bar from the palette to pin up to two preferred actions. Unsaved browser drafts are stored locally and can be restored when reopening the same diagram.</p>
     <h2>Node Types</h2>
@@ -231,6 +231,8 @@ GET /api/diagrams
 POST /api/diagrams
 GET /api/diagrams/{id}
 GET /api/diagrams/slug/{slug}
+POST /api/diagrams/slug/{slug}/fork
+POST /api/diagrams/{id}/sharing
 PUT /api/diagrams/{id}
 DELETE /api/diagrams/{id}
 POST /api/diagrams/{id}/duplicate

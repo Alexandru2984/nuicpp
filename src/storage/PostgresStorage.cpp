@@ -53,10 +53,12 @@ std::string randomHex(std::size_t bytes) {
 }
 
 nlohmann::json diagramSummaryJson(const pqxx::row& row) {
+    const auto sharingEnabled = row["sharing_enabled"].as<bool>();
     return {
         {"id", row["id"].as<long>()},
         {"title", rowString(row, "title")},
-        {"slug", rowString(row, "slug")},
+        {"slug", sharingEnabled ? rowString(row, "slug") : ""},
+        {"sharing_enabled", sharingEnabled},
         {"description", rowString(row, "description")},
         {"created_at", rowString(row, "created_at")},
         {"updated_at", rowString(row, "updated_at")},
@@ -141,7 +143,7 @@ std::vector<nlohmann::json> PostgresStorage::listDiagrams(long limit, long offse
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
     auto rows = tx.exec(R"SQL(
-        SELECT d.id, d.title, d.slug, d.description, d.revision,
+        SELECT d.id, d.title, d.slug, d.description, d.revision, d.sharing_enabled,
                to_char(d.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
                to_char(d.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS updated_at,
                (SELECT count(*) FROM nodes n WHERE n.diagram_id=d.id) AS node_count,
@@ -165,7 +167,7 @@ std::vector<nlohmann::json> PostgresStorage::listDiagramsForOwner(const std::str
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
     auto rows = tx.exec(R"SQL(
-        SELECT d.id, d.title, d.slug, d.description, d.revision,
+        SELECT d.id, d.title, d.slug, d.description, d.revision, d.sharing_enabled,
                to_char(d.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
                to_char(d.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS updated_at,
                (SELECT count(*) FROM nodes n WHERE n.diagram_id=d.id) AS node_count,
@@ -194,13 +196,24 @@ Diagram PostgresStorage::getDiagram(long id) {
 Diagram PostgresStorage::getDiagramBySlug(const std::string& slug) {
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
-    auto rows = tx.exec("SELECT id FROM diagrams WHERE slug=$1", pqxx::params{slug});
+    auto rows = tx.exec(
+        "SELECT id FROM diagrams WHERE slug=$1 AND sharing_enabled=true",
+        pqxx::params{slug});
     if (rows.empty()) {
         throw std::runtime_error("diagram not found");
     }
     auto diagram = getDiagram(tx, rows[0]["id"].as<long>());
     tx.commit();
     return diagram;
+}
+
+bool PostgresStorage::activeShareExists(const std::string& slug) {
+    auto conn = pool_.acquire();
+    pqxx::read_transaction tx(conn.get());
+    const auto rows = tx.exec(
+        "SELECT 1 FROM diagrams WHERE slug=$1 AND sharing_enabled=true",
+        pqxx::params{slug});
+    return !rows.empty();
 }
 
 std::string PostgresStorage::ownerHashForDiagram(long id) {
@@ -310,7 +323,7 @@ void PostgresStorage::clearRateLimit(const std::string& bucketKey) {
 
 Diagram PostgresStorage::getDiagram(pqxx::work& tx, long id) {
     auto rows = tx.exec(R"SQL(
-        SELECT id, title, slug, description, revision,
+        SELECT id, title, slug, description, revision, sharing_enabled,
                to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
                to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS updated_at
         FROM diagrams WHERE id=$1
@@ -327,6 +340,7 @@ Diagram PostgresStorage::getDiagram(pqxx::work& tx, long id) {
     diagram.createdAt = rowString(d, "created_at");
     diagram.updatedAt = rowString(d, "updated_at");
     diagram.revision = d["revision"].as<long>();
+    diagram.sharingEnabled = d["sharing_enabled"].as<bool>();
 
     auto nodeRows = tx.exec(R"SQL(
         SELECT node_key, type, title, x, y, width, height, color, metadata_json::text
@@ -463,6 +477,57 @@ Diagram PostgresStorage::updateDiagram(long id, const Diagram& input, const std:
     return getDiagram(id);
 }
 
+Diagram PostgresStorage::updateSharing(long id, ShareAction action, long expectedRevision) {
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
+    const auto rows = tx.exec(R"SQL(
+        SELECT title, sharing_enabled, revision
+        FROM diagrams
+        WHERE id=$1
+        FOR UPDATE
+    )SQL", pqxx::params{id});
+    if (rows.empty()) {
+        throw std::runtime_error("diagram not found");
+    }
+
+    const auto currentRevision = rows[0]["revision"].as<long>();
+    if (currentRevision != expectedRevision) {
+        throw DiagramRevisionConflict(
+            currentRevision,
+            "diagram changed since it was opened; reload before changing sharing");
+    }
+    const auto currentlyEnabled = rows[0]["sharing_enabled"].as<bool>();
+
+    if (action == ShareAction::Disable) {
+        if (!currentlyEnabled) {
+            throw std::invalid_argument("sharing is already disabled");
+        }
+        tx.exec(R"SQL(
+            UPDATE diagrams
+            SET sharing_enabled=false, updated_at=now(), revision=revision+1
+            WHERE id=$1
+        )SQL", pqxx::params{id});
+    } else {
+        if (action == ShareAction::Enable && currentlyEnabled) {
+            throw std::invalid_argument("sharing is already enabled");
+        }
+        if (action == ShareAction::Rotate && !currentlyEnabled) {
+            throw std::invalid_argument("cannot rotate a disabled share link");
+        }
+        // Enabling also rotates. A URL copied before revocation must never
+        // become valid again merely because sharing was re-enabled later.
+        const auto slug = uniqueSlug(tx, rowString(rows[0], "title"));
+        tx.exec(R"SQL(
+            UPDATE diagrams
+            SET slug=$1, sharing_enabled=true, updated_at=now(), revision=revision+1
+            WHERE id=$2
+        )SQL", pqxx::params{slug, id});
+    }
+
+    tx.commit();
+    return getDiagram(id);
+}
+
 void PostgresStorage::deleteDiagram(long id, long expectedRevision) {
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
@@ -486,6 +551,16 @@ Diagram PostgresStorage::duplicateDiagram(long id, const std::string& ownerToken
     source.id = 0;
     source.title += " Copy";
     source.slug.clear();
+    return createDiagram(source, false, ownerTokenHash);
+}
+
+Diagram PostgresStorage::forkDiagramBySlug(const std::string& slug,
+                                           const std::string& ownerTokenHash) {
+    auto source = getDiagramBySlug(slug);
+    source.id = 0;
+    source.title += " Copy";
+    source.slug.clear();
+    source.sharingEnabled = false;
     return createDiagram(source, false, ownerTokenHash);
 }
 

@@ -37,6 +37,11 @@ remain open.
 Architecture review now executes entirely in the browser with no external data
 flow. Its linear, non-recursive graph traversal is covered beyond the configured
 node limit, and all finding text is rendered as text rather than markup.
+New diagrams are now private by default. Owners explicitly enable, rotate or
+disable 128-bit bearer links through CSRF-protected, ETag-conditional endpoints;
+revoked routes return `404`, re-enable never revives an old token, and lifecycle
+events remain redacted. Existing links stay enabled through migration for
+compatibility, and production retains the old behavior until deployment.
 
 ## Executive verdict
 
@@ -48,9 +53,9 @@ public ingress, and a heavily sandboxed systemd unit.
 
 The largest residual risks are operational and architectural rather than a single
 critical exploit. The global row ceiling can still be filled to deny new
-creations, historical and error logs may retain bearer share identifiers, there
-is no alerting or NuiGraph-specific backup/restore evidence, and sharing is
-always-on. Do not expand public usage until the P0 controls in `ROADMAP.md` are
+creations, historical and error logs may retain bearer share identifiers, and
+there is no alerting or NuiGraph-specific backup/restore evidence. Do not expand
+public usage until the P0 controls in `ROADMAP.md` are
 complete.
 
 ## Evidence snapshot
@@ -104,7 +109,7 @@ complete.
 | Rank | STRIDE | Scenario | Likelihood | Impact | Existing controls | Required treatment |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Denial of service | An attacker rotates guest cookies and source addresses, fills the global row or active limiter-key allowance, creates large diagrams/snapshots, or saturates DB workers/storage. The row ceiling does not bound bytes. | High | Medium | Cloudflare/nginx limits, bounded shared GCRA buckets, payload caps, pool cap, atomic per-session and global row quotas | Logical-byte budget and cleanup; Turnstile for suspicious creation; storage, limiter-capacity and latency alerts |
-| 2 | Information disclosure | App, DB, backups, journals, or bearer-link logs expose private diagram content. Every diagram receives a share capability even before its owner intentionally shares it. | Medium | High | Random slugs, owner checks, least-privilege DB role, CSP, origin guard | Opt-in sharing with rotate/revoke; 128-bit tokens; redact tokens; encrypted and access-controlled backups; retention policy |
+| 2 | Information disclosure | App, DB, backups, journals, or an enabled bearer link expose private diagram content. Legacy links stay active until deliberately revoked. | Medium | High | Private-by-default creation, explicit rotate/revoke, 128-bit slugs, owner checks, least-privilege DB role, CSP, origin guard | Deploy the lifecycle change; review legacy links; encrypted and access-controlled backups; retention policy |
 | 3 | Spoofing / elevation | Theft or forgery of the single admin session grants access to all diagrams. Stateless sessions have no individual revocation and one secret also derives guest ownership. | Low | High | HMAC cookies, Secure/HttpOnly/SameSite, PBKDF2, login throttles | `__Host-` cookie; server-side admin session revocation; MFA/passkey; split signing and ownership keys; alert on admin login |
 | 4 | Tampering | Concurrent editors attempt to overwrite, delete or restore over newer work. | Low | Medium | Atomic revision increments, strong ETags, mandatory `If-Match`, `412` rejection, bounded history and local draft preservation | Add a merge/recovery UI before real-time collaboration |
 | 5 | Repudiation | A shared admin credential prevents attribution to one person, and local logs can be altered after host compromise. | Medium | Medium | Correlated nginx/app request IDs; structured actor-class login/share/auth/CSRF/quota/storage events; redacted routes | Central/tamper-resistant audit storage, retention/access policy, individual admin identities and alerts |
@@ -144,9 +149,10 @@ costs.
    restore drill was found. A database or operator failure can permanently remove
    every diagram. Add encrypted backups, retention, off-host replication, restore
    tests and ownership for failed jobs.
-2. **Sharing is always-on and bearer-only.** Every diagram gets a share slug on
-   creation. There is no explicit publish state, revocation or token rotation.
-   Make diagrams private by default and expose a deliberate share lifecycle.
+2. **Sharing was always-on and bearer-only (remediated locally).** New diagrams
+   are private; enable/rotate/revoke are owner-only, CSRF-protected and
+   revision-conditional. Deployment and a one-time review of intentionally
+   preserved legacy links remain required before closing the finding.
 
 ### Medium
 
@@ -159,8 +165,8 @@ costs.
 2. **Bearer capabilities in historical/error logs.** Application and dedicated
    nginx access logging now redact `/d/{slug}` and
    `/api/diagrams/slug/{slug}`. Historical records and nginx error messages may
-   still contain capabilities; restrict retention/access and rotate exposed
-   links after the share-lifecycle feature lands.
+   still contain capabilities; restrict retention/access and rotate legacy
+   links whose exposure cannot be ruled out.
 3. **Detection gap.** Bounded metrics, validated alert rules and response steps
    now exist locally, but no verified collector/Alertmanager receiver is wired
    and there is no on-call rota. Until installation and a test alert, a quiet

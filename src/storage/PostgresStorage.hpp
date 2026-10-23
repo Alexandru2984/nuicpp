@@ -35,6 +35,12 @@ private:
     long currentRevision_;
 };
 
+enum class ShareAction {
+    Enable,
+    Disable,
+    Rotate
+};
+
 class PostgresStorage {
 public:
     PostgresStorage(const Config& cfg, const DiagramValidator& validator);
@@ -45,6 +51,7 @@ public:
     std::vector<nlohmann::json> listDiagramsForOwner(const std::string& ownerTokenHash, long limit, long offset);
     Diagram getDiagram(long id);
     Diagram getDiagramBySlug(const std::string& slug);
+    bool activeShareExists(const std::string& slug);
     std::string ownerHashForDiagram(long id);
     long countDiagrams();
     long countDiagramsForOwner(const std::string& ownerTokenHash);
@@ -54,8 +61,10 @@ public:
     Diagram createDiagram(const Diagram& input, bool importMode, const std::string& ownerTokenHash = "");
     Diagram updateDiagram(long id, const Diagram& input, const std::string& note,
                           bool importMode, long expectedRevision);
+    Diagram updateSharing(long id, ShareAction action, long expectedRevision);
     void deleteDiagram(long id, long expectedRevision);
     Diagram duplicateDiagram(long id, const std::string& ownerTokenHash = "");
+    Diagram forkDiagramBySlug(const std::string& slug, const std::string& ownerTokenHash);
     std::vector<VersionInfo> listVersions(long diagramId);
     VersionInfo createVersion(long diagramId, const std::string& note);
     Diagram getVersion(long diagramId, long versionId);

@@ -47,6 +47,7 @@ nlohmann::json diagramToJson(const Diagram& diagram) {
         {"created_at", diagram.createdAt},
         {"updated_at", diagram.updatedAt},
         {"revision", diagram.revision},
+        {"sharing_enabled", diagram.sharingEnabled},
         {"nodes", nodes},
         {"edges", edges}
     };
@@ -85,6 +86,7 @@ Diagram diagramFromJson(const nlohmann::json& value) {
     diagram.slug = value.value("slug", "");
     diagram.description = value.value("description", "");
     diagram.revision = value.value("revision", 0L);
+    diagram.sharingEnabled = value.value("sharing_enabled", false);
     if (!value.contains("nodes") || !value["nodes"].is_array() || !value.contains("edges") || !value["edges"].is_array()) {
         throw std::runtime_error("diagram JSON must include nodes and edges arrays");
     }

@@ -96,6 +96,13 @@ own_json="$(curl --noproxy '*' -fsS -b "$COOKIE_JAR" \
   -X POST -d "{\"title\":\"${TEST_TITLE_PREFIX}own\",\"description\":\"\",\"nodes\":[],\"edges\":[]}" \
   "http://127.0.0.1:${PORT}/api/diagrams")"
 own_id="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["id"])' "$own_json")"
+own_revision="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["revision"])' "$own_json")"
+own_shared_json="$(curl --noproxy '*' -fsS -b "$COOKIE_JAR" \
+  -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
+  -H "If-Match: \"diagram-${own_id}-r${own_revision}\"" \
+  -X POST -d '{"action":"enable"}' \
+  "http://127.0.0.1:${PORT}/api/diagrams/${own_id}/sharing")"
+own_share_slug="$(python3 -c 'import json,sys; data=json.loads(sys.argv[1]); assert data["sharing_enabled"] is True; print(data["slug"])' "$own_shared_json")"
 
 status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" \
   -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
@@ -207,6 +214,18 @@ if ! grep -Eq '^nuigraph_storage_capacity\{kind="diagrams"\} [1-9][0-9]*$' <<<"$
   echo "metrics scrape did not expose the configured diagram capacity" >&2
   exit 1
 fi
+for series in \
+  'nuigraph_security_events_total{event="share_view",outcome="allowed"}' \
+  'nuigraph_security_events_total{event="share_view",outcome="blocked"}' \
+  'nuigraph_security_events_total{event="sharing_change",outcome="enabled"}' \
+  'nuigraph_security_events_total{event="sharing_change",outcome="disabled"}' \
+  'nuigraph_security_events_total{event="sharing_change",outcome="rotated"}'
+do
+  if ! grep -Fq "$series" <<<"$metrics_body"; then
+    echo "expected bounded sharing metric $series" >&2
+    exit 1
+  fi
+done
 if ! grep -qi '^content-type: text/plain; version=0.0.4; charset=utf-8' "$metrics_headers"; then
   echo "metrics endpoint returned the wrong content type" >&2
   exit 1
@@ -298,7 +317,14 @@ for private_path in /login /d/not-a-real-share; do
   fi
 done
 
-share_html="$(curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/d/not-a-real-share")"
+status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' \
+  "http://127.0.0.1:${PORT}/d/not-a-real-share")"
+if [[ "$status" != "404" ]]; then
+  echo "expected an inactive share page to return 404, got $status" >&2
+  exit 1
+fi
+
+share_html="$(curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/d/${own_share_slug}")"
 if ! grep -q 'name="robots" content="noindex, nofollow, noarchive"' <<<"$share_html"; then
   echo "expected an HTML noindex directive on bearer share pages" >&2
   exit 1
@@ -377,6 +403,14 @@ if ! grep -q 'category=security event=csrf_rejected outcome=blocked' "$LOG_FILE"
 fi
 if ! grep -q 'category=security event=share_view outcome=allowed.*path=/d/<redacted>' "$LOG_FILE"; then
   echo "expected a redacted share-view security event" >&2
+  exit 1
+fi
+if ! grep -q 'category=security event=share_view outcome=blocked.*path=/d/<redacted>' "$LOG_FILE"; then
+  echo "expected a redacted blocked share-view security event" >&2
+  exit 1
+fi
+if ! grep -q 'category=security event=sharing_change outcome=enabled.*path=/api/diagrams/' "$LOG_FILE"; then
+  echo "expected an explicit sharing lifecycle security event" >&2
   exit 1
 fi
 if grep -q 'not-a-real-share' "$LOG_FILE"; then

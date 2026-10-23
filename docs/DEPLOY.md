@@ -305,6 +305,10 @@ adds an independent table; an older binary ignores it and falls back to its
 process-local counters. Do not drop the table during rollback: doing so destroys
 active throttling state and is unnecessary. Rolling back code never deletes
 ledger rows or reverts SQL; use a new forward migration for any schema correction.
+`006_explicit_sharing.sql` preserves existing links as enabled and defaults new
+rows to private. An older binary ignores the flag and would make every stored
+slug reachable again, so do not roll back across this migration without first
+restoring the hardened binary or denying `/d/` and `/api/diagrams/slug/` at nginx.
 `FRONTEND_SHELL` adds no database state: roll back with the prior binary while
 keeping it at `server`, or restore the previous vhost and release together if a
 Nui-specific CSP was introduced.

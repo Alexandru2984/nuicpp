@@ -5,7 +5,7 @@ NuiGraph Studio is a production-oriented C++ graph and diagram editor deployed a
 architecture maps, service graphs, and node-link diagrams.
 
 Anyone can use it without an account: visitors get a signed guest session, own
-whatever they create in it, and can share read-only links. There is a single
+whatever they create in it, and can explicitly enable read-only links. There is a single
 admin account for maintenance.
 
 - **Security model:** [`docs/SECURITY.md`](docs/SECURITY.md)
@@ -50,7 +50,8 @@ admin account for maintenance.
   the browser keeps the losing tab's draft for recovery.
 - Export to JSON, SVG, PNG, and Mermaid.
 - Template gallery: architecture, incident-response, and data-pipeline diagrams.
-- Public share links at `/d/{slug}` with read-only viewing and one-click fork.
+- Private-by-default diagrams with explicit read-only sharing at `/d/{slug}`,
+  128-bit capabilities, immediate rotation/revocation and one-click fork.
 - Browser draft autosave with a restore prompt for unsaved local changes.
 
 ### Mobile and offline
@@ -102,7 +103,7 @@ Summarised here, detailed in [`docs/SECURITY.md`](docs/SECURITY.md).
 - Rate limiting at the edge and in the app, plus atomic per-guest and global
   diagram quotas so storage growth has a ceiling and not just a slope.
 - End-to-end request IDs and redacted structured security events for login,
-  authorization, CSRF, quota, rate-limit, share-view and storage failures.
+  authorization, CSRF, quota, rate-limit, share lifecycle/view and storage failures.
 - Defensive id parsing, exhaustive input validation, parameterised SQL only,
   no shell execution, no user-controlled filesystem paths.
 - CSP without `unsafe-inline` for scripts or styles, plus the usual header set,
@@ -246,6 +247,8 @@ sites, so never restart nginx.
 | `PUT` | `/api/diagrams/{id}` |
 | `DELETE` | `/api/diagrams/{id}` |
 | `GET` | `/api/diagrams/slug/{slug}` |
+| `POST` | `/api/diagrams/slug/{slug}/fork` |
+| `POST` | `/api/diagrams/{id}/sharing` |
 | `POST` | `/api/diagrams/{id}/duplicate` |
 | `GET` | `/api/diagrams/{id}/versions` |
 | `POST` | `/api/diagrams/{id}/versions` |
@@ -260,11 +263,15 @@ sites, so never restart nginx.
 Mutating endpoints require `X-CSRF-Token` from `/api/session`. Template keys:
 `cloud-architecture`, `incident-response`, `data-pipeline`.
 
-`PUT /api/diagrams/{id}`, `DELETE /api/diagrams/{id}` and version restore also
-require the exact `ETag` from the latest diagram response in `If-Match`. Missing
+`PUT /api/diagrams/{id}`, `DELETE /api/diagrams/{id}`, sharing changes and
+version restore also require the exact `ETag` from the latest diagram response in `If-Match`. Missing
 preconditions return `428`; stale revisions return `412` with
 `current_revision` and do not mutate storage. The JSON response includes the
 monotonically increasing `revision` value.
+
+`POST /api/diagrams/{id}/sharing` accepts an `action` of `enable`, `rotate` or
+`disable`. Enable and rotate always mint a new capability; disable makes the
+current `/d/{slug}` and slug API paths return `404` immediately.
 
 `GET /api/diagrams` is paged: `?limit=` (default 100, max 200) and `?offset=`
 (max 100000). Out-of-range or unparseable values are clamped rather than

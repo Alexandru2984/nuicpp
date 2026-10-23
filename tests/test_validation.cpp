@@ -166,11 +166,13 @@ void testStrictKeysAndColors() {
 void testJsonRoundTrip() {
     auto d = validDiagram();
     d.revision = 7;
+    d.sharingEnabled = true;
     auto parsed = diagramFromJson(diagramToJson(d));
     require(parsed.nodes.size() == 2, "nodes should round trip");
     require(parsed.edges.size() == 1, "edges should round trip");
     require(parsed.edges[0].source == "node_a", "edge source should round trip");
     require(parsed.revision == 7, "diagram revision should round trip");
+    require(parsed.sharingEnabled, "sharing state should round trip");
 }
 
 void testFormUrlDecode() {

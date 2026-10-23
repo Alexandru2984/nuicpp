@@ -671,7 +671,12 @@ void Routes::sendStorageError(const httplib::Request& req, httplib::Response& re
 nlohmann::json Routes::diagramResponse(const httplib::Request& req, const Diagram& diagram) {
     auto body = diagramToJson(diagram);
     body["can_edit"] = canEditDiagram(req, diagram.id);
-    body["share_url"] = cfg_.baseUrl + "/d/" + diagram.slug;
+    // An inactive token is implementation detail, not a dormant capability to
+    // expose to clients. Re-enabling sharing rotates it before disclosure.
+    body["slug"] = diagram.sharingEnabled ? diagram.slug : "";
+    body["share_url"] = diagram.sharingEnabled
+        ? cfg_.baseUrl + "/d/" + diagram.slug
+        : "";
     return body;
 }
 
@@ -917,6 +922,26 @@ void Routes::registerRoutes(httplib::Server& server) {
         // Share slugs are bearer capabilities. Search indexing would both leak
         // them to third parties and make revocation by obscurity impossible.
         res.set_header("X-Robots-Tag", "noindex, nofollow, noarchive");
+        const auto slug = req.matches[1].str();
+        if (!safeSlug(slug)) {
+            res.status = 404;
+            res.set_content("not found", "text/plain; charset=utf-8");
+            logSecurityEvent(req, res, "share_view", "blocked");
+            return;
+        }
+        try {
+            if (!storage_.activeShareExists(slug)) {
+                res.status = 404;
+                res.set_content("not found", "text/plain; charset=utf-8");
+                logSecurityEvent(req, res, "share_view", "blocked");
+                return;
+            }
+        } catch (const std::exception&) {
+            res.status = 503;
+            res.set_content("service unavailable", "text/plain; charset=utf-8");
+            logSecurityEvent(req, res, "storage_failure", "error");
+            return;
+        }
         logSecurityEvent(req, res, "share_view", "allowed");
         if (cfg_.frontendShell == FrontendShell::Nui) {
             res.set_content(nuiShellPage(cfg_.projectRoot, cfg_.baseUrl, false, assetVersion_), "text/html; charset=utf-8");
@@ -1051,6 +1076,24 @@ void Routes::registerRoutes(httplib::Server& server) {
         }
     });
 
+    server.Post(R"(/api/diagrams/slug/([A-Za-z0-9-]+)/fork)", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureWriteRateLimit(req, res, true)) return;
+        if (!ensureCsrf(req, res)) return;
+        const auto slug = req.matches[1].str();
+        if (!safeSlug(slug)) {
+            sendJson(res, 400, errorJson("invalid slug"));
+            return;
+        }
+        try {
+            const auto copy = storage_.forkDiagramBySlug(slug, ownerHashForRequest(req));
+            metrics_.recordDiagramCreated("fork");
+            sendDiagramJson(req, res, 201, copy);
+        } catch (const std::exception& e) {
+            sendStorageError(req, res, e, 404);
+        }
+    });
+
     server.Put(R"(/api/diagrams/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
         if (!ensureWriteRateLimit(req, res, false)) return;
@@ -1066,6 +1109,46 @@ void Routes::registerRoutes(httplib::Server& server) {
             auto note = body.value("note", "saved snapshot");
             sendDiagramJson(req, res, 200,
                             storage_.updateDiagram(id, d, note, false, expectedRevision));
+        } catch (const std::exception& e) {
+            sendStorageError(req, res, e, 400);
+        }
+    });
+
+    server.Post(R"(/api/diagrams/(\d+)/sharing)", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureWriteRateLimit(req, res, false)) return;
+        if (!ensureCsrf(req, res)) return;
+        long id = 0;
+        if (!ensureId(req, res, 1, id)) return;
+        if (!ensureCanEdit(req, res, id)) return;
+        long expectedRevision = 0;
+        if (!ensureExpectedRevision(req, res, id, expectedRevision)) return;
+        try {
+            if (req.body.size() > 128) {
+                throw std::invalid_argument("sharing request is too large");
+            }
+            const auto body = nlohmann::json::parse(req.body);
+            if (!body.is_object() || !body.contains("action") || !body["action"].is_string()) {
+                throw std::invalid_argument("sharing action must be a string");
+            }
+            const auto actionName = body["action"].get<std::string>();
+            ShareAction action;
+            std::string outcome;
+            if (actionName == "enable") {
+                action = ShareAction::Enable;
+                outcome = "enabled";
+            } else if (actionName == "disable") {
+                action = ShareAction::Disable;
+                outcome = "disabled";
+            } else if (actionName == "rotate") {
+                action = ShareAction::Rotate;
+                outcome = "rotated";
+            } else {
+                throw std::invalid_argument("unknown sharing action");
+            }
+            const auto diagram = storage_.updateSharing(id, action, expectedRevision);
+            sendDiagramJson(req, res, 200, diagram);
+            logSecurityEvent(req, res, "sharing_change", outcome);
         } catch (const std::exception& e) {
             sendStorageError(req, res, e, 400);
         }

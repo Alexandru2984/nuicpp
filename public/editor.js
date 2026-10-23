@@ -111,7 +111,8 @@
     return `"diagram-${diagram.id}-r${diagram.revision}"`;
   }
 
-  function handleRevisionConflict(error, preserveCurrentDraft = true) {
+  function handleRevisionConflict(error, preserveCurrentDraft = true,
+                                  cleanMessage = "A newer revision was saved elsewhere. Refresh the diagram list before deleting it.") {
     if (error?.status !== 412) return false;
     if (preserveCurrentDraft) {
       state.dirty = true;
@@ -120,7 +121,7 @@
     }
     const message = preserveCurrentDraft
       ? "A newer revision was saved elsewhere. Reopen the diagram before saving again; this browser draft was preserved."
-      : "A newer revision was saved elsewhere. Refresh the diagram list before deleting it.";
+      : cleanMessage;
     toast(message, "error");
     return true;
   }
@@ -319,7 +320,8 @@
       { id: "new", label: "New diagram", shortLabel: "New", category: "Diagram", keywords: "create blank", mobile: true, run: newDiagram },
       { id: "sample", label: "Create from cloud template", shortLabel: "Sample", category: "Diagram", keywords: "sample architecture", run: loadSample },
       { id: "save", label: "Save diagram", shortLabel: "Save", category: "Diagram", keywords: "persist sync", shortcut: "Ctrl / Cmd + S", mobile: true, enabled: () => Boolean(state.current) && !state.readOnly, run: saveDiagram },
-      { id: "share", label: "Copy share link", shortLabel: "Share", category: "Diagram", keywords: "url clipboard", mobile: true, enabled: () => Boolean(state.current), run: shareDiagram },
+      { id: "share", label: "Manage or copy sharing", shortLabel: "Share", category: "Diagram", keywords: "private public url revoke rotate link", mobile: true, enabled: () => Boolean(state.current), run: shareDiagram },
+      { id: "fork", label: "Fork shared diagram", shortLabel: "Fork", category: "Diagram", keywords: "copy public link own", mobile: true, enabled: () => Boolean(state.current) && state.readOnly && Boolean(sharedSlugFromPath()), run: forkSharedDiagram },
       { id: "undo", label: "Undo", shortLabel: "Undo", category: "Edit", shortcut: "Ctrl / Cmd + Z", mobile: true, enabled: () => state.history.length > 0 && !state.readOnly, run: undo },
       { id: "redo", label: "Redo", shortLabel: "Redo", category: "Edit", shortcut: "Ctrl / Cmd + Y", mobile: true, enabled: () => state.future.length > 0 && !state.readOnly, run: redo },
       { id: "copy", label: "Copy selection", shortLabel: "Copy", category: "Edit", shortcut: "Ctrl / Cmd + C", enabled: () => Boolean(state.selected), run: copySelected },
@@ -1113,6 +1115,7 @@
           updated_at: state.current.updated_at,
           revision: state.current.revision,
           can_edit: state.current.can_edit,
+          sharing_enabled: state.current.sharing_enabled,
           share_url: state.current.share_url
         };
         state.current = { ...draft.diagram, ...serverMeta };
@@ -1658,14 +1661,175 @@
     toast("Mermaid file exported.", "success");
   }
 
-  async function shareDiagram() {
-    if (!state.current) return;
-    const url = state.current.share_url || `${location.origin}/d/${state.current.slug}`;
+  async function copyShareLink(url) {
+    if (!url) return false;
     try {
       await navigator.clipboard.writeText(url);
       toast("Share link copied.", "success");
+      return true;
     } catch {
       prompt("Share link", url);
+      return false;
+    }
+  }
+
+  function shareDiagram() {
+    if (!state.current) return;
+    if (state.readOnly) {
+      copyShareLink(state.current.share_url || location.href);
+      return;
+    }
+    closeDialog(".command-palette-overlay");
+    const previousFocus = document.activeElement;
+    const overlay = document.createElement("div");
+    overlay.className = "command-palette-overlay sharing-overlay";
+    const dialog = document.createElement("section");
+    dialog.className = "sharing-dialog";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", "sharing-title");
+
+    const head = document.createElement("div");
+    head.className = "command-palette-head";
+    const title = document.createElement("h2");
+    title.id = "sharing-title";
+    title.textContent = "Share diagram";
+    const closeButton = mobileBarButton("Close");
+    head.append(title, closeButton);
+    const content = document.createElement("div");
+    content.className = "sharing-content";
+    const liveStatus = document.createElement("div");
+    liveStatus.className = "command-status";
+    liveStatus.setAttribute("aria-live", "polite");
+    dialog.append(head, content, liveStatus);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    const close = () => {
+      overlay.remove();
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+    overlay.closeDialog = close;
+    closeButton.onclick = close;
+    overlay.onclick = (event) => { if (event.target === overlay) close(); };
+    overlay.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+        return;
+      }
+      trapDialogFocus(event, dialog);
+    });
+
+    const mergeSharingMetadata = (updated) => {
+      if (!state.current || state.current.id !== updated.id) return;
+      state.current.revision = updated.revision;
+      state.current.updated_at = updated.updated_at;
+      state.current.slug = updated.slug;
+      state.current.sharing_enabled = updated.sharing_enabled;
+      state.current.share_url = updated.share_url;
+    };
+
+    const changeSharing = async (action) => {
+      const buttons = [...dialog.querySelectorAll("button")];
+      buttons.forEach((button) => { button.disabled = true; });
+      liveStatus.textContent = `${action[0].toUpperCase()}${action.slice(1)} in progress...`;
+      try {
+        const updated = await api(`/api/diagrams/${state.current.id}/sharing`, {
+          method: "POST",
+          headers: { "If-Match": diagramEtag(state.current) },
+          body: JSON.stringify({ action })
+        });
+        mergeSharingMetadata(updated);
+        render();
+        renderContent();
+        loadDiagrams().catch(() => {});
+        liveStatus.textContent = action === "disable"
+          ? "Sharing disabled. The previous URL no longer works."
+          : action === "rotate"
+            ? "Link rotated. The previous URL no longer works."
+            : "Sharing enabled with a new link.";
+      } catch (error) {
+        if (!handleRevisionConflict(
+          error,
+          state.dirty,
+          "A newer revision was saved elsewhere. Reopen the diagram before changing sharing."
+        )) {
+          liveStatus.textContent = error.message || "Sharing could not be changed.";
+        } else {
+          liveStatus.textContent = "The diagram changed elsewhere. Reopen it before changing sharing.";
+        }
+      } finally {
+        dialog.querySelectorAll("button").forEach((button) => { button.disabled = false; });
+      }
+    };
+
+    const renderContent = () => {
+      content.replaceChildren();
+      const status = document.createElement("div");
+      status.className = `sharing-status ${state.current.sharing_enabled ? "shared" : "private"}`;
+      const statusTitle = document.createElement("strong");
+      statusTitle.textContent = state.current.sharing_enabled ? "Shared by link" : "Private";
+      const explanation = document.createElement("p");
+      explanation.textContent = state.current.sharing_enabled
+        ? "Anyone with this unguessable link can view and fork the diagram."
+        : "Only this guest session and the administrator can access the diagram.";
+      status.append(statusTitle, explanation);
+      content.appendChild(status);
+
+      const actions = document.createElement("div");
+      actions.className = "sharing-actions";
+      if (!state.current.sharing_enabled) {
+        const enable = mobileBarButton("Enable share link", "primary");
+        enable.onclick = () => changeSharing("enable");
+        actions.appendChild(enable);
+      } else {
+        const link = document.createElement("input");
+        link.className = "sharing-link";
+        link.type = "url";
+        link.readOnly = true;
+        link.value = state.current.share_url;
+        link.setAttribute("aria-label", "Active share link");
+        content.appendChild(link);
+
+        const copy = mobileBarButton("Copy link", "primary");
+        copy.onclick = () => copyShareLink(state.current.share_url);
+        const rotate = mobileBarButton("Rotate link");
+        rotate.onclick = () => {
+          if (confirm("Rotate this link? The current URL will stop working immediately.")) {
+            changeSharing("rotate");
+          }
+        };
+        const disable = mobileBarButton("Disable sharing", "danger");
+        disable.onclick = () => {
+          if (confirm("Disable sharing? Anyone using the current URL will lose access immediately.")) {
+            changeSharing("disable");
+          }
+        };
+        actions.append(copy, rotate, disable);
+      }
+      content.appendChild(actions);
+    };
+
+    renderContent();
+    closeButton.focus();
+  }
+
+  async function forkSharedDiagram() {
+    const slug = sharedSlugFromPath();
+    if (!slug || !state.current || !state.readOnly) return;
+    try {
+      const created = await api(`/api/diagrams/slug/${slug}/fork`, {
+        method: "POST",
+        body: "{}"
+      });
+      history.replaceState(null, "", "/");
+      await loadDiagrams();
+      await openDiagram(created.id);
+      toast("Private fork created in your diagrams.", "success");
+    } catch (error) {
+      toast(error.message || "The shared diagram could not be forked.", "error");
     }
   }
 
@@ -1860,6 +2024,16 @@
     if (state.current) {
       el("diagram-title").value = state.readOnly ? `${state.current.title} (read-only)` : state.current.title;
     }
+    const shareButton = el("share-diagram");
+    if (shareButton) {
+      shareButton.disabled = !state.current;
+      shareButton.classList.toggle("active", Boolean(state.current?.sharing_enabled));
+      shareButton.title = !state.current ? "Open a diagram to manage sharing"
+        : state.readOnly ? "Copy share link"
+          : state.current.sharing_enabled ? "Manage active share link" : "Enable sharing";
+    }
+    const forkButton = el("fork-shared");
+    if (forkButton) forkButton.hidden = !(state.current && state.readOnly && sharedSlugFromPath());
     renderEdges();
     renderNodes();
     renderOverlay();
@@ -2303,6 +2477,17 @@
     el("new-diagram").onclick = newDiagram;
     el("load-sample").onclick = loadSample;
     el("share-diagram").onclick = shareDiagram;
+    const topActions = document.querySelector(".top-actions");
+    if (topActions && !el("fork-shared")) {
+      const fork = document.createElement("button");
+      fork.type = "button";
+      fork.id = "fork-shared";
+      fork.textContent = "Fork";
+      fork.title = "Create a private copy";
+      fork.hidden = true;
+      fork.onclick = forkSharedDiagram;
+      el("share-diagram")?.after(fork);
+    }
     el("save-diagram").onclick = saveDiagram;
     el("refresh-diagrams").onclick = loadDiagrams;
     el("delete-selected").onclick = deleteSelected;

@@ -60,6 +60,11 @@ rollback notes where applicable.
   endpoint, duplicate, self-loop, title and edge-label rules. Findings use safe
   text rendering and can centre their affected object; unit and Chromium tests
   cover deep graphs, the shipped asset and the offline cache.
+- Private-by-default link sharing with an explicit accessible management dialog,
+  128-bit capability rotation and revocation, optimistic revision checks,
+  redacted lifecycle events, private visitor forks and cross-session negative
+  authorization tests. Existing links remain active through migration for
+  compatibility.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -82,10 +87,9 @@ High risk remain open.
 
 ## P1 — privacy, identity and trustworthy sharing
 
-- Private-by-default diagrams with explicit `private`, `unlisted` and `public`
-  visibility.
-- 128-bit share capabilities with create, expire, rotate and revoke actions;
-  optional password-protected and time-limited links.
+- Add an explicitly indexed `public` visibility distinct from the implemented
+  private and unlisted-link states.
+- Add share expiry plus optional password-protected and time-limited links.
 - User accounts with email verification or OIDC, passkeys/WebAuthn and MFA for
   the administrator; convert a guest workspace into an account without data loss.
 - Server-side admin sessions with device list, last-used metadata and individual

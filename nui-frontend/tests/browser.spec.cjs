@@ -102,6 +102,64 @@ test.describe("desktop security and offline lifecycle", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).not.toBeVisible();
 
+    let sharingTestId = null;
+    try {
+      await page.locator("#new-diagram").click();
+      await expect.poll(async () => page.evaluate(async () => {
+        const response = await fetch("/api/diagrams", { credentials: "same-origin" });
+        const data = await response.json();
+        return data.diagrams?.[0]?.id || null;
+      })).not.toBeNull();
+      sharingTestId = await page.evaluate(async () => {
+        const response = await fetch("/api/diagrams", { credentials: "same-origin" });
+        return (await response.json()).diagrams[0].id;
+      });
+
+      await expect(page.locator("#share-diagram")).toBeEnabled();
+      await expect(page.locator("#share-diagram")).toHaveAttribute("title", "Enable sharing");
+      await page.locator("#share-diagram").click();
+      const sharingDialog = page.getByRole("dialog", { name: "Share diagram" });
+      await expect(sharingDialog).toBeVisible();
+      await expect(sharingDialog.getByText("Private", { exact: true })).toBeVisible();
+      await sharingDialog.getByRole("button", { name: "Enable share link" }).click();
+      const shareInput = sharingDialog.getByRole("textbox", { name: "Active share link" });
+      await expect(shareInput).toBeVisible();
+      const firstLink = await shareInput.inputValue();
+      expect(firstLink).toMatch(/\/d\/[a-z0-9-]+-[0-9a-f]{32}$/);
+
+      page.once("dialog", (dialog) => dialog.accept());
+      await sharingDialog.getByRole("button", { name: "Rotate link" }).click();
+      await expect.poll(() => shareInput.inputValue()).not.toBe(firstLink);
+      const rotatedLink = await shareInput.inputValue();
+
+      page.once("dialog", (dialog) => dialog.accept());
+      await sharingDialog.getByRole("button", { name: "Disable sharing" }).click();
+      await expect(sharingDialog.getByText("Private", { exact: true })).toBeVisible();
+      const revokedStatuses = await page.evaluate(async (links) => Promise.all(links.map(async (link) => {
+        const path = new URL(link).pathname.replace(/^\/d\//, "/api/diagrams/slug/");
+        return (await fetch(path, { credentials: "same-origin" })).status;
+      })), [firstLink, rotatedLink]);
+      expect(revokedStatuses).toEqual([404, 404]);
+      await sharingDialog.getByRole("button", { name: "Close" }).click();
+    } finally {
+      if (sharingTestId) {
+        await page.evaluate(async (id) => {
+          const session = await (await fetch("/api/session", { credentials: "same-origin" })).json();
+          const response = await fetch(`/api/diagrams/${id}`, { credentials: "same-origin" });
+          if (!response.ok) return;
+          const diagram = await response.json();
+          await fetch(`/api/diagrams/${id}`, {
+            method: "DELETE",
+            credentials: "same-origin",
+            headers: {
+              "X-CSRF-Token": session.csrf_token,
+              "If-Match": `"diagram-${id}-r${diagram.revision}"`
+            }
+          });
+        }, sharingTestId);
+      }
+    }
+
     expect(await page.evaluate(() => globalThis.__nuigraphPolicyViolations)).toEqual([]);
 
     await context.setOffline(true);

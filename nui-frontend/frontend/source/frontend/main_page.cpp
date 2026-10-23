@@ -38,7 +38,7 @@ Nui::ElementRenderer MainPage::render() {
                 div{class_ = "top-actions"}(
                     button{id = "new-diagram", title = "New diagram"}("New"),
                     button{id = "load-sample", title = "Load sample architecture"}("Sample"),
-                    button{id = "share-diagram", title = "Copy share link"}("Share"),
+                    button{id = "share-diagram", title = "Manage sharing"}("Share"),
                     button{id = "save-diagram", title = "Save"}("Save"),
                     button{id = "undo", title = "Undo"}("Undo"),
                     button{id = "redo", title = "Redo"}("Redo"),

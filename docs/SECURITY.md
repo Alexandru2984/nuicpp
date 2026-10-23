@@ -77,7 +77,11 @@ because owner hashes are derived from it. Rotate only deliberately.
   source-address flood fills it. New addresses therefore cannot make login
   tracking fail open merely by exhausting the key map.
 
-Share slugs are bearer capabilities. The application logger and the dedicated
+Share slugs are bearer capabilities, but new diagrams are private until their
+owner explicitly enables one. Enable and rotate mint a fresh 128-bit token;
+disable makes both share routes return `404`, and re-enable rotates again so a
+revoked URL cannot revive. Existing URLs remain enabled during the additive
+migration for compatibility. The application logger and the dedicated
 nginx access format replace values in `/d/{slug}` and
 `/api/diagrams/slug/{slug}` with `<redacted>` before writing them. Do not switch
 the vhost back to the default `$request` access format, which contains the raw
@@ -129,12 +133,20 @@ Two subtleties worth preserving:
    versions". The storage query also filters on `diagram_id` as well as the
    version id, so a caller allowed to read one diagram cannot walk into another
    one's history by guessing version numbers.
-3. **Share links are read-only by slug.** `GET /d/{slug}` and
+3. **Enabled share links are read-only by slug.** `GET /d/{slug}` and
    `GET /api/diagrams/slug/{slug}` serve a read-only view to non-owners. Slugs
    are the capability, so they must be unguessable: `003_randomize_legacy_slugs.sql`
    replaced the old sequential `-<timestamp>` suffix with 16 hex characters from
    `gen_random_uuid()`. New links use a 32-hex-character, 128-bit random suffix;
-   older 64-bit links remain valid. Do not reintroduce a predictable suffix.
+   older 64-bit links remain valid until rotated or disabled. The database
+   query also requires `sharing_enabled=true`; knowing an inactive slug does
+   not bypass revocation. Sharing mutations require owner authorization, CSRF
+   and the current revision ETag. Do not reintroduce a predictable suffix.
+4. **Forking does not weaken ID authorization.** The owner-only
+   `POST /api/diagrams/{id}/duplicate` remains protected against IDOR. A visitor
+   may instead fork only through `POST /api/diagrams/slug/{slug}/fork`, which
+   first resolves an active capability, applies creation rate/quota controls,
+   and creates a private copy owned by that visitor's session.
 
 ## CSRF
 
@@ -327,9 +339,9 @@ documented in `DEPLOY.md`.
   service-worker activation removes obsolete release caches, checks that no API
   response enters Cache Storage, performs an offline navigation, and exercises
   both desktop and coarse-pointer phone layouts. Command-palette focus return,
-  allowlisted mobile-action persistence and 44px touch targets are checked in
-  the same real browser. It uses the same isolated-test database guard as the
-  live API suites.
+allowlisted mobile-action persistence, 44px touch targets and the complete
+enable/rotate/revoke sharing dialog are checked in the same real browser. It
+uses the same isolated-test database guard as the live API suites.
 - `/metrics` accepts loopback collectors only, is independently denied to public
   clients by nginx, and exports fixed-label aggregate telemetry without actors,
   request IDs, share capabilities or diagram content. It stays readable during
@@ -374,7 +386,9 @@ asserts the live behaviour: a fresh guest cannot enumerate existing diagrams,
 cannot read one by id, cannot copy one via duplicate, cannot read one's version
 snapshots, gets `400` rather than a crash on an out-of-range id, is refused
 without a CSRF token, receives a request ID and emits redacted share/CSRF
-security events. Each `403` has a
+security events. It also proves that private and revoked slugs return `404`,
+rotated capabilities stay dead and a different guest cannot change sharing.
+Each `403` has a
 matching positive control on the visitor's own diagram, so a pass cannot come
 from a route that is simply broken. `tests/check_rate_limits.sh` exercises
 shared counters across two app instances and verifies that throttling survives

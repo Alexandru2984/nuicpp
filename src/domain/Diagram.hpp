@@ -36,6 +36,7 @@ struct Diagram {
     std::string createdAt;
     std::string updatedAt;
     long revision = 0;
+    bool sharingEnabled = false;
     std::vector<Node> nodes;
     std::vector<Edge> edges;
 };

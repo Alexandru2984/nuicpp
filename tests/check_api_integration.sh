@@ -13,6 +13,7 @@ PORT="$("$ROOT_DIR/scripts/find_free_port.sh" 18251 18350)"
 TMP_DIR="$(mktemp -d)"
 TMP_ENV="$TMP_DIR/.env"
 COOKIE_JAR="$TMP_DIR/cookies.txt"
+OTHER_COOKIE_JAR="$TMP_DIR/other-cookies.txt"
 LOG_FILE="$TMP_DIR/server.log"
 PID=""
 TEST_TITLE_PREFIX="ngs-integration-"
@@ -91,8 +92,20 @@ CREATE_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" \
   "${BASE}/api/diagrams")"
 
 DIAGRAM_ID="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['id'])" "$CREATE_RESP")"
-SLUG="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['slug'])" "$CREATE_RESP")"
 REVISION="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['revision'])" "$CREATE_RESP")"
+python3 -c "import sys,json; data=json.loads(sys.argv[1]); assert data['sharing_enabled'] is False; assert data['slug']==''; assert data['share_url']==''" "$CREATE_RESP"
+PRIVATE_SLUG="$(psql --dbname="$DATABASE_URL" -X -tAc \
+  "SELECT slug FROM diagrams WHERE id=${DIAGRAM_ID}" | tr -d '[:space:]')"
+if [[ ! "$PRIVATE_SLUG" =~ ^[a-z0-9-]+-[0-9a-f]{32}$ ]]; then
+  echo "api integration failed: stored private capability has unexpected format" >&2
+  exit 1
+fi
+status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" \
+  "${BASE}/api/diagrams/slug/$PRIVATE_SLUG")"
+if [[ "$status" != "404" ]]; then
+  echo "api integration failed: private diagram was reachable by slug ($status)" >&2
+  exit 1
+fi
 
 # Verify listing includes the created diagram
 LIST_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" "${BASE}/api/diagrams")"
@@ -191,6 +204,117 @@ if [[ "$RESTORED_REVISION" != "$((SECOND_REVISION + 1))" ]]; then
   exit 1
 fi
 
+# New diagrams are private until the owner explicitly enables a link. Sharing
+# changes use the same optimistic revision contract as content changes.
+status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" \
+  -H "X-CSRF-Token: $CSRF_TOKEN" -H 'Content-Type: application/json' \
+  -X POST -d '{"action":"enable"}' "${BASE}/api/diagrams/$DIAGRAM_ID/sharing")"
+if [[ "$status" != "428" ]]; then
+  echo "api integration failed: sharing change without If-Match returned $status instead of 428" >&2
+  exit 1
+fi
+
+ENABLED_RESP="$(curl --noproxy '*' -fsS -b "$COOKIE_JAR" \
+  -H "X-CSRF-Token: $CSRF_TOKEN" -H 'Content-Type: application/json' \
+  -H "If-Match: \"diagram-${DIAGRAM_ID}-r${RESTORED_REVISION}\"" \
+  -X POST -d '{"action":"enable"}' "${BASE}/api/diagrams/$DIAGRAM_ID/sharing")"
+ENABLED_REVISION="$(python3 -c "import sys,json; data=json.loads(sys.argv[1]); assert data['sharing_enabled'] is True; print(data['revision'])" "$ENABLED_RESP")"
+FIRST_SHARED_SLUG="$(python3 -c "import sys,json; data=json.loads(sys.argv[1]); assert data['share_url'].endswith('/d/'+data['slug']); print(data['slug'])" "$ENABLED_RESP")"
+if [[ "$ENABLED_REVISION" != "$((RESTORED_REVISION + 1))" || "$FIRST_SHARED_SLUG" == "$PRIVATE_SLUG" ]]; then
+  echo "api integration failed: enabling did not rotate the capability and revision" >&2
+  exit 1
+fi
+
+status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" \
+  "${BASE}/api/diagrams/slug/$PRIVATE_SLUG")"
+if [[ "$status" != "404" ]]; then
+  echo "api integration failed: pre-enable capability remained valid" >&2
+  exit 1
+fi
+
+OTHER_SESSION="$(curl --noproxy '*' -fsS -c "$OTHER_COOKIE_JAR" "${BASE}/api/session")"
+OTHER_CSRF="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['csrf_token'])" "$OTHER_SESSION")"
+SHARED_RESP="$(curl --noproxy '*' -fsS -b "$OTHER_COOKIE_JAR" \
+  "${BASE}/api/diagrams/slug/$FIRST_SHARED_SLUG")"
+python3 -c "import sys,json; data=json.loads(sys.argv[1]); assert data['title']=='ngs-integration-updated'; assert data['can_edit'] is False" "$SHARED_RESP"
+
+FORK_RESP="$(curl --noproxy '*' -fsS -b "$OTHER_COOKIE_JAR" \
+  -H "X-CSRF-Token: $OTHER_CSRF" -H 'Content-Type: application/json' \
+  -X POST -d '{}' "${BASE}/api/diagrams/slug/$FIRST_SHARED_SLUG/fork")"
+FORK_ID="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['id'])" "$FORK_RESP")"
+FORK_REVISION="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['revision'])" "$FORK_RESP")"
+python3 -c "import sys,json; data=json.loads(sys.argv[1]); assert data['title']=='ngs-integration-updated Copy'; assert data['can_edit'] is True; assert data['sharing_enabled'] is False; assert data['slug']==''" "$FORK_RESP"
+status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" \
+  "${BASE}/api/diagrams/$FORK_ID")"
+if [[ "$status" != "403" ]]; then
+  echo "api integration failed: source owner could read another guest's private fork ($status)" >&2
+  exit 1
+fi
+
+status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$OTHER_COOKIE_JAR" \
+  -H "X-CSRF-Token: $OTHER_CSRF" -H 'Content-Type: application/json' \
+  -H "If-Match: \"diagram-${DIAGRAM_ID}-r${ENABLED_REVISION}\"" \
+  -X POST -d '{"action":"disable"}' "${BASE}/api/diagrams/$DIAGRAM_ID/sharing")"
+if [[ "$status" != "403" ]]; then
+  echo "api integration failed: another guest changed sharing with status $status" >&2
+  exit 1
+fi
+
+status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" \
+  -H "X-CSRF-Token: $CSRF_TOKEN" -H 'Content-Type: application/json' \
+  -H "If-Match: \"diagram-${DIAGRAM_ID}-r${RESTORED_REVISION}\"" \
+  -X POST -d '{"action":"rotate"}' "${BASE}/api/diagrams/$DIAGRAM_ID/sharing")"
+if [[ "$status" != "412" ]]; then
+  echo "api integration failed: stale share rotation returned $status instead of 412" >&2
+  exit 1
+fi
+
+ROTATED_RESP="$(curl --noproxy '*' -fsS -b "$COOKIE_JAR" \
+  -H "X-CSRF-Token: $CSRF_TOKEN" -H 'Content-Type: application/json' \
+  -H "If-Match: \"diagram-${DIAGRAM_ID}-r${ENABLED_REVISION}\"" \
+  -X POST -d '{"action":"rotate"}' "${BASE}/api/diagrams/$DIAGRAM_ID/sharing")"
+ROTATED_REVISION="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['revision'])" "$ROTATED_RESP")"
+ROTATED_SLUG="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['slug'])" "$ROTATED_RESP")"
+if [[ "$ROTATED_REVISION" != "$((ENABLED_REVISION + 1))" || "$ROTATED_SLUG" == "$FIRST_SHARED_SLUG" ]]; then
+  echo "api integration failed: share rotation did not replace the capability" >&2
+  exit 1
+fi
+status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$OTHER_COOKIE_JAR" \
+  "${BASE}/api/diagrams/slug/$FIRST_SHARED_SLUG")"
+if [[ "$status" != "404" ]]; then
+  echo "api integration failed: rotated capability remained usable" >&2
+  exit 1
+fi
+
+DISABLED_RESP="$(curl --noproxy '*' -fsS -b "$COOKIE_JAR" \
+  -H "X-CSRF-Token: $CSRF_TOKEN" -H 'Content-Type: application/json' \
+  -H "If-Match: \"diagram-${DIAGRAM_ID}-r${ROTATED_REVISION}\"" \
+  -X POST -d '{"action":"disable"}' "${BASE}/api/diagrams/$DIAGRAM_ID/sharing")"
+DISABLED_REVISION="$(python3 -c "import sys,json; data=json.loads(sys.argv[1]); assert data['sharing_enabled'] is False; assert data['slug']==''; assert data['share_url']==''; print(data['revision'])" "$DISABLED_RESP")"
+if [[ "$DISABLED_REVISION" != "$((ROTATED_REVISION + 1))" ]]; then
+  echo "api integration failed: disabling did not increment the revision" >&2
+  exit 1
+fi
+status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$OTHER_COOKIE_JAR" \
+  "${BASE}/api/diagrams/slug/$ROTATED_SLUG")"
+if [[ "$status" != "404" ]]; then
+  echo "api integration failed: disabled share remained usable" >&2
+  exit 1
+fi
+
+REENABLED_RESP="$(curl --noproxy '*' -fsS -b "$COOKIE_JAR" \
+  -H "X-CSRF-Token: $CSRF_TOKEN" -H 'Content-Type: application/json' \
+  -H "If-Match: \"diagram-${DIAGRAM_ID}-r${DISABLED_REVISION}\"" \
+  -X POST -d '{"action":"enable"}' "${BASE}/api/diagrams/$DIAGRAM_ID/sharing")"
+RESTORED_REVISION="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['revision'])" "$REENABLED_RESP")"
+REENABLED_SLUG="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['slug'])" "$REENABLED_RESP")"
+if [[ "$RESTORED_REVISION" != "$((DISABLED_REVISION + 1))" || "$REENABLED_SLUG" == "$ROTATED_SLUG" ]]; then
+  echo "api integration failed: re-enable reused a revoked capability" >&2
+  exit 1
+fi
+curl --noproxy '*' -fsS -b "$OTHER_COOKIE_JAR" \
+  "${BASE}/api/diagrams/slug/$REENABLED_SLUG" >/dev/null
+
 status="$(curl --noproxy '*' -sS -o "$TMP_DIR/stale-restore.json" -w '%{http_code}' \
   -b "$COOKIE_JAR" \
   -H "X-CSRF-Token: $CSRF_TOKEN" \
@@ -220,6 +344,7 @@ DUP_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" \
 DUP_ID="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['id'])" "$DUP_RESP")"
 DUP_REVISION="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['revision'])" "$DUP_RESP")"
 python3 -c "import sys,json;assert json.loads(sys.argv[1])['title']=='ngs-integration-updated Copy'" "$DUP_RESP"
+python3 -c "import sys,json; data=json.loads(sys.argv[1]); assert data['sharing_enabled'] is False; assert data['slug']==''" "$DUP_RESP"
 
 # Export JSON
 EXP_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" "${BASE}/api/diagrams/$DIAGRAM_ID/export.json")"
@@ -233,10 +358,7 @@ IMP_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" \
   "${BASE}/api/diagrams/import")"
 IMP_ID="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['id'])" "$IMP_RESP")"
 IMP_REVISION="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['revision'])" "$IMP_RESP")"
-
-# Slug-based lookup
-SLUG_RESP="$(curl --noproxy '*' -sS -b "$COOKIE_JAR" "${BASE}/api/diagrams/slug/$SLUG")"
-python3 -c "import sys,json;assert json.loads(sys.argv[1])['title']=='ngs-integration-updated'" "$SLUG_RESP"
+python3 -c "import sys,json; data=json.loads(sys.argv[1]); assert data['sharing_enabled'] is False; assert data['slug']==''" "$IMP_RESP"
 
 # Delete all created diagrams with their latest revisions.
 delete_diagram() {
@@ -250,5 +372,9 @@ delete_diagram() {
 delete_diagram "$DIAGRAM_ID" "$RESTORED_REVISION"
 delete_diagram "$DUP_ID" "$DUP_REVISION"
 delete_diagram "$IMP_ID" "$IMP_REVISION"
+curl --noproxy '*' -sS -b "$OTHER_COOKIE_JAR" \
+  -H "X-CSRF-Token: $OTHER_CSRF" \
+  -H "If-Match: \"diagram-${FORK_ID}-r${FORK_REVISION}\"" \
+  -X DELETE "${BASE}/api/diagrams/$FORK_ID" >/dev/null
 
 echo "api integration passed"

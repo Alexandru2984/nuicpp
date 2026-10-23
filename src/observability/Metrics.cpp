@@ -18,7 +18,7 @@ struct SecurityEventLabel {
     const char* outcome;
 };
 
-constexpr std::array<SecurityEventLabel, 15> kSecurityEvents = {{
+constexpr std::array<SecurityEventLabel, 20> kSecurityEvents = {{
     {"csrf_rejected", "blocked"},
     {"write_rate_limited", "blocked"},
     {"create_rate_limited", "blocked"},
@@ -33,10 +33,15 @@ constexpr std::array<SecurityEventLabel, 15> kSecurityEvents = {{
     {"authentication_required", "blocked"},
     {"admin_login", "rate_limited"},
     {"admin_login", "failed"},
-    {"admin_login", "succeeded"}
+    {"admin_login", "succeeded"},
+    {"share_view", "allowed"},
+    {"share_view", "blocked"},
+    {"sharing_change", "enabled"},
+    {"sharing_change", "disabled"},
+    {"sharing_change", "rotated"}
 }};
 
-constexpr std::array<const char*, 4> kCreateSources = {"blank", "template", "duplicate", "import"};
+constexpr std::array<const char*, 5> kCreateSources = {"blank", "template", "duplicate", "import", "fork"};
 
 std::size_t methodIndex(const std::string& method) {
     for (std::size_t i = 0; i + 1 < kMethods.size(); ++i) {

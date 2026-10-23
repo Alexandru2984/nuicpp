@@ -42,8 +42,8 @@ private:
     static constexpr std::size_t kMethodCount = 5;
     static constexpr std::size_t kStatusCount = 6;
     static constexpr std::size_t kLatencyBucketCount = 6;
-    static constexpr std::size_t kSecurityEventCount = 15;
-    static constexpr std::size_t kCreateSourceCount = 4;
+    static constexpr std::size_t kSecurityEventCount = 20;
+    static constexpr std::size_t kCreateSourceCount = 5;
 
     std::uint64_t startTimeSeconds_;
     std::array<std::atomic<std::uint64_t>, kMethodCount * kStatusCount> httpRequests_{};
