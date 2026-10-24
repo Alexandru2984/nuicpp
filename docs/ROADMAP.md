@@ -150,6 +150,9 @@ rollback notes where applicable.
 - Canonical `APP_BASE_URL` origin validation and an unsafe-method Origin guard
   rejecting foreign, opaque and duplicate browser origins, with CLI-compatible
   omission, live negative tests, bounded telemetry and an operator runbook.
+- Zero-interruption HTTPS migration to browser-enforced `__Host-ngs_session`,
+  with prefixed-cookie precedence, fail-closed shadow handling, legacy expiry,
+  dual-name logout and bounded upgrade telemetry covered by live tests.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -172,13 +175,16 @@ High risk remain open.
 
 ## P1 — privacy, identity and trustworthy sharing
 
+- Remove the transitional `ngs_session` HTTPS read fallback after the
+  `__Host-ngs_session` release has been live for at least seven days; retain the
+  plain-HTTP name only for local development and tests.
 - Add an explicitly indexed `public` visibility distinct from the implemented
   private and unlisted-link states.
 - Add optional password-protected links.
 - User accounts with email verification or OIDC, passkeys/WebAuthn and MFA for
   the administrator; convert a guest workspace into an account without data loss.
 - Server-side admin sessions with device list, last-used metadata and individual
-  revocation. Move to a `__Host-` cookie and preserve the implemented
+  revocation while preserving the implemented `__Host-` cookie and
   purpose-specific keys.
 - Workspaces, invitations and roles (`owner`, `editor`, `viewer`) with a central
   policy layer and negative authorization tests.

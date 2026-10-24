@@ -16,12 +16,12 @@ PostgreSQL's live-row estimates so the monitor does not repeatedly scan millions
 of rows. Responses are `no-store` and excluded from indexing.
 
 The bounded security series includes allowed/blocked share views, successful
-enable/disable/rotate/expiry-update lifecycle changes, signing-key cookie
-upgrades, rejected cross-site mutations, foreign request origins and unsupported
-request media types. Runtime logs use the same outcomes but redact capabilities
-from page and API paths. A sudden blocked-view spike after a planned rotation is
-expected; an unexplained sustained spike should be correlated with access logs
-without recovering or printing the old token.
+enable/disable/rotate/expiry-update lifecycle changes, signing-key and legacy
+cookie upgrades, rejected cross-site mutations, foreign request origins and
+unsupported request media types. Runtime logs use the same outcomes but redact
+capabilities from page and API paths. A sudden blocked-view spike after a planned
+rotation is expected; an unexplained sustained spike should be correlated with
+access logs without recovering or printing the old token.
 
 ## Scrape configuration
 

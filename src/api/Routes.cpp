@@ -150,13 +150,50 @@ bool requestIsSecure(const httplib::Request& req) {
     return proto == "https";
 }
 
-std::string sessionCookie(const httplib::Request& req, const std::string& value, int maxAgeSeconds) {
-    std::string cookie = "ngs_session=" + value + "; Path=/; Max-Age=" + std::to_string(maxAgeSeconds) +
+constexpr const char* kLegacySessionCookie = "ngs_session";
+constexpr const char* kHostSessionCookie = "__Host-ngs_session";
+
+std::string sessionCookieWithName(const httplib::Request& req, const std::string& name,
+                                  const std::string& value, int maxAgeSeconds) {
+    std::string cookie = name + "=" + value + "; Path=/; Max-Age=" + std::to_string(maxAgeSeconds) +
                          "; HttpOnly; SameSite=Strict";
     if (requestIsSecure(req)) {
         cookie += "; Secure";
     }
+    if (maxAgeSeconds == 0) {
+        cookie += "; Expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    }
     return cookie;
+}
+
+std::string sessionCookie(const httplib::Request& req, const std::string& value,
+                          int maxAgeSeconds) {
+    return sessionCookieWithName(req,
+        requestIsSecure(req) ? kHostSessionCookie : kLegacySessionCookie,
+        value, maxAgeSeconds);
+}
+
+std::string legacySessionCookie(const httplib::Request& req, const std::string& value,
+                                int maxAgeSeconds) {
+    return sessionCookieWithName(req, kLegacySessionCookie, value, maxAgeSeconds);
+}
+
+std::string sessionValue(const httplib::Request& req, bool* usedLegacyCookie = nullptr) {
+    if (usedLegacyCookie) {
+        *usedLegacyCookie = false;
+    }
+    if (requestIsSecure(req)) {
+        auto value = cookieValue(req, kHostSessionCookie);
+        if (!value.empty()) {
+            return value;
+        }
+        value = cookieValue(req, kLegacySessionCookie);
+        if (!value.empty() && usedLegacyCookie) {
+            *usedLegacyCookie = true;
+        }
+        return value;
+    }
+    return cookieValue(req, kLegacySessionCookie);
 }
 
 constexpr long long kLoginFailureWindow = 10 * 60;
@@ -493,11 +530,12 @@ std::string Routes::makeSessionValueUntil(const std::string& username, long long
 }
 
 bool Routes::verifySession(const httplib::Request& req, std::string* username,
-                           bool* usedPreviousKey, long long* expiryAt) const {
+                           bool* usedPreviousKey, long long* expiryAt,
+                           bool* usedLegacyCookie) const {
     if (usedPreviousKey) {
         *usedPreviousKey = false;
     }
-    auto session = cookieValue(req, "ngs_session");
+    auto session = sessionValue(req, usedLegacyCookie);
     auto parts = split(session, '.');
     if (parts.size() != 3 || parts[0].empty()) {
         return false;
@@ -539,7 +577,7 @@ std::string Routes::csrfTokenForSession(const std::string& session) const {
 }
 
 bool Routes::verifyCsrf(const httplib::Request& req) const {
-    auto session = cookieValue(req, "ngs_session");
+    auto session = sessionValue(req);
     if (session.empty() || !verifySession(req, nullptr)) {
         return false;
     }
@@ -1002,6 +1040,9 @@ void Routes::registerRoutes(httplib::Server& server) {
         res.set_header("X-Robots-Tag", "noindex, nofollow, noarchive");
         res.status = 302;
         res.set_header("Set-Cookie", sessionCookie(req, "", 0));
+        if (requestIsSecure(req)) {
+            res.set_header("Set-Cookie", legacySessionCookie(req, "", 0));
+        }
         res.set_header("Location", "/login");
         logSecurityEvent(req, res, "logout", "succeeded");
     });
@@ -1058,8 +1099,10 @@ void Routes::registerRoutes(httplib::Server& server) {
     server.Get("/api/session", [this](const httplib::Request& req, httplib::Response& res) {
         std::string username;
         bool usedPreviousKey = false;
+        bool usedLegacyCookie = false;
         long long sessionExpiry = 0;
-        if (!verifySession(req, &username, &usedPreviousKey, &sessionExpiry)) {
+        if (!verifySession(req, &username, &usedPreviousKey, &sessionExpiry,
+                           &usedLegacyCookie)) {
             if (!cfg_.publicAccess) {
                 sendJson(res, 401, errorJson("authentication required"));
                 return;
@@ -1074,14 +1117,20 @@ void Routes::registerRoutes(httplib::Server& server) {
             sendJson(res, 200, {{"username", username}, {"public_access", true}, {"csrf_token", csrfTokenForSession(session)}});
             return;
         }
-        auto session = cookieValue(req, "ngs_session");
-        if (usedPreviousKey) {
+        auto session = sessionValue(req);
+        if (usedPreviousKey || usedLegacyCookie) {
             const auto now = std::chrono::duration_cast<std::chrono::seconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
             const auto maxAge = static_cast<int>(std::max(1LL, sessionExpiry - now));
             session = makeSessionValueUntil(username, sessionExpiry);
             res.set_header("Set-Cookie", sessionCookie(req, session, maxAge));
-            logSecurityEvent(req, res, "session_rekey", "succeeded");
+            if (usedLegacyCookie) {
+                res.set_header("Set-Cookie", legacySessionCookie(req, "", 0));
+                logSecurityEvent(req, res, "session_cookie_upgrade", "succeeded");
+            }
+            if (usedPreviousKey) {
+                logSecurityEvent(req, res, "session_rekey", "succeeded");
+            }
         }
         sendJson(res, 200, {{"username", username}, {"public_access", cfg_.publicAccess}, {"csrf_token", csrfTokenForSession(session)}});
     });

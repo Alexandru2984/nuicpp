@@ -47,7 +47,7 @@ own rate-limit bucket by sending a forged header.
 Sessions are stateless, signed cookies — there is no server-side session store.
 
 ```
-ngs_session = <username>.<unix-expiry>.<HMAC-SHA256(SESSION_SIGNING_SECRET, "username.expiry")>
+__Host-ngs_session = <username>.<unix-expiry>.<HMAC-SHA256(SESSION_SIGNING_SECRET, "username.expiry")>
 ```
 
 - Verification checks the expiry first, then compares the HMAC in constant time.
@@ -55,9 +55,17 @@ ngs_session = <username>.<unix-expiry>.<HMAC-SHA256(SESSION_SIGNING_SECRET, "use
 - Admin sessions last 8 hours. Guest sessions last 7 days
   (`kGuestSessionSeconds`), short enough that an abandoned browser does not keep
   edit rights forever.
-- `Secure` is set only when `X-Forwarded-Proto` is `https`. In production it is
-  always set; over plain HTTP on localhost it is omitted so the cookie is usable
-  for local testing. `HttpOnly` and `SameSite=Strict` are always set.
+- HTTPS uses `__Host-ngs_session` with `Secure`, `Path=/`, no `Domain`,
+  `HttpOnly` and `SameSite=Strict`. The browser-enforced prefix prevents a
+  sibling subdomain from planting a same-name domain cookie. Plain HTTP local
+  testing uses legacy `ngs_session`, because a `__Host-` cookie is invalid
+  without `Secure`.
+- During rollout, a valid legacy cookie is accepted on HTTPS only when no
+  `__Host-` cookie exists. `/api/session` preserves its expiry and identity,
+  re-signs it with the current key, emits the prefixed cookie and expires the
+  legacy name. A present but invalid prefixed cookie fails closed instead of
+  falling back. Secure logout expires both names; the transition is visible as
+  one bounded `session_cookie_upgrade/succeeded` event.
 - Guest usernames are random values minted by `/api/session`. They are not
   user-chosen and cannot collide with `AUTH_USERNAME`, which is what separates
   guest from admin.

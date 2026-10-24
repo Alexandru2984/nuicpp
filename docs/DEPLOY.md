@@ -177,6 +177,15 @@ old cookies are re-signed without extending their original expiry on
 During a signing-key compromise, do not configure the previous key: immediate
 revocation takes priority over session continuity.
 
+The first HTTPS request to `/api/session` also upgrades a valid legacy
+`ngs_session` to `__Host-ngs_session` without changing its identity or expiry,
+then expires the old name. Seeing upgrade events immediately after deployment
+is expected. Confirm the prefixed cookie has `Secure; Path=/`, no `Domain`, and
+that secure logout emits expirations for both names before considering the
+rollout complete. After the code has been deployed for at least seven days (the
+longest session lifetime), schedule removal of the legacy read fallback; do not
+remove it early and silently detach active guest-owned diagrams.
+
 Never rotate `OWNER_HASH_SECRET` without a tested database re-key migration;
 changing it directly makes existing guest sessions unable to match their rows.
 Rotating `CSRF_SECRET` only requires clients to fetch a new session response.

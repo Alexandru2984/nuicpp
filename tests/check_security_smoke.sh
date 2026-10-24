@@ -89,6 +89,69 @@ PY
 CSRF="$(curl --noproxy '*' -fsS -b "$COOKIE_JAR" "http://127.0.0.1:${PORT}/api/session" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["csrf_token"])')"
 
+legacy_session="$(awk '$6 == "ngs_session" { value=$7 } END { print value }' "$COOKIE_JAR")"
+if [[ -z "$legacy_session" ]]; then
+  echo "security smoke failed: local session cookie was not issued" >&2
+  exit 1
+fi
+secure_session_headers="$TMP_DIR/secure-session.headers"
+secure_session_body="$TMP_DIR/secure-session.json"
+curl --noproxy '*' -fsS -D "$secure_session_headers" -o "$secure_session_body" \
+  -H 'X-Forwarded-Proto: https' -H "Cookie: ngs_session=${legacy_session}" \
+  "http://127.0.0.1:${PORT}/api/session"
+secure_username="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["username"])' "$secure_session_body")"
+if [[ "$secure_username" != "$guest_user" ]]; then
+  echo "legacy HTTPS session migration changed the guest identity" >&2
+  exit 1
+fi
+if ! grep -Eqi '^set-cookie: __Host-ngs_session=[^;]+; Path=/; Max-Age=[1-9][0-9]*; HttpOnly; SameSite=Strict; Secure' "$secure_session_headers"; then
+  echo "HTTPS session was not upgraded to a __Host- cookie" >&2
+  exit 1
+fi
+if ! grep -Fqi 'set-cookie: ngs_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict; Secure; Expires=Thu, 01 Jan 1970 00:00:00 GMT' "$secure_session_headers"; then
+  echo "legacy HTTPS session cookie was not expired during upgrade" >&2
+  exit 1
+fi
+host_session="$(sed -n 's/^Set-Cookie: __Host-ngs_session=\([^;]*\).*/\1/p' "$secure_session_headers" | tail -n 1)"
+if [[ -z "$host_session" ]]; then
+  echo "security smoke failed: upgraded host session value is missing" >&2
+  exit 1
+fi
+
+precedence_json="$(curl --noproxy '*' -fsS -H 'X-Forwarded-Proto: https' \
+  -H "Cookie: ngs_session=invalid; __Host-ngs_session=${host_session}" \
+  "http://127.0.0.1:${PORT}/api/session")"
+precedence_username="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["username"])' "$precedence_json")"
+if [[ "$precedence_username" != "$guest_user" ]]; then
+  echo "__Host- session cookie did not take precedence over the legacy name" >&2
+  exit 1
+fi
+
+shadowed_json="$(curl --noproxy '*' -fsS -H 'X-Forwarded-Proto: https' \
+  -H "Cookie: __Host-ngs_session=invalid; ngs_session=${legacy_session}" \
+  "http://127.0.0.1:${PORT}/api/session")"
+shadowed_username="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["username"])' "$shadowed_json")"
+if [[ "$shadowed_username" == "$guest_user" ]]; then
+  echo "invalid __Host- cookie unexpectedly fell back to a legacy session" >&2
+  exit 1
+fi
+
+secure_logout_headers="$TMP_DIR/secure-logout.headers"
+status="$(curl --noproxy '*' -sS -D "$secure_logout_headers" -o /dev/null -w '%{http_code}' \
+  -H 'X-Forwarded-Proto: https' -H 'Content-Type: application/json' \
+  -H "Cookie: __Host-ngs_session=${host_session}; ngs_session=${legacy_session}" \
+  -X POST -d '' "http://127.0.0.1:${PORT}/logout")"
+if [[ "$status" != "302" ]]; then
+  echo "expected secure logout to return 302, got $status" >&2
+  exit 1
+fi
+if [[ "$(grep -ci '^set-cookie:' "$secure_logout_headers")" != "2" ]] ||
+   ! grep -Fqi 'set-cookie: __Host-ngs_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict; Secure' "$secure_logout_headers" ||
+   ! grep -Fqi 'set-cookie: ngs_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict; Secure' "$secure_logout_headers"; then
+  echo "secure logout did not expire both session cookie names" >&2
+  exit 1
+fi
+
 # Positive control. Without this, every 403 below could be a rejected CSRF token
 # rather than the authorization check under test, and the file would pass while
 # proving nothing.
@@ -421,6 +484,7 @@ for series in \
   'nuigraph_security_events_total{event="fetch_metadata_rejected",outcome="blocked"}' \
   'nuigraph_security_events_total{event="origin_rejected",outcome="blocked"}' \
   'nuigraph_security_events_total{event="unsupported_media_type",outcome="blocked"}' \
+  'nuigraph_security_events_total{event="session_cookie_upgrade",outcome="succeeded"}' \
   'nuigraph_security_events_total{event="session_rekey",outcome="succeeded"}'
 do
   if ! grep -Fq "$series" <<<"$metrics_body"; then
@@ -438,6 +502,10 @@ if ! grep -Eq '^nuigraph_security_events_total\{event="origin_rejected",outcome=
 fi
 if ! grep -Eq '^nuigraph_security_events_total\{event="unsupported_media_type",outcome="blocked"\} [1-9][0-9]*$' <<<"$metrics_body"; then
   echo "unsupported media type rejections were not counted" >&2
+  exit 1
+fi
+if ! grep -Eq '^nuigraph_security_events_total\{event="session_cookie_upgrade",outcome="succeeded"\} [1-9][0-9]*$' <<<"$metrics_body"; then
+  echo "legacy session cookie upgrades were not counted" >&2
   exit 1
 fi
 if ! grep -qi '^content-type: text/plain; version=0.0.4; charset=utf-8' "$metrics_headers"; then
@@ -666,6 +734,10 @@ if ! grep -q 'category=security event=origin_rejected outcome=blocked' "$LOG_FIL
 fi
 if ! grep -q 'category=security event=unsupported_media_type outcome=blocked' "$LOG_FILE"; then
   echo "expected an explicit unsupported media type security event" >&2
+  exit 1
+fi
+if ! grep -q 'category=security event=session_cookie_upgrade outcome=succeeded' "$LOG_FILE"; then
+  echo "expected an explicit legacy session-cookie upgrade event" >&2
   exit 1
 fi
 if ! grep -q 'category=security event=share_view outcome=allowed.*path=/d/<redacted>' "$LOG_FILE"; then

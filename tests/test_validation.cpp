@@ -436,6 +436,7 @@ void testMetricsStayAggregateAndBounded() {
     metrics.recordSecurityEvent("fetch_metadata_rejected", "blocked");
     metrics.recordSecurityEvent("origin_rejected", "blocked");
     metrics.recordSecurityEvent("unsupported_media_type", "blocked");
+    metrics.recordSecurityEvent("session_cookie_upgrade", "succeeded");
     metrics.recordSecurityEvent("attacker-controlled-label", "ignored");
     metrics.recordDiagramCreated("import");
     metrics.recordDiagramCreated("attacker-controlled-source");
@@ -471,6 +472,9 @@ void testMetricsStayAggregateAndBounded() {
     require(body.find("event=\"unsupported_media_type\",outcome=\"blocked\"} 1") !=
                 std::string::npos,
             "metrics should count rejected request media types");
+    require(body.find("event=\"session_cookie_upgrade\",outcome=\"succeeded\"} 1") !=
+                std::string::npos,
+            "metrics should count legacy session-cookie upgrades");
     require(body.find("source=\"import\"} 1") != std::string::npos,
             "metrics should count successful import creations");
     require(body.find("nuigraph_database_size_bytes 4096") != std::string::npos,

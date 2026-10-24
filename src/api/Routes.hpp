@@ -23,7 +23,8 @@ private:
     std::string makeCookie(const httplib::Request& req, const std::string& username, int maxAgeSeconds) const;
     bool verifySession(const httplib::Request& req, std::string* username,
                        bool* usedPreviousKey = nullptr,
-                       long long* expiryAt = nullptr) const;
+                       long long* expiryAt = nullptr,
+                       bool* usedLegacyCookie = nullptr) const;
     std::string csrfTokenForSession(const std::string& session) const;
     bool verifyCsrf(const httplib::Request& req) const;
     bool ensureCsrf(const httplib::Request& req, httplib::Response& res);

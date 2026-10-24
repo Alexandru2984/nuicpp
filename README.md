@@ -147,8 +147,9 @@ Summarised here, detailed in [`docs/SECURITY.md`](docs/SECURITY.md).
 
 - Cloudflare-only ingress enforced at nginx; direct-to-origin requests get `403`.
 - Purpose-separated HMAC keys for `HttpOnly`, `SameSite=Strict` sessions, CSRF,
-  stable guest ownership and rate-limit pseudonyms; planned signing-key rotation
-  transparently re-signs active 8-hour admin and 7-day guest sessions.
+  stable guest ownership and rate-limit pseudonyms; HTTPS sessions use a
+  browser-enforced `__Host-` cookie, while signing-key and legacy-name rollover
+  transparently preserve active 8-hour admin and 7-day guest sessions.
 - PBKDF2-SHA256 admin password with constant-time comparison.
 - Per-session ownership by HMAC-derived owner hash; read and edit both checked
   by diagram id on every path that emits diagram content, including duplicate.
