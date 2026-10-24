@@ -376,6 +376,7 @@
       { id: "select-connected", label: "Select connected component", shortLabel: "Connected", category: "Analyze", keywords: "graph traversal reachable weak component expand selection neighbours", mobile: true, enabled: () => selectedNodeKeys().length > 0, run: selectConnectedNodes },
       { id: "find-node", label: "Find and focus node", shortLabel: "Find", category: "Analyze", keywords: "navigate search locate jump", shortcut: "/", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: openNodeNavigator },
       { id: "diagram-outline", label: "Open diagram outline", shortLabel: "Outline", category: "Analyze", keywords: "accessibility screen reader tree nodes edges navigate", shortcut: "Alt + O", mobile: true, enabled: () => Boolean(state.current?.nodes?.length || state.current?.edges?.length), run: openDiagramOutline },
+      { id: "actual-size", label: "Actual size (100%)", shortLabel: "100%", category: "View", keywords: "reset zoom scale one to one", shortcut: "Shift + 1", mobile: true, run: resetZoom },
       { id: "frame-selection", label: "Frame selection", shortLabel: "Frame", category: "View", keywords: "zoom center focus selected nodes edge", shortcut: "Shift + 2", mobile: true, enabled: () => selectedFrameNodes().length > 0, run: frameSelection },
       { id: "fit", label: "Zoom to fit", shortLabel: "Fit", category: "View", keywords: "frame center canvas", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: zoomToFit },
       { id: "tool-select", label: "Use select tool", shortLabel: "Select", category: "Tools", keywords: "pointer", mobile: true, run: () => triggerTool("select") },
@@ -1321,6 +1322,7 @@
     ["/", "Find and focus a node"],
     ["Alt + O", "Open the accessible diagram outline"],
     ["F2 / Enter", "Edit selected node or edge label"],
+    ["Shift + 1", "Reset canvas zoom to actual size (100%)"],
     ["Shift + 2", "Frame the current selection"],
     ["Ctrl / Cmd + S", "Save diagram"],
     ["Ctrl / Cmd + Z", "Undo"],
@@ -1688,6 +1690,20 @@
     state.zoom = zoom;
     state.pan.x = clientX - rect.left - worldX * zoom;
     state.pan.y = clientY - rect.top - worldY * zoom;
+  }
+
+  function zoomAtViewportCenter(nextZoom) {
+    const rect = canvas.getBoundingClientRect();
+    zoomAround(rect.left + rect.width / 2, rect.top + rect.height / 2, nextZoom);
+    render();
+  }
+
+  function zoomViewportBy(factor) {
+    zoomAtViewportCenter(state.zoom * factor);
+  }
+
+  function resetZoom() {
+    zoomAtViewportCenter(1);
   }
 
   function frameNodes(nodes, maximumZoom) {
@@ -3746,8 +3762,9 @@
       el("snap-toggle").classList.toggle("active", state.snap);
     };
     el("grid-size").onchange = () => applyGridSize(el("grid-size").value);
-    el("zoom-in").onclick = () => { state.zoom = Math.min(2.5, state.zoom * 1.15); render(); };
-    el("zoom-out").onclick = () => { state.zoom = Math.max(0.25, state.zoom / 1.15); render(); };
+    el("zoom-in").onclick = () => zoomViewportBy(1.15);
+    el("zoom-out").onclick = () => zoomViewportBy(1 / 1.15);
+    el("zoom-label").onclick = resetZoom;
     el("export-json").onclick = () => { if (state.current) window.open(`/api/diagrams/${state.current.id}/export.json`, "_blank"); };
     el("export-svg").onclick = exportSvg;
 
@@ -3992,6 +4009,12 @@
         return;
       }
       if (evt.target.matches("input, textarea, select") || evt.target.isContentEditable) return;
+      if (evt.shiftKey && evt.code === "Digit1" && !evt.ctrlKey && !evt.metaKey && !evt.altKey &&
+          !document.querySelector('[role="dialog"]')) {
+        evt.preventDefault();
+        resetZoom();
+        return;
+      }
       if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "a" && !evt.altKey &&
           !document.querySelector('[role="dialog"]')) {
         evt.preventDefault();

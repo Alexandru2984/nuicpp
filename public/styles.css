@@ -294,6 +294,7 @@ h2 { font-size: 14px; color: var(--text-strong); }
 
 #zoom-label {
   min-width: 48px;
+  padding-inline: 6px;
   text-align: center;
   color: var(--muted);
   font-variant-numeric: tabular-nums;

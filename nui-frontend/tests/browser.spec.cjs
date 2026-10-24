@@ -172,6 +172,23 @@ test.describe("desktop security and offline lifecycle", () => {
     await expect(shortcutsDialog).not.toBeVisible();
     await expect(title).toBeFocused();
 
+    const actualSize = page.getByRole("button", { name: "Reset zoom to 100%" });
+    await expect(actualSize).toHaveText("100%");
+    await page.locator("#zoom-out").click();
+    await expect(actualSize).not.toHaveText("100%");
+    await actualSize.click();
+    await expect(actualSize).toHaveText("100%");
+    await page.locator("#zoom-out").click();
+    await page.locator("#canvas").focus();
+    await page.keyboard.press("Shift+1");
+    await expect(actualSize).toHaveText("100%");
+    await page.locator("#zoom-out").click();
+    await page.keyboard.press("Control+k");
+    await page.getByRole("combobox", { name: "Search commands" }).fill("actual size");
+    await expect(page.getByRole("option", { name: /Actual size \(100%\)/ })).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(actualSize).toHaveText("100%");
+
     let sharingTestId = null;
     try {
       await page.locator("#new-diagram").click();
@@ -736,6 +753,7 @@ test.describe("phone layout", () => {
     await expect(customizer.getByLabel("Find and focus node", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Edit selected label", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Frame selection", { exact: true })).toBeVisible();
+    await expect(customizer.getByLabel("Actual size (100%)", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Cycle grid size", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Align selected nodes left", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Toggle node geometry lock", { exact: true })).toBeVisible();
@@ -747,12 +765,17 @@ test.describe("phone layout", () => {
     await expect(customizer.getByLabel("Duplicate selected nodes", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Cut selected nodes", { exact: true })).toBeVisible();
     await customizer.getByLabel("Add node", { exact: true }).uncheck();
-    await customizer.getByLabel("Zoom to fit", { exact: true }).check();
+    await customizer.getByLabel("Actual size (100%)", { exact: true }).check();
     await customizer.getByRole("button", { name: "Apply", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Zoom to fit", exact: true })).toBeVisible();
+    const mobileActualSize = page.getByRole("button", { name: "Actual size (100%)", exact: true });
+    await expect(mobileActualSize).toBeVisible();
+    await page.locator("#zoom-out").evaluate((button) => button.click());
+    await expect(page.locator("#zoom-label")).not.toHaveText("100%");
+    await mobileActualSize.click();
+    await expect(page.locator("#zoom-label")).toHaveText("100%");
 
     await page.reload({ waitUntil: "networkidle" });
-    await expect(page.getByRole("button", { name: "Zoom to fit", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Actual size (100%)", exact: true })).toBeVisible();
     await expect(page.locator(".mobile-action-bar button")).toHaveCount(5);
 
     expect(await page.evaluate(() => globalThis.__nuigraphPolicyViolations)).toEqual([]);

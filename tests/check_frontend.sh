@@ -33,6 +33,9 @@ grep -Fq 'Edit selected label' public/editor.js
 grep -Fq 'className = "inline-label-editor"' public/editor.js
 grep -Fq 'applyBatchProperties' public/editor.js
 grep -Fq 'Frame selection' public/editor.js
+grep -Fq 'Actual size (100%)' public/editor.js
+grep -Fq 'function resetZoom()' public/editor.js
+grep -Fq 'evt.code === "Digit1"' public/editor.js
 grep -Fq 'evt.code === "Digit2"' public/editor.js
 grep -Fq 'function snapValue(value, grid = state.gridSize)' public/editor.js
 grep -Fq 'nuigraph:grid-size:v1' public/editor.js
@@ -53,6 +56,8 @@ grep -Fq 'metadata.geometry_locked = true' public/editor.js
 grep -Fq 'if (fetchOptions.body !== undefined' public/editor.js
 grep -Fq 'id="grid-size"' src/ui/NuiApp.cpp
 grep -Fq 'id = "grid-size"' nui-frontend/frontend/source/frontend/main_page.cpp
+grep -Fq 'id="zoom-label"' src/ui/NuiApp.cpp
+grep -Fq 'id = "zoom-label"' nui-frontend/frontend/source/frontend/main_page.cpp
 grep -Fq 'id="multi-node-props"' src/ui/NuiApp.cpp
 grep -Fq 'id = "multi-node-props"' nui-frontend/frontend/source/frontend/main_page.cpp
 grep -Fq '<h1>NuiGraph Studio</h1>' src/ui/NuiApp.cpp

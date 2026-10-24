@@ -93,6 +93,8 @@ rollback notes where applicable.
   operation. The same property sheet is available in the phone layout.
 - Selection framing for one or many nodes and edge endpoints via `Shift+2`, the
   command palette or a customisable mobile action, with phone-safe padding.
+- Centre-preserving Actual Size resets zoom to 100% from the desktop indicator,
+  `Shift+1`, the command palette or a customisable mobile action.
 - Configurable 8/16/32/64 px grid shared by rendering, node creation, dragging
   and resizing. The preference stays local and can be changed from the desktop
   toolbar or cycled from the command palette/mobile actions.

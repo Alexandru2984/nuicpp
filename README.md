@@ -83,6 +83,8 @@ admin account for maintenance.
   orphan nodes, invalid or duplicate edges, self-loops and directed cycles, then
   focuses the selected finding without sending diagram content to another service.
 - Zoom-to-fit frames the entire graph while reserving room for mobile controls.
+- Actual Size resets zoom to 100% around the viewport centre from the clickable
+  zoom indicator, `Shift+1`, the command palette or a pinned mobile action.
 - Frame Selection (`Shift+2`, command palette or mobile action) centres and
   scales a selected node set or both endpoints of a selected edge.
 - Diagram search filter over the sidebar list.
