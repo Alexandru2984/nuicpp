@@ -131,6 +131,7 @@ test.describe("desktop security and offline lifecycle", () => {
     expect(cachedPaths).toContain("/offline.html");
     expect(cachedPaths).toContain("/diagram-review.js");
     expect(cachedPaths).toContain("/diagram-arrange.js");
+    expect(cachedPaths).toContain("/diagram-selection.js");
 
     const title = page.locator("#diagram-title");
     await title.focus();
@@ -190,6 +191,17 @@ test.describe("desktop security and offline lifecycle", () => {
         diagram.title = diagramTitle;
         diagram.nodes.find((node) => node.key === "node_service").title = title;
         const decision = diagram.nodes.find((node) => node.key === "node_decision");
+        diagram.nodes.push({
+          key: "node_isolated",
+          type: "note",
+          title: "Disconnected note",
+          x: 820,
+          y: 320,
+          width: 180,
+          height: 72,
+          color: "#fde047",
+          metadata: {}
+        });
         for (const edge of diagram.edges) {
           if (edge.source === decision.key) edge.source = longNodeKey;
           if (edge.target === decision.key) edge.target = longNodeKey;
@@ -289,6 +301,17 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(page.locator('#nodes > g[data-key="node_service"]')).toHaveClass(/selected/);
       await expect(editorLiveStatus).toContainText(`Node selected: ${unsafeNodeTitle}`);
       await expect(editorLiveStatus.locator("img")).toHaveCount(0);
+      await expect(page.locator("#canvas")).toBeFocused();
+
+      await page.keyboard.press("Control+k");
+      const connectedPalette = page.getByRole("dialog", { name: "Command palette" });
+      await connectedPalette.getByRole("combobox", { name: "Search commands" }).fill("select connected component");
+      await expect(connectedPalette.getByRole("option", { name: /Select connected component/ })).toBeEnabled();
+      await page.keyboard.press("Enter");
+      await expect(connectedPalette).not.toBeVisible();
+      await expect(page.locator("#nodes > g.selected")).toHaveCount(diagramNodeCount - 1);
+      await expect(page.locator('#nodes > g[data-key="node_isolated"]')).not.toHaveClass(/selected/);
+      await expect(editorLiveStatus).toHaveText(`${diagramNodeCount - 1} nodes selected.`);
       await expect(page.locator("#canvas")).toBeFocused();
 
       await page.keyboard.press("/");
@@ -636,6 +659,7 @@ test.describe("phone layout", () => {
     await expect(customizer.getByLabel("Cycle grid size", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Align selected nodes left", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Select all nodes", { exact: true })).toBeVisible();
+    await expect(customizer.getByLabel("Select connected component", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Duplicate selected nodes", { exact: true })).toBeVisible();
     await customizer.getByLabel("Add node", { exact: true }).uncheck();
     await customizer.getByLabel("Zoom to fit", { exact: true }).check();

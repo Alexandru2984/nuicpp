@@ -5,6 +5,7 @@ node --check public/editor.js >/dev/null
 node --check public/app.js >/dev/null
 node --check public/diagram-review.js >/dev/null
 node --check public/diagram-arrange.js >/dev/null
+node --check public/diagram-selection.js >/dev/null
 node --check public/offline.js >/dev/null
 node --check public/sw.js >/dev/null
 node --check public/nui/bootstrap.js >/dev/null
@@ -17,12 +18,14 @@ grep -q 'asset("/offline.html")' public/sw.js
 grep -q 'asset("/offline.js")' public/sw.js
 grep -q 'asset("/diagram-review.js")' public/sw.js
 grep -q 'asset("/diagram-arrange.js")' public/sw.js
+grep -q 'asset("/diagram-selection.js")' public/sw.js
 grep -q '<script src="/offline.js?v=__ASSET_VERSION__"></script>' public/offline.html
 grep -Fq 'const assetQuery = document.currentScript' public/app.js
 grep -Fq 'navigator.serviceWorker.register(`/sw.js' public/app.js
 grep -Fq 'script.src = `/editor.js' public/app.js
 grep -Fq 'review.src = `/diagram-review.js' public/app.js
 grep -Fq 'arrange.src = `/diagram-arrange.js' public/app.js
+grep -Fq 'selection.src = `/diagram-selection.js' public/app.js
 grep -Fq 'css.href = `/styles.css' public/editor.js
 grep -Fq 'Ctrl / Cmd + K' public/editor.js
 grep -Fq 'Find and focus node' public/editor.js
@@ -36,6 +39,7 @@ grep -Fq 'nuigraph:grid-size:v1' public/editor.js
 grep -Fq 'nudgeSelectedNodes' public/editor.js
 grep -Fq 'evt.key === "ArrowLeft"' public/editor.js
 grep -Fq 'function selectAllNodes()' public/editor.js
+grep -Fq 'function selectConnectedNodes()' public/editor.js
 grep -Fq 'evt.key.toLowerCase() === "a"' public/editor.js
 grep -Fq 'function nextAvailableKey(base, used, nonce)' public/editor.js
 grep -Fq 'function duplicateSelected()' public/editor.js
@@ -71,6 +75,7 @@ grep -Fq '@media (prefers-reduced-motion: reduce)' public/styles.css
 grep -Fq '#canvas:focus-visible' public/styles.css
 node tests/test_diagram_review.cjs
 node tests/test_diagram_arrange.cjs
+node tests/test_diagram_selection.cjs
 if rg -n 'innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval[[:space:]]*\(|new Function' public --glob '*.js'; then
   echo "public JavaScript must not use HTML/code execution sinks" >&2
   exit 1

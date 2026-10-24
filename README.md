@@ -36,6 +36,9 @@ admin account for maintenance.
   `Shift+Arrow` moves five steps and held-key repeats collapse into one undo.
 - `Ctrl/Cmd+A` selects every node for immediate framing, alignment, batch
   inspection or movement, and is also available from commands/mobile actions.
+- Select Connected Component expands one or more selected nodes across weak
+  graph connectivity in linear time, while excluding disconnected subgraphs;
+  it is available from the command palette and customisable mobile actions.
 - `Ctrl/Cmd+D` duplicates selected nodes plus their internal edges as one
   undoable edit; collision-safe keys remain valid even when originals use the
   full 64-character server limit.

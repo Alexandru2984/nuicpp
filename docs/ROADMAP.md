@@ -123,6 +123,9 @@ rollback notes where applicable.
 - SoftwareApplication microdata, semantic primary heading, locale/language
   alternates and a richer PWA manifest across the server and Nui shells, while
   bearer shares remain explicitly absent from public metadata and indexing.
+- Iterative weak-component selection from one or many graph nodes, exposed in
+  the command palette and customisable phone actions, with deterministic,
+  mutation-free and deep-graph unit coverage plus disconnected-graph E2E.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and

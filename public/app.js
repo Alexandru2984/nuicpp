@@ -18,18 +18,33 @@
     document.head.appendChild(script);
   };
 
+  const attachSelection = () => {
+    if (globalThis.NuiGraphSelection) {
+      attachEditor();
+      return;
+    }
+    const selection = document.createElement("script");
+    selection.src = `/diagram-selection.js${assetQuery}`;
+    selection.defer = true;
+    selection.onload = attachEditor;
+    // Basic editing remains available if this optional analysis engine is
+    // missing; its command provides a focused recovery message.
+    selection.onerror = attachEditor;
+    document.head.appendChild(selection);
+  };
+
   const attachArrange = () => {
     if (globalThis.NuiGraphArrange) {
-      attachEditor();
+      attachSelection();
       return;
     }
     const arrange = document.createElement("script");
     arrange.src = `/diagram-arrange.js${assetQuery}`;
     arrange.defer = true;
-    arrange.onload = attachEditor;
+    arrange.onload = attachSelection;
     // A missing optional engine must not prevent basic editing. Its commands
     // remain visible but report that the release assets need to be reloaded.
-    arrange.onerror = attachEditor;
+    arrange.onerror = attachSelection;
     document.head.appendChild(arrange);
   };
 
