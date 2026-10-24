@@ -46,6 +46,9 @@ grep -Fq 'Open diagram outline' public/editor.js
 grep -Fq 'editor-live-status' public/editor.js
 grep -Fq 'function updateSelectionAnnouncement()' public/editor.js
 grep -Fq '.sr-only' public/styles.css
+grep -Fq 'textarea:not(:disabled):not([tabindex="-1"])' public/editor.js
+grep -Fq 'overlay.closeDialog = closeShortcuts' public/editor.js
+grep -Fq 'overlay.closeDialog = closeDiff' public/editor.js
 grep -Fq 'nuigraph:mobile-actions:v1' public/editor.js
 grep -Fq 'className = "command-palette-overlay"' public/editor.js
 test "$(grep -Fc 'if (state.current.nodes?.length) zoomToFit();' public/editor.js)" -eq 2

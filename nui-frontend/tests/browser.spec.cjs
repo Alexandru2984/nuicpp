@@ -125,9 +125,17 @@ test.describe("desktop security and offline lifecycle", () => {
     await page.getByRole("combobox", { name: "Search commands" }).fill("keyboard shortcuts");
     await expect(page.getByRole("option", { name: /Show keyboard shortcuts/ })).toBeVisible();
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
+    const shortcutsDialog = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+    const shortcutsClose = shortcutsDialog.getByRole("button", { name: "Close" });
+    await expect(shortcutsDialog).toBeVisible();
+    await expect(shortcutsClose).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(shortcutsClose).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(shortcutsClose).toBeFocused();
     await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).not.toBeVisible();
+    await expect(shortcutsDialog).not.toBeVisible();
+    await expect(title).toBeFocused();
 
     let sharingTestId = null;
     try {
@@ -506,13 +514,19 @@ test.describe("phone layout", () => {
     expect(geometry.canvas.height).toBeGreaterThan(400);
     expect(geometry.targets.every((height) => height >= 44)).toBe(true);
 
-    await page.getByRole("button", { name: "Diagrams", exact: true }).click();
+    const diagramsButton = page.getByRole("button", { name: "Diagrams", exact: true });
+    await diagramsButton.click();
     await expect(page.locator(".project-panel")).toBeVisible();
     await expect(page.locator(".sheet-scrim")).toBeVisible();
+    await expect(page.locator(".project-panel .sheet-close")).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    expect(await page.evaluate(() => document.querySelector(".project-panel").contains(document.activeElement))).toBe(true);
     await page.keyboard.press("Escape");
     await expect(page.locator(".project-panel")).not.toBeVisible();
+    await expect(diagramsButton).toBeFocused();
 
-    await page.getByRole("button", { name: "Properties", exact: true }).click();
+    const propertiesButton = page.getByRole("button", { name: "Properties", exact: true });
+    await propertiesButton.click();
     await page.evaluate(() => {
       document.querySelector("#selection-empty").classList.add("hidden");
       document.querySelector("#multi-node-props").classList.remove("hidden");
@@ -524,6 +538,7 @@ test.describe("phone layout", () => {
       button.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
     await page.keyboard.press("Escape");
     await expect(page.locator(".properties")).not.toBeVisible();
+    await expect(propertiesButton).toBeFocused();
 
     await page.getByRole("button", { name: "Commands", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();

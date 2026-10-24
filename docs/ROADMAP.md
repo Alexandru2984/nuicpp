@@ -107,6 +107,8 @@ rollback notes where applicable.
   tested against untrusted labels in Chromium.
 - Screen-reader live regions describe cleared, single-node, multi-node and edge
   selections, while draft save state is exposed as a separate atomic status.
+- Complete keyboard focus containment and restoration across editor dialogs,
+  version diffs and phone sheets, including every native form control type.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -162,8 +164,8 @@ High risk remain open.
   selective restore and duplicate-as-branch.
 - Autosave to the server with visible sync state, offline mutation queue and
   conflict-resolution UI.
-- WCAG 2.2 AA pass: complete focus trapping and restoration for every
-  sheet/dialog.
+- WCAG 2.2 AA pass: automated rules audit, manual screen-reader review and
+  documented keyboard-only acceptance criteria.
 - Romanian plus English localisation, locale-aware dates and RTL-ready layout.
 - Cross-browser visual and interaction tests at phone, tablet, desktop and
   coarse-pointer breakpoints.

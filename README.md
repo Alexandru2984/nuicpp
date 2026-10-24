@@ -46,6 +46,8 @@ admin account for maintenance.
   ARIA tree with keyboard navigation, selection and canvas centring.
 - Polite screen-reader status announcements describe canvas selection changes
   and draft persistence without adding visual noise or changing layout.
+- Modal dialogs and mobile property/diagram sheets contain keyboard focus,
+  close on Escape and restore focus to the control that opened them.
 - Inline node and edge-label editing by double-click, `F2`, `Enter`, command
   palette or a pinned mobile action, with one-step undo and browser-draft
   persistence.

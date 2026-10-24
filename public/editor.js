@@ -221,7 +221,7 @@
         trigger?.focus();
         return;
       }
-      lastTrigger = trigger;
+      lastTrigger = trigger?.isConnected ? trigger : document.activeElement;
       panel.classList.add("sheet-open");
       panel.setAttribute("role", "dialog");
       panel.setAttribute("aria-modal", "true");
@@ -251,6 +251,8 @@
     window.addEventListener("keydown", (evt) => {
       const openPanel = Object.values(panels).find((panel) => panel?.classList.contains("sheet-open"));
       if (evt.key === "Escape" && openPanel) {
+        evt.preventDefault();
+        evt.stopImmediatePropagation();
         closeAll();
       } else if (openPanel) {
         trapDialogFocus(evt, openPanel);
@@ -410,12 +412,29 @@
 
   function trapDialogFocus(evt, dialog) {
     if (evt.key !== "Tab") return;
-    const focusable = [...dialog.querySelectorAll("button:not(:disabled), input:not(:disabled)")]
-      .filter((node) => node.offsetParent !== null);
-    if (!focusable.length) return;
+    const selector = [
+      'a[href]:not([tabindex="-1"])',
+      'area[href]:not([tabindex="-1"])',
+      'button:not(:disabled):not([tabindex="-1"])',
+      'input:not(:disabled):not([type="hidden"]):not([tabindex="-1"])',
+      'select:not(:disabled):not([tabindex="-1"])',
+      'textarea:not(:disabled):not([tabindex="-1"])',
+      'details > summary:first-of-type',
+      '[tabindex]:not([tabindex="-1"])'
+    ].join(", ");
+    const focusable = [...dialog.querySelectorAll(selector)]
+      .filter((node) => node.tabIndex >= 0 && node.offsetParent !== null && !node.closest("[inert]"));
+    if (!focusable.length) {
+      evt.preventDefault();
+      dialog.focus?.();
+      return;
+    }
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
-    if (evt.shiftKey && document.activeElement === first) {
+    if (!dialog.contains(document.activeElement)) {
+      evt.preventDefault();
+      (evt.shiftKey ? last : first).focus();
+    } else if (evt.shiftKey && document.activeElement === first) {
       evt.preventDefault();
       last.focus();
     } else if (!evt.shiftKey && document.activeElement === last) {
@@ -436,7 +455,7 @@
       existing.querySelector("input")?.focus();
       return;
     }
-    document.querySelector(".shortcuts-overlay")?.remove();
+    closeDialog(".shortcuts-overlay");
     sheetControls.closeAll(false);
 
     const previousFocus = document.activeElement;
@@ -830,7 +849,7 @@
       return;
     }
     closeDialog(".command-palette-overlay");
-    document.querySelector(".shortcuts-overlay")?.remove();
+    closeDialog(".shortcuts-overlay");
     sheetControls.closeAll(false);
 
     const previousFocus = document.activeElement;
@@ -996,7 +1015,7 @@
       return;
     }
     closeDialog(".command-palette-overlay");
-    document.querySelector(".shortcuts-overlay")?.remove();
+    closeDialog(".shortcuts-overlay");
     sheetControls.closeAll(false);
 
     const previousFocus = document.activeElement;
@@ -1307,9 +1326,10 @@
   function toggleShortcuts() {
     const existing = document.querySelector(".shortcuts-overlay");
     if (existing) {
-      existing.remove();
+      closeDialog(".shortcuts-overlay");
       return;
     }
+    const previousFocus = document.activeElement;
     const overlay = document.createElement("div");
     overlay.className = "shortcuts-overlay";
     overlay.setAttribute("role", "dialog");
@@ -1325,7 +1345,6 @@
     const close = document.createElement("button");
     close.type = "button";
     close.textContent = "Close";
-    close.onclick = () => overlay.remove();
     head.append(title, close);
     card.appendChild(head);
 
@@ -1340,7 +1359,22 @@
     }
     card.appendChild(table);
     overlay.appendChild(card);
-    overlay.onclick = (evt) => { if (evt.target === overlay) overlay.remove(); };
+    const closeShortcuts = () => {
+      overlay.remove();
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+    overlay.closeDialog = closeShortcuts;
+    close.onclick = closeShortcuts;
+    overlay.onclick = (evt) => { if (evt.target === overlay) closeShortcuts(); };
+    overlay.addEventListener("keydown", (evt) => {
+      if (evt.key === "Escape") {
+        evt.preventDefault();
+        evt.stopPropagation();
+        closeShortcuts();
+        return;
+      }
+      trapDialogFocus(evt, card);
+    });
     document.body.appendChild(overlay);
     close.focus();
   }
@@ -1404,7 +1438,8 @@
   }
 
   function showDiff(version, rows) {
-    document.querySelector(".shortcuts-overlay")?.remove();
+    closeDialog(".shortcuts-overlay");
+    const previousFocus = document.activeElement;
     const overlay = document.createElement("div");
     overlay.className = "shortcuts-overlay";
     overlay.setAttribute("role", "dialog");
@@ -1420,7 +1455,6 @@
     const close = document.createElement("button");
     close.type = "button";
     close.textContent = "Close";
-    close.onclick = () => overlay.remove();
     head.append(title, close);
     card.appendChild(head);
 
@@ -1443,7 +1477,22 @@
     }
     card.appendChild(list);
     overlay.appendChild(card);
-    overlay.onclick = (evt) => { if (evt.target === overlay) overlay.remove(); };
+    const closeDiff = () => {
+      overlay.remove();
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+    overlay.closeDialog = closeDiff;
+    close.onclick = closeDiff;
+    overlay.onclick = (evt) => { if (evt.target === overlay) closeDiff(); };
+    overlay.addEventListener("keydown", (evt) => {
+      if (evt.key === "Escape") {
+        evt.preventDefault();
+        evt.stopPropagation();
+        closeDiff();
+        return;
+      }
+      trapDialogFocus(evt, card);
+    });
     document.body.appendChild(overlay);
     close.focus();
   }
@@ -3735,7 +3784,7 @@
       if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "z") { evt.preventDefault(); evt.shiftKey ? redo() : undo(); }
       if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "y") { evt.preventDefault(); redo(); }
       if (evt.key === "?") { evt.preventDefault(); toggleShortcuts(); }
-      if (evt.key === "Escape") document.querySelector(".shortcuts-overlay")?.remove();
+      if (evt.key === "Escape") closeDialog(".shortcuts-overlay");
     });
 
     window.addEventListener("beforeunload", (evt) => {
