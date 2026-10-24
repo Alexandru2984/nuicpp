@@ -347,6 +347,7 @@
       { id: "undo", label: "Undo", shortLabel: "Undo", category: "Edit", shortcut: "Ctrl / Cmd + Z", mobile: true, enabled: () => state.history.length > 0 && !state.readOnly, run: undo },
       { id: "redo", label: "Redo", shortLabel: "Redo", category: "Edit", shortcut: "Ctrl / Cmd + Y", mobile: true, enabled: () => state.future.length > 0 && !state.readOnly, run: redo },
       { id: "copy", label: "Copy selection", shortLabel: "Copy", category: "Edit", shortcut: "Ctrl / Cmd + C", enabled: () => selectedNodeKeys().length > 0, run: copySelected },
+      { id: "cut", label: "Cut selected nodes", shortLabel: "Cut", category: "Edit", keywords: "move clipboard remove nodes edges", shortcut: "Ctrl / Cmd + X", mobile: true, enabled: () => selectedNodeKeys().length > 0 && !state.readOnly, run: cutSelected },
       { id: "paste", label: "Paste selection", shortLabel: "Paste", category: "Edit", shortcut: "Ctrl / Cmd + V", enabled: () => Boolean(state.clipboard?.nodes?.length) && !state.readOnly, run: pasteSelected },
       { id: "duplicate-selection", label: "Duplicate selected nodes", shortLabel: "Duplicate", category: "Edit", keywords: "clone copy nodes edges", shortcut: "Ctrl / Cmd + D", mobile: true, enabled: () => selectedNodeKeys().length > 0 && !state.readOnly, run: duplicateSelected },
       { id: "select-all", label: "Select all nodes", shortLabel: "All", category: "Edit", keywords: "multi selection everything batch", shortcut: "Ctrl / Cmd + A", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: selectAllNodes },
@@ -1316,6 +1317,7 @@
     ["Ctrl / Cmd + Z", "Undo"],
     ["Ctrl / Cmd + Y", "Redo"],
     ["Ctrl / Cmd + C", "Copy selection"],
+    ["Ctrl / Cmd + X", "Cut selected nodes"],
     ["Ctrl / Cmd + V", "Paste"],
     ["Ctrl / Cmd + D", "Duplicate selected nodes"],
     ["Ctrl / Cmd + A", "Select all nodes"],
@@ -3424,9 +3426,7 @@
     if (!state.current || !state.selected || state.readOnly) return;
     pushHistory();
     if (state.selected.type === "node" || state.selected.type === "nodes") {
-      const keys = selectedNodeKeys();
-      state.current.nodes = state.current.nodes.filter((n) => !keys.includes(n.key));
-      state.current.edges = state.current.edges.filter((e) => !keys.includes(e.source) && !keys.includes(e.target));
+      removeNodes(selectedNodeKeys());
     } else {
       state.current.edges = state.current.edges.filter((e) => e.key !== state.selected.key);
     }
@@ -3457,6 +3457,26 @@
   function copySelected() {
     const clipboard = clipboardFromSelection();
     if (clipboard) state.clipboard = clipboard;
+  }
+
+  function removeNodes(keys) {
+    const removed = new Set(keys);
+    state.current.nodes = state.current.nodes.filter((node) => !removed.has(node.key));
+    state.current.edges = state.current.edges.filter((edge) =>
+      !removed.has(edge.source) && !removed.has(edge.target));
+  }
+
+  function cutSelected() {
+    if (!state.current || state.readOnly) return;
+    const clipboard = clipboardFromSelection();
+    if (!clipboard?.nodes?.length) return;
+    state.clipboard = clipboard;
+    pushHistory();
+    removeNodes(clipboard.nodes.map((node) => node.key));
+    state.selected = null;
+    state.edgeSource = null;
+    render();
+    toast(`${clipboard.nodes.length} node${clipboard.nodes.length === 1 ? "" : "s"} cut.`);
   }
 
   function nextAvailableKey(base, used, nonce) {
@@ -3904,6 +3924,8 @@
       if (evt.key === "Escape") { state.selected = null; state.edgeSource = null; render(); }
       if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "s") { evt.preventDefault(); saveDiagram(); }
       if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "c") { evt.preventDefault(); copySelected(); }
+      if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "x" && !evt.altKey &&
+          !document.querySelector('[role="dialog"]')) { evt.preventDefault(); cutSelected(); }
       if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "v") { evt.preventDefault(); pasteSelected(); }
       if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "z") { evt.preventDefault(); evt.shiftKey ? redo() : undo(); }
       if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "y") { evt.preventDefault(); redo(); }

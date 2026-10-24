@@ -42,6 +42,9 @@ admin account for maintenance.
 - `Ctrl/Cmd+D` duplicates selected nodes plus their internal edges as one
   undoable edit; collision-safe keys remain valid even when originals use the
   full 64-character server limit.
+- `Ctrl/Cmd+X` cuts selected nodes and their internal relationships into the
+  in-memory clipboard as one undoable edit; paste regenerates collision-safe
+  keys and remains blocked for read-only shares.
 - Eight resize handles on a single selected node, honouring the same 72x48 to
   600x400 bounds the server clamps to.
 - Alignment guides while dragging: edges and centres latch onto neighbouring

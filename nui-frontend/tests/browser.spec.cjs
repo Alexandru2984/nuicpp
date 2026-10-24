@@ -270,6 +270,22 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(page.locator("#nodes > g")).toHaveCount(diagramNodeCount);
       await expect(page.locator("#edges > g")).toHaveCount(diagramEdgeCount);
 
+      await page.keyboard.press("Control+a");
+      await page.keyboard.press("Control+x");
+      await expect(page.locator("#nodes > g")).toHaveCount(0);
+      await expect(page.locator("#edges > g")).toHaveCount(0);
+      await expect(editorLiveStatus).toHaveText("Selection cleared. Diagram has 0 nodes and 0 edges.");
+      await page.keyboard.press("Control+z");
+      await expect(page.locator("#nodes > g")).toHaveCount(diagramNodeCount);
+      await expect(page.locator("#edges > g")).toHaveCount(diagramEdgeCount);
+      await page.keyboard.press("Control+v");
+      await expect(page.locator("#nodes > g")).toHaveCount(diagramNodeCount * 2);
+      await expect(page.locator("#edges > g")).toHaveCount(diagramEdgeCount * 2);
+      await expect(page.locator("#nodes > g.selected")).toHaveCount(diagramNodeCount);
+      await page.keyboard.press("Control+z");
+      await expect(page.locator("#nodes > g")).toHaveCount(diagramNodeCount);
+      await expect(page.locator("#edges > g")).toHaveCount(diagramEdgeCount);
+
       const firstEdgeKey = await page.locator("#edges > g").first().getAttribute("data-key");
       expect(firstEdgeKey).toBeTruthy();
       await page.keyboard.press("Alt+o");
@@ -661,6 +677,7 @@ test.describe("phone layout", () => {
     await expect(customizer.getByLabel("Select all nodes", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Select connected component", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Duplicate selected nodes", { exact: true })).toBeVisible();
+    await expect(customizer.getByLabel("Cut selected nodes", { exact: true })).toBeVisible();
     await customizer.getByLabel("Add node", { exact: true }).uncheck();
     await customizer.getByLabel("Zoom to fit", { exact: true }).check();
     await customizer.getByRole("button", { name: "Apply", exact: true }).click();
