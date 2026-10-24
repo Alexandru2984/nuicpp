@@ -64,6 +64,20 @@
   // A selected canvas object needs a real keyboard focus target before Enter
   // can be a safe, predictable editing shortcut.
   canvas.tabIndex = 0;
+  const editorLiveStatus = document.createElement("div");
+  editorLiveStatus.id = "editor-live-status";
+  editorLiveStatus.className = "sr-only";
+  editorLiveStatus.setAttribute("role", "status");
+  editorLiveStatus.setAttribute("aria-live", "polite");
+  editorLiveStatus.setAttribute("aria-atomic", "true");
+  document.body.appendChild(editorLiveStatus);
+  canvas.setAttribute("aria-describedby", editorLiveStatus.id);
+  const draftLiveStatus = el("draft-status");
+  if (draftLiveStatus) {
+    draftLiveStatus.setAttribute("role", "status");
+    draftLiveStatus.setAttribute("aria-live", "polite");
+    draftLiveStatus.setAttribute("aria-atomic", "true");
+  }
   // Both shells ship this layer, but a browser holding a cached copy of an
   // older Nui bundle would not have it, and a missing overlay must not take the
   // whole canvas down. svg() is a hoisted declaration, so this is safe here.
@@ -1777,6 +1791,48 @@
     return [];
   }
 
+  let lastSelectionAnnouncement = null;
+
+  function selectionAnnouncement() {
+    if (!state.current) return "No diagram is open.";
+    const nodeCount = state.current.nodes?.length || 0;
+    const edgeCount = state.current.edges?.length || 0;
+    if (!state.selected) {
+      return `Selection cleared. Diagram has ${nodeCount} node${nodeCount === 1 ? "" : "s"} and ${edgeCount} edge${edgeCount === 1 ? "" : "s"}.`;
+    }
+    if (state.selected.type === "node") {
+      const node = state.current.nodes.find((candidate) => candidate.key === state.selected.key);
+      return node
+        ? `Node selected: ${node.title || "Untitled node"}, type ${node.type || "node"}.`
+        : "The selected node is unavailable.";
+    }
+    if (state.selected.type === "nodes") {
+      const selected = new Set(state.selected.keys);
+      const count = state.current.nodes.filter((node) => selected.has(node.key)).length;
+      return `${count} nodes selected.`;
+    }
+    if (state.selected.type === "edge") {
+      const edge = state.current.edges.find((candidate) => candidate.key === state.selected.key);
+      if (!edge) return "The selected edge is unavailable.";
+      const source = state.current.nodes.find((node) => node.key === edge.source);
+      const target = state.current.nodes.find((node) => node.key === edge.target);
+      const sourceName = source?.title || edge.source || "unknown node";
+      const targetName = target?.title || edge.target || "unknown node";
+      const relationship = edge.directed
+        ? `from ${sourceName} to ${targetName}`
+        : `between ${sourceName} and ${targetName}`;
+      return `Edge selected: ${edge.label || "Unlabelled edge"}, ${relationship}.`;
+    }
+    return "Diagram selection changed.";
+  }
+
+  function updateSelectionAnnouncement() {
+    const message = selectionAnnouncement();
+    if (message === lastSelectionAnnouncement) return;
+    lastSelectionAnnouncement = message;
+    editorLiveStatus.textContent = message;
+  }
+
   let inlineLabelEditor = null;
 
   function labelTarget(type, key) {
@@ -2928,6 +2984,7 @@
     renderMinimap();
     positionInlineLabelEditor();
     refreshMobileActionBar();
+    updateSelectionAnnouncement();
   }
 
   function renderMinimap() {

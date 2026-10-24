@@ -105,6 +105,8 @@ rollback notes where applicable.
 - Searchable screen-reader diagram outline for nodes and edges, with an ARIA
   tree, roving keyboard focus, direct canvas selection and bounded rendering
   tested against untrusted labels in Chromium.
+- Screen-reader live regions describe cleared, single-node, multi-node and edge
+  selections, while draft save state is exposed as a separate atomic status.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -160,8 +162,8 @@ High risk remain open.
   selective restore and duplicate-as-branch.
 - Autosave to the server with visible sync state, offline mutation queue and
   conflict-resolution UI.
-- WCAG 2.2 AA pass: focus trapping for sheets/dialogs and accessible status
-  announcements.
+- WCAG 2.2 AA pass: complete focus trapping and restoration for every
+  sheet/dialog.
 - Romanian plus English localisation, locale-aware dates and RTL-ready layout.
 - Cross-browser visual and interaction tests at phone, tablet, desktop and
   coarse-pointer breakpoints.

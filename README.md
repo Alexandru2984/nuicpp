@@ -44,6 +44,8 @@ admin account for maintenance.
   selects and centres a result without leaving the canvas or using the network.
 - Accessible diagram outline on `Alt+O` exposes nodes and edges as a searchable
   ARIA tree with keyboard navigation, selection and canvas centring.
+- Polite screen-reader status announcements describe canvas selection changes
+  and draft persistence without adding visual noise or changing layout.
 - Inline node and edge-label editing by double-click, `F2`, `Enter`, command
   palette or a pinned mobile action, with one-step undo and browser-draft
   persistence.

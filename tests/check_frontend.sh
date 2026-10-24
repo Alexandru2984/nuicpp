@@ -43,6 +43,9 @@ grep -Fq 'evt.key === "/"' public/editor.js
 grep -Fq 'DIAGRAM_OUTLINE_RESULT_LIMIT = 250' public/editor.js
 grep -Fq 'setAttribute("role", "tree")' public/editor.js
 grep -Fq 'Open diagram outline' public/editor.js
+grep -Fq 'editor-live-status' public/editor.js
+grep -Fq 'function updateSelectionAnnouncement()' public/editor.js
+grep -Fq '.sr-only' public/styles.css
 grep -Fq 'nuigraph:mobile-actions:v1' public/editor.js
 grep -Fq 'className = "command-palette-overlay"' public/editor.js
 test "$(grep -Fc 'if (state.current.nodes?.length) zoomToFit();' public/editor.js)" -eq 2

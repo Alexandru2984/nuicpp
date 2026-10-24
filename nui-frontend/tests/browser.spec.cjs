@@ -49,6 +49,11 @@ test.describe("desktop security and offline lifecycle", () => {
 
     await expect(page.locator("#canvas")).toBeVisible();
     await expect(page.locator("#diagram-title")).toHaveValue("Untitled diagram");
+    const editorLiveStatus = page.locator("#editor-live-status");
+    await expect(editorLiveStatus).toHaveAttribute("role", "status");
+    await expect(editorLiveStatus).toHaveAttribute("aria-live", "polite");
+    await expect(page.locator("#canvas")).toHaveAttribute("aria-describedby", "editor-live-status");
+    await expect(page.locator("#draft-status")).toHaveAttribute("aria-live", "polite");
     await page.emulateMedia({ forcedColors: "active", reducedMotion: "reduce" });
     await page.locator("#canvas").focus();
     const accessibilityMedia = await page.evaluate(() => ({
@@ -179,6 +184,7 @@ test.describe("desktop security and offline lifecycle", () => {
       await page.keyboard.press("Enter");
       await expect(diagramOutline).not.toBeVisible();
       await expect(page.locator(`#edges > g[data-key="${firstEdgeKey}"]`)).toHaveClass(/edge-selected/);
+      await expect(editorLiveStatus).toContainText("Edge selected:");
       await expect(page.locator("#share-diagram")).toBeFocused();
 
       await page.keyboard.press("Alt+o");
@@ -191,6 +197,8 @@ test.describe("desktop security and offline lifecycle", () => {
       await page.keyboard.press("Enter");
       await expect(diagramOutline).not.toBeVisible();
       await expect(page.locator('#nodes > g[data-key="node_service"]')).toHaveClass(/selected/);
+      await expect(editorLiveStatus).toContainText(`Node selected: ${unsafeNodeTitle}`);
+      await expect(editorLiveStatus.locator("img")).toHaveCount(0);
       await expect(page.locator("#share-diagram")).toBeFocused();
 
       await page.keyboard.press("/");
@@ -273,6 +281,7 @@ test.describe("desktop security and offline lifecycle", () => {
       })));
       await expect(startGroup).toHaveClass(/selected/);
       await expect(serviceGroup).toHaveClass(/selected/);
+      await expect(editorLiveStatus).toHaveText("2 nodes selected.");
 
       await page.keyboard.press("Control+k");
       const commandPalette = page.getByRole("dialog", { name: "Command palette" });
