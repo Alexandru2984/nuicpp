@@ -48,6 +48,9 @@ admin account for maintenance.
 - `Ctrl/Cmd+X` cuts selected nodes and their internal relationships into the
   in-memory clipboard as one undoable edit; paste regenerates collision-safe
   keys and remains blocked for read-only shares.
+- Persistent geometry locks protect selected nodes from drag, resize, keyboard
+  movement, batch sizing, alignment and auto-layout while keeping selection,
+  labels and visual properties editable; lock state has an SVG/forced-colour cue.
 - Eight resize handles on a single selected node, honouring the same 72x48 to
   600x400 bounds the server clamps to.
 - Alignment guides while dragging: edges and centres latch onto neighbouring

@@ -588,6 +588,20 @@ body.dirty .draft-status { color: var(--warn); }
   stroke-width: 3;
 }
 
+.geometry-locked .node-shape { cursor: not-allowed; }
+.node-lock-badge { pointer-events: none; }
+.node-lock-body {
+  fill: #071018;
+  stroke: #fff;
+  stroke-width: 1;
+}
+.node-lock-shackle {
+  fill: none;
+  stroke: #071018;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
 .edge-path { stroke-width: 2.4; fill: none; cursor: pointer; }
 
 /* Invisible fat stroke so edges can be tapped with a fingertip. */
@@ -1015,6 +1029,13 @@ body.dirty .draft-status { color: var(--warn); }
   }
 
   .align-guide { stroke: Highlight; }
+
+  .node-lock-body {
+    fill: CanvasText;
+    stroke: Canvas;
+  }
+
+  .node-lock-shackle { stroke: CanvasText; }
 
   button.active,
   .mobile-action-bar button.active {

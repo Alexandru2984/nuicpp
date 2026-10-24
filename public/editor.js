@@ -363,6 +363,7 @@
       { id: "align-bottom", label: "Align selected nodes bottom", shortLabel: "Bottom", category: "Arrange", keywords: "multi selection position", mobile: true, enabled: () => canArrangeSelection(2), run: () => arrangeSelection("align-bottom") },
       { id: "distribute-horizontal", label: "Distribute selected nodes horizontally", shortLabel: "Space H", category: "Arrange", keywords: "multi selection equal spacing", mobile: true, enabled: () => canArrangeSelection(3), run: () => arrangeSelection("distribute-horizontal") },
       { id: "distribute-vertical", label: "Distribute selected nodes vertically", shortLabel: "Space V", category: "Arrange", keywords: "multi selection equal spacing", mobile: true, enabled: () => canArrangeSelection(3), run: () => arrangeSelection("distribute-vertical") },
+      { id: "toggle-geometry-lock", label: "Toggle node geometry lock", shortLabel: "Lock", category: "Arrange", keywords: "position size freeze unlock protect layout", mobile: true, enabled: () => selectedNodeKeys().length > 0 && !state.readOnly, run: toggleSelectedGeometryLock },
       { id: "review", label: "Review diagram quality", shortLabel: "Review", category: "Analyze", keywords: "lint cycle orphan duplicate missing label", mobile: true, enabled: () => Boolean(state.current), run: showDiagramReview },
       { id: "select-neighbours", label: "Select direct neighbors", shortLabel: "Neighbors", category: "Analyze", keywords: "adjacent one hop graph incoming outgoing neighbours expand selection", mobile: true, enabled: () => selectedNodeKeys().length > 0, run: selectNeighbourNodes },
       { id: "select-connected", label: "Select connected component", shortLabel: "Connected", category: "Analyze", keywords: "graph traversal reachable weak component expand selection neighbours", mobile: true, enabled: () => selectedNodeKeys().length > 0, run: selectConnectedNodes },
@@ -1036,8 +1037,8 @@
         type: "node",
         key: node.key,
         label: node.title || "Untitled node",
-        metadata: `${node.type || "node"} node - ${node.key}`,
-        search: `${node.title || ""} ${node.type || ""} ${node.key || ""}`
+        metadata: `${node.type || "node"} node - ${node.key}${nodeGeometryLocked(node) ? " - geometry locked" : ""}`,
+        search: `${node.title || ""} ${node.type || ""} ${node.key || ""}${nodeGeometryLocked(node) ? " geometry locked" : ""}`
       })),
       ...edges.map((edge) => {
         const source = nodeName(edge.source);
@@ -1846,6 +1847,10 @@
   const NODE_MIN_HEIGHT = 48;
   const NODE_MAX_HEIGHT = 400;
 
+  function nodeGeometryLocked(node) {
+    return node?.metadata?.geometry_locked === true;
+  }
+
   function selectedNodeKeys() {
     if (!state.selected) return [];
     if (state.selected.type === "node") return [state.selected.key];
@@ -1865,13 +1870,14 @@
     if (state.selected.type === "node") {
       const node = state.current.nodes.find((candidate) => candidate.key === state.selected.key);
       return node
-        ? `Node selected: ${node.title || "Untitled node"}, type ${node.type || "node"}.`
+        ? `Node selected: ${node.title || "Untitled node"}, type ${node.type || "node"}${nodeGeometryLocked(node) ? ", geometry locked" : ""}.`
         : "The selected node is unavailable.";
     }
     if (state.selected.type === "nodes") {
       const selected = new Set(state.selected.keys);
-      const count = state.current.nodes.filter((node) => selected.has(node.key)).length;
-      return `${count} nodes selected.`;
+      const nodes = state.current.nodes.filter((node) => selected.has(node.key));
+      const locked = nodes.filter(nodeGeometryLocked).length;
+      return `${nodes.length} nodes selected${locked ? `, ${locked} geometry locked` : ""}.`;
     }
     if (state.selected.type === "edge") {
       const edge = state.current.edges.find((candidate) => candidate.key === state.selected.key);
@@ -2054,7 +2060,7 @@
   }
 
   function canArrangeSelection(minimum) {
-    return !state.readOnly && selectedNodeKeys().length >= minimum;
+    return !state.readOnly && selectedNodeKeys().length >= minimum && movableSelectedNodeKeys().length > 0;
   }
 
   function arrangeSelection(mode) {
@@ -2064,9 +2070,10 @@
       toast("Selection arrangement is unavailable; reload the editor assets.", "error");
       return;
     }
+    const locked = new Set(state.current.nodes.filter(nodeGeometryLocked).map((node) => node.key));
     const updates = arrangeNodes(state.current.nodes, selectedNodeKeys(), mode)
       .filter((update) => typeof update?.key === "string" &&
-        Number.isFinite(update.x) && Number.isFinite(update.y));
+        Number.isFinite(update.x) && Number.isFinite(update.y) && !locked.has(update.key));
     if (!updates.length) {
       toast("The selected nodes are already arranged.");
       return;
@@ -2086,7 +2093,7 @@
 
   function nudgeSelectedNodes(deltaX, deltaY) {
     if (!state.current || state.readOnly) return;
-    const keys = selectedNodeKeys();
+    const keys = movableSelectedNodeKeys();
     if (!keys.length) return;
     const selected = new Set(keys);
     const nodes = state.current.nodes.filter((node) => selected.has(node.key));
@@ -2139,6 +2146,37 @@
       keys.add(key);
     }
     selectNodeKeys([...keys]);
+  }
+
+  function selectedNodeObjects() {
+    if (!state.current) return [];
+    const selected = new Set(selectedNodeKeys());
+    return state.current.nodes.filter((node) => selected.has(node.key));
+  }
+
+  function movableSelectedNodeKeys() {
+    return selectedNodeObjects().filter((node) => !nodeGeometryLocked(node)).map((node) => node.key);
+  }
+
+  function toggleSelectedGeometryLock() {
+    if (!state.current || state.readOnly) return;
+    const nodes = selectedNodeObjects();
+    if (!nodes.length) return;
+    const lock = nodes.some((node) => !nodeGeometryLocked(node));
+    pushHistory();
+    for (const node of nodes) {
+      const metadata = node.metadata && typeof node.metadata === "object" && !Array.isArray(node.metadata)
+        ? { ...node.metadata }
+        : {};
+      if (lock) metadata.geometry_locked = true;
+      else delete metadata.geometry_locked;
+      node.metadata = metadata;
+    }
+    state.dragging = null;
+    state.resizing = null;
+    state.guides = [];
+    render();
+    toast(`${nodes.length} node${nodes.length === 1 ? "" : "s"} ${lock ? "locked" : "unlocked"}.`);
   }
 
   function selectAllNodes() {
@@ -2220,7 +2258,8 @@
   function resizeTarget() {
     if (state.readOnly || !state.current) return null;
     if (!state.selected || state.selected.type !== "node") return null;
-    return state.current.nodes.find((n) => n.key === state.selected.key) || null;
+    const node = state.current.nodes.find((n) => n.key === state.selected.key) || null;
+    return nodeGeometryLocked(node) ? null : node;
   }
 
   function applyResize(node, gesture, point) {
@@ -2337,7 +2376,7 @@
   }
 
   function beginResize(evt, node, sx, sy) {
-    if (state.readOnly) return;
+    if (state.readOnly || nodeGeometryLocked(node)) return;
     // Without this the canvas would also see the press and start a rubber-band
     // underneath the resize.
     evt.stopPropagation();
@@ -2788,9 +2827,24 @@
     }
   }
 
+  function renderGeometryLock(group, node) {
+    const x = node.x + 9;
+    const y = node.y + 8;
+    const badge = svg("g", { class: "node-lock-badge", "aria-hidden": "true" }, group);
+    svg("path", {
+      d: `M ${x + 3} ${y + 8} V ${y + 5} A 4 4 0 0 1 ${x + 11} ${y + 5} V ${y + 8}`,
+      class: "node-lock-shackle"
+    }, badge);
+    svg("rect", { x, y: y + 8, width: 14, height: 10, rx: 2, class: "node-lock-body" }, badge);
+  }
+
   function renderNodeShape(group, node) {
     const selected = isNodeSelected(node.key);
-    group.setAttribute("class", selected ? "selected" : "");
+    const locked = nodeGeometryLocked(node);
+    group.setAttribute("class", [selected ? "selected" : "", locked ? "geometry-locked" : ""].filter(Boolean).join(" "));
+    group.setAttribute("data-geometry-locked", String(locked));
+    const accessibleTitle = svg("title", {}, group);
+    accessibleTitle.textContent = `${node.title || "Untitled node"}${locked ? ", geometry locked" : ""}`;
     const fill = node.color || colors[node.type] || colors.process;
     if (node.type === "decision") {
       const points = `${node.x + node.width / 2},${node.y} ${node.x + node.width},${node.y + node.height / 2} ${node.x + node.width / 2},${node.y + node.height} ${node.x},${node.y + node.height / 2}`;
@@ -2809,6 +2863,7 @@
     }
     svg("text", { x: node.x + node.width / 2, y: node.y + node.height / 2 - 6, class: "node-title" }, group).textContent = shortText(node.title);
     svg("text", { x: node.x + node.width / 2, y: node.y + node.height / 2 + 16, class: "node-subtitle" }, group).textContent = node.type;
+    if (locked) renderGeometryLock(group, node);
   }
 
   function renderNodes() {
@@ -2865,6 +2920,16 @@
           return;
         }
         if (state.tool === "select") {
+          const alreadySelected = selectedNodeKeys().includes(node.key);
+          const selectionKeys = alreadySelected ? selectedNodeKeys() : [node.key];
+          if (!alreadySelected) state.selected = { type: "node", key: node.key };
+          // A locked node remains selectable and editable, but cannot start a
+          // geometry gesture. Dragging an unlocked node in a mixed selection
+          // moves only the unlocked members.
+          if (nodeGeometryLocked(node)) {
+            render();
+            return;
+          }
           pushHistory();
           if (evt.pointerType !== "mouse") {
             armLongPress(() => {
@@ -2874,10 +2939,10 @@
             });
           }
           const p = worldPoint(evt);
-          const keys = selectedNodeKeys().includes(node.key) ? selectedNodeKeys() : [node.key];
-          if (!selectedNodeKeys().includes(node.key)) {
-            state.selected = { type: "node", key: node.key };
-          }
+          const keys = selectionKeys.filter((key) => {
+            const selected = state.current.nodes.find((candidate) => candidate.key === key);
+            return selected && !nodeGeometryLocked(selected);
+          });
           state.dragging = {
             key: node.key,
             keys,
@@ -2987,24 +3052,27 @@
     const changed = nodes.some((node) =>
       (type && node.type !== type) ||
       (setColor && node.color !== color) ||
-      (setWidth && node.width !== width) ||
-      (setHeight && node.height !== height));
+      (setWidth && !nodeGeometryLocked(node) && node.width !== width) ||
+      (setHeight && !nodeGeometryLocked(node) && node.height !== height));
     if (!changed) {
       toast("Selected nodes already have those properties.");
       return;
     }
 
     pushHistory();
+    let updated = 0;
     for (const node of nodes) {
-      if (type) node.type = type;
-      if (setColor) node.color = color;
-      if (setWidth) node.width = width;
-      if (setHeight) node.height = height;
+      let nodeChanged = false;
+      if (type && node.type !== type) { node.type = type; nodeChanged = true; }
+      if (setColor && node.color !== color) { node.color = color; nodeChanged = true; }
+      if (setWidth && !nodeGeometryLocked(node) && node.width !== width) { node.width = width; nodeChanged = true; }
+      if (setHeight && !nodeGeometryLocked(node) && node.height !== height) { node.height = height; nodeChanged = true; }
+      if (nodeChanged) updated += 1;
     }
     markDirty();
     el("multi-node-props").dataset.selection = "";
     render();
-    toast(`${nodes.length} nodes updated.`);
+    toast(`${updated} node${updated === 1 ? "" : "s"} updated.`);
   }
 
   function renderProperties() {
@@ -3028,6 +3096,8 @@
       el("prop-color").value = node.color;
       el("prop-width").value = Math.round(node.width);
       el("prop-height").value = Math.round(node.height);
+      el("prop-width").disabled = state.readOnly || nodeGeometryLocked(node);
+      el("prop-height").disabled = state.readOnly || nodeGeometryLocked(node);
     } else if (state.selected.type === "nodes") {
       const nodes = selectedBatchNodes();
       if (nodes.length < 2) return;
@@ -3039,8 +3109,9 @@
       const maxY = Math.max(...nodes.map((node) => node.y + node.height));
       const typeCount = new Set(nodes.map((node) => node.type)).size;
       const colorCount = new Set(nodes.map((node) => node.color)).size;
+      const lockedCount = nodes.filter(nodeGeometryLocked).length;
       el("multi-node-count").textContent = `${nodes.length} nodes selected`;
-      el("multi-node-summary").textContent = `${typeCount} type${typeCount === 1 ? "" : "s"} · ${colorCount} color${colorCount === 1 ? "" : "s"} · ${Math.round(maxX - minX)} × ${Math.round(maxY - minY)} bounds`;
+      el("multi-node-summary").textContent = `${typeCount} type${typeCount === 1 ? "" : "s"} · ${colorCount} color${colorCount === 1 ? "" : "s"} · ${lockedCount} locked · ${Math.round(maxX - minX)} × ${Math.round(maxY - minY)} bounds`;
       const signature = `${state.current.id || "new"}:${nodes.map((node) => node.key).sort().join("|")}`;
       if (multiNodeProps.dataset.selection !== signature) {
         resetBatchPropertyControls(nodes, signature);
@@ -3548,8 +3619,12 @@
 
   function autoLayout() {
     if (!state.current || state.readOnly) return;
-    pushHistory();
     const nodes = state.current.nodes;
+    if (!nodes.some((node) => !nodeGeometryLocked(node))) {
+      toast("Every node is geometry locked.");
+      return;
+    }
+    pushHistory();
     const incoming = new Map(nodes.map((n) => [n.key, 0]));
     const outgoing = new Map(nodes.map((n) => [n.key, []]));
     for (const edge of state.current.edges) {
@@ -3583,6 +3658,7 @@
     }
     [...groups.keys()].sort((a, b) => a - b).forEach((l) => {
       groups.get(l).forEach((node, i) => {
+        if (nodeGeometryLocked(node)) return;
         node.x = 80 + l * 260;
         node.y = 80 + i * 140;
       });
@@ -3590,9 +3666,9 @@
     render();
   }
 
-  function bindProperty(id, apply) {
+  function bindProperty(id, apply, allowed = () => true) {
     el(id).addEventListener("change", () => {
-      if (!state.current || !state.selected || state.readOnly) return;
+      if (!state.current || !state.selected || state.readOnly || !allowed()) return;
       pushHistory();
       apply();
       render();
@@ -3716,8 +3792,12 @@
       node.color = colors[node.type] || node.color;
     });
     bindProperty("prop-color", () => state.current.nodes.find((n) => n.key === state.selected.key).color = el("prop-color").value);
-    bindProperty("prop-width", () => state.current.nodes.find((n) => n.key === state.selected.key).width = Number(el("prop-width").value));
-    bindProperty("prop-height", () => state.current.nodes.find((n) => n.key === state.selected.key).height = Number(el("prop-height").value));
+    const selectedGeometryEditable = () => {
+      const node = state.current?.nodes.find((candidate) => candidate.key === state.selected?.key);
+      return Boolean(node) && !nodeGeometryLocked(node);
+    };
+    bindProperty("prop-width", () => state.current.nodes.find((n) => n.key === state.selected.key).width = Number(el("prop-width").value), selectedGeometryEditable);
+    bindProperty("prop-height", () => state.current.nodes.find((n) => n.key === state.selected.key).height = Number(el("prop-height").value), selectedGeometryEditable);
     bindProperty("edge-label", () => state.current.edges.find((e) => e.key === state.selected.key).label = el("edge-label").value);
     bindProperty("edge-color", () => state.current.edges.find((e) => e.key === state.selected.key).color = el("edge-color").value);
     bindProperty("edge-directed", () => state.current.edges.find((e) => e.key === state.selected.key).directed = el("edge-directed").checked);
@@ -3788,7 +3868,7 @@
         if (state.readOnly) return;
         cancelLongPress();
         const node = state.current.nodes.find((n) => n.key === state.resizing.key);
-        if (node) {
+        if (node && !nodeGeometryLocked(node)) {
           applyResize(node, state.resizing, worldPoint(evt));
           render();
         }
@@ -3813,7 +3893,7 @@
           for (const key of keys) {
             const moving = state.current.nodes.find((n) => n.key === key);
             const original = state.dragging.originals[key];
-            if (moving && original) {
+            if (moving && original && !nodeGeometryLocked(moving)) {
               moving.x = original.x + deltaX;
               moving.y = original.y + deltaY;
             }

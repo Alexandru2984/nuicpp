@@ -130,6 +130,9 @@ rollback notes where applicable.
   deterministic diagram order and treating directed links as visual adjacency.
 - Atomic cut/paste for node selections and their internal edges, with one-step
   undo, collision-safe regenerated keys, read-only gating and browser coverage.
+- Persistent per-node geometry locks with mixed-selection semantics across
+  drag, resize, nudge, batch sizing, arrangement and auto-layout, plus visible
+  high-contrast state and screen-reader announcements.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and

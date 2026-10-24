@@ -47,6 +47,8 @@ grep -Fq 'function duplicateSelected()' public/editor.js
 grep -Fq 'evt.key.toLowerCase() === "d"' public/editor.js
 grep -Fq 'function cutSelected()' public/editor.js
 grep -Fq 'evt.key.toLowerCase() === "x"' public/editor.js
+grep -Fq 'function toggleSelectedGeometryLock()' public/editor.js
+grep -Fq 'metadata.geometry_locked = true' public/editor.js
 grep -Fq 'id="grid-size"' src/ui/NuiApp.cpp
 grep -Fq 'id = "grid-size"' nui-frontend/frontend/source/frontend/main_page.cpp
 grep -Fq 'id="multi-node-props"' src/ui/NuiApp.cpp
@@ -74,6 +76,7 @@ test "$(grep -Fc 'if (state.current.nodes?.length) zoomToFit();' public/editor.j
 grep -Fq '.mobile-action-bar' public/styles.css
 grep -Fq '.inline-label-editor' public/styles.css
 grep -Fq '@media (forced-colors: active)' public/styles.css
+grep -Fq '.node-lock-body' public/styles.css
 grep -Fq '@media (prefers-reduced-motion: reduce)' public/styles.css
 grep -Fq '#canvas:focus-visible' public/styles.css
 node tests/test_diagram_review.cjs

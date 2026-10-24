@@ -319,6 +319,31 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(editorLiveStatus.locator("img")).toHaveCount(0);
       await expect(page.locator("#canvas")).toBeFocused();
 
+      const lockedServiceGroup = page.locator('#nodes > g[data-key="node_service"]');
+      const lockedServiceShape = lockedServiceGroup.locator(".node-shape");
+      const lockedServiceX = await lockedServiceShape.getAttribute("x");
+      await page.keyboard.press("Control+k");
+      const lockPalette = page.getByRole("dialog", { name: "Command palette" });
+      await lockPalette.getByRole("combobox", { name: "Search commands" }).fill("toggle node geometry lock");
+      await expect(lockPalette.getByRole("option", { name: /Toggle node geometry lock/ })).toBeEnabled();
+      await page.keyboard.press("Enter");
+      await expect(lockPalette).not.toBeVisible();
+      await expect(lockedServiceGroup).toHaveAttribute("data-geometry-locked", "true");
+      await expect(lockedServiceGroup.locator(".node-lock-body")).toHaveCount(1);
+      await expect(page.locator("#prop-width")).toBeDisabled();
+      await expect(page.locator(".resize-handle")).toHaveCount(0);
+      await page.keyboard.press("ArrowRight");
+      await expect(lockedServiceShape).toHaveAttribute("x", lockedServiceX);
+
+      await page.keyboard.press("Control+k");
+      await lockPalette.getByRole("combobox", { name: "Search commands" }).fill("toggle node geometry lock");
+      await page.keyboard.press("Enter");
+      await expect(lockedServiceGroup).toHaveAttribute("data-geometry-locked", "false");
+      await expect(lockedServiceGroup.locator(".node-lock-body")).toHaveCount(0);
+      await expect(page.locator("#prop-width")).toBeEnabled();
+      await expect(page.locator(".resize-handle")).toHaveCount(8);
+      await expect(page.locator("#canvas")).toBeFocused();
+
       await page.keyboard.press("Control+k");
       const neighboursPalette = page.getByRole("dialog", { name: "Command palette" });
       await neighboursPalette.getByRole("combobox", { name: "Search commands" }).fill("select direct neighbors");
@@ -686,6 +711,7 @@ test.describe("phone layout", () => {
     await expect(customizer.getByLabel("Frame selection", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Cycle grid size", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Align selected nodes left", { exact: true })).toBeVisible();
+    await expect(customizer.getByLabel("Toggle node geometry lock", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Select all nodes", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Select direct neighbors", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Select connected component", { exact: true })).toBeVisible();
