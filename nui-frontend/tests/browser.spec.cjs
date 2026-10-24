@@ -203,6 +203,13 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(page.locator("#grid")).toHaveAttribute("width", "64");
 
       await page.locator("#share-diagram").focus();
+      const diagramNodeCount = await page.locator("#nodes > g").count();
+      expect(diagramNodeCount).toBeGreaterThan(1);
+      await page.keyboard.press("Control+a");
+      await expect(page.locator("#nodes > g.selected")).toHaveCount(diagramNodeCount);
+      await expect(editorLiveStatus).toHaveText(`${diagramNodeCount} nodes selected.`);
+      await expect(page.locator("#canvas")).toBeFocused();
+
       const firstEdgeKey = await page.locator("#edges > g").first().getAttribute("data-key");
       expect(firstEdgeKey).toBeTruthy();
       await page.keyboard.press("Alt+o");
@@ -220,7 +227,7 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(diagramOutline).not.toBeVisible();
       await expect(page.locator(`#edges > g[data-key="${firstEdgeKey}"]`)).toHaveClass(/edge-selected/);
       await expect(editorLiveStatus).toContainText("Edge selected:");
-      await expect(page.locator("#share-diagram")).toBeFocused();
+      await expect(page.locator("#canvas")).toBeFocused();
 
       await page.keyboard.press("Alt+o");
       await outlineFilter.fill("node_service");
@@ -234,7 +241,7 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(page.locator('#nodes > g[data-key="node_service"]')).toHaveClass(/selected/);
       await expect(editorLiveStatus).toContainText(`Node selected: ${unsafeNodeTitle}`);
       await expect(editorLiveStatus.locator("img")).toHaveCount(0);
-      await expect(page.locator("#share-diagram")).toBeFocused();
+      await expect(page.locator("#canvas")).toBeFocused();
 
       await page.keyboard.press("/");
       const nodeNavigator = page.getByRole("dialog", { name: "Node navigator" });
@@ -250,7 +257,7 @@ test.describe("desktop security and offline lifecycle", () => {
       await page.keyboard.press("Enter");
       await expect(nodeNavigator).not.toBeVisible();
       await expect(page.locator('#nodes > g[data-key="node_service"]')).toHaveClass(/selected/);
-      await expect(page.locator("#share-diagram")).toBeFocused();
+      await expect(page.locator("#canvas")).toBeFocused();
 
       await page.keyboard.press("/");
       await nodeSearch.fill("definitely no such node");
@@ -259,7 +266,7 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(nodeNavigator).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(nodeNavigator).not.toBeVisible();
-      await expect(page.locator("#share-diagram")).toBeFocused();
+      await expect(page.locator("#canvas")).toBeFocused();
 
       const serviceGroup = page.locator('#nodes > g[data-key="node_service"]');
       const originalRenderedTitle = await serviceGroup.locator(".node-title").textContent();
@@ -580,6 +587,7 @@ test.describe("phone layout", () => {
     await expect(customizer.getByLabel("Frame selection", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Cycle grid size", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Align selected nodes left", { exact: true })).toBeVisible();
+    await expect(customizer.getByLabel("Select all nodes", { exact: true })).toBeVisible();
     await customizer.getByLabel("Add node", { exact: true }).uncheck();
     await customizer.getByLabel("Zoom to fit", { exact: true }).check();
     await customizer.getByRole("button", { name: "Apply", exact: true }).click();

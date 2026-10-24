@@ -112,6 +112,8 @@ rollback notes where applicable.
 - Pinned axe-core/Playwright accessibility gates for desktop, modal, phone and
   sheet states, retaining a focused JSON artifact for any serious or critical
   violation.
+- Select-all-nodes through `Ctrl/Cmd+A`, command palette or a pinned phone
+  action, feeding the existing batch inspector, arrangement and framing flows.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and

@@ -348,6 +348,7 @@
       { id: "redo", label: "Redo", shortLabel: "Redo", category: "Edit", shortcut: "Ctrl / Cmd + Y", mobile: true, enabled: () => state.future.length > 0 && !state.readOnly, run: redo },
       { id: "copy", label: "Copy selection", shortLabel: "Copy", category: "Edit", shortcut: "Ctrl / Cmd + C", enabled: () => Boolean(state.selected), run: copySelected },
       { id: "paste", label: "Paste selection", shortLabel: "Paste", category: "Edit", shortcut: "Ctrl / Cmd + V", enabled: () => Boolean(state.clipboard?.nodes?.length) && !state.readOnly, run: pasteSelected },
+      { id: "select-all", label: "Select all nodes", shortLabel: "All", category: "Edit", keywords: "multi selection everything batch", shortcut: "Ctrl / Cmd + A", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: selectAllNodes },
       // The persisted mobile-action id stays stable as edge support expands the command.
       { id: "edit-node-label", label: "Edit selected label", shortLabel: "Rename", category: "Edit", keywords: "inline rename node edge title", shortcut: "F2 / Enter", mobile: true, enabled: () => Boolean(editableSelectedLabelTarget()) && !state.readOnly, run: openInlineLabelEditor },
       { id: "delete", label: "Delete selection", shortLabel: "Delete", category: "Edit", mobile: true, enabled: () => Boolean(state.selected) && !state.readOnly, run: deleteSelected },
@@ -1314,6 +1315,7 @@
     ["Ctrl / Cmd + Y", "Redo"],
     ["Ctrl / Cmd + C", "Copy selection"],
     ["Ctrl / Cmd + V", "Paste"],
+    ["Ctrl / Cmd + A", "Select all nodes"],
     ["Delete / Backspace", "Delete selection"],
     ["Escape", "Clear selection, close panels"],
     ["Shift + click", "Add to selection"],
@@ -2131,6 +2133,16 @@
       keys.add(key);
     }
     selectNodeKeys([...keys]);
+  }
+
+  function selectAllNodes() {
+    const keys = state.current?.nodes?.map((node) => node.key) || [];
+    if (!keys.length) return;
+    selectNodeKeys(keys);
+    state.edgeSource = null;
+    setTool("select");
+    render();
+    canvas.focus({ preventScroll: true });
   }
 
   // A rubber-band drag can go up and to the left, so the stored corners are the
@@ -3751,6 +3763,12 @@
         return;
       }
       if (evt.target.matches("input, textarea, select") || evt.target.isContentEditable) return;
+      if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "a" && !evt.altKey &&
+          !document.querySelector('[role="dialog"]')) {
+        evt.preventDefault();
+        selectAllNodes();
+        return;
+      }
       if (evt.shiftKey && evt.code === "Digit2" && !evt.ctrlKey && !evt.metaKey && !evt.altKey &&
           !document.querySelector('[role="dialog"]') && selectedFrameNodes().length) {
         evt.preventDefault();

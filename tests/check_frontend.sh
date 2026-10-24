@@ -35,6 +35,8 @@ grep -Fq 'function snapValue(value, grid = state.gridSize)' public/editor.js
 grep -Fq 'nuigraph:grid-size:v1' public/editor.js
 grep -Fq 'nudgeSelectedNodes' public/editor.js
 grep -Fq 'evt.key === "ArrowLeft"' public/editor.js
+grep -Fq 'function selectAllNodes()' public/editor.js
+grep -Fq 'evt.key.toLowerCase() === "a"' public/editor.js
 grep -Fq 'id="grid-size"' src/ui/NuiApp.cpp
 grep -Fq 'id = "grid-size"' nui-frontend/frontend/source/frontend/main_page.cpp
 grep -Fq 'id="multi-node-props"' src/ui/NuiApp.cpp
