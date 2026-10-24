@@ -115,6 +115,18 @@ groups:
           summary: Repeated cross-site state-changing requests were blocked
           runbook: docs/MONITORING.md#cross-site-mutation-attempts
 
+      - alert: NuiGraphForeignOriginSpike
+        expr: |
+          sum(increase(nuigraph_security_events_total{
+            job="nuigraph",event="origin_rejected",outcome="blocked"
+          }[10m])) >= 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Repeated foreign or malformed request origins were blocked
+          runbook: docs/MONITORING.md#foreign-request-origins
+
       - alert: NuiGraphUnsupportedMediaTypeSpike
         expr: |
           sum(increase(nuigraph_security_events_total{

@@ -2,6 +2,8 @@
 
 #include <openssl/rand.h>
 
+#include <arpa/inet.h>
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -33,6 +35,67 @@ std::string normalizedToken(std::string value) {
         return static_cast<char>(std::tolower(c));
     });
     return out;
+}
+
+bool isSafeHttpMethod(const std::string& method) {
+    const auto normalized = normalizedToken(method);
+    return normalized == "get" || normalized == "head" || normalized == "options";
+}
+
+bool isValidDnsHost(const std::string& host) {
+    if (host.empty() || host.size() > 253 || host.front() == '.' || host.back() == '.') {
+        return false;
+    }
+    std::size_t start = 0;
+    while (start < host.size()) {
+        const auto end = host.find('.', start);
+        const auto length = (end == std::string::npos ? host.size() : end) - start;
+        if (length == 0 || length > 63 || host[start] == '-' ||
+            host[start + length - 1] == '-') {
+            return false;
+        }
+        for (std::size_t i = start; i < start + length; ++i) {
+            const auto c = static_cast<unsigned char>(host[i]);
+            if (std::isalnum(c) == 0 && c != '-') {
+                return false;
+            }
+        }
+        if (end == std::string::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+    return true;
+}
+
+std::string canonicalHost(const std::string& host) {
+    if (host.size() >= 2 && host.front() == '[' && host.back() == ']') {
+        const auto literal = host.substr(1, host.size() - 2);
+        in6_addr address{};
+        if (inet_pton(AF_INET6, literal.c_str(), &address) != 1) {
+            return {};
+        }
+        char rendered[INET6_ADDRSTRLEN]{};
+        if (inet_ntop(AF_INET6, &address, rendered, sizeof(rendered)) == nullptr) {
+            return {};
+        }
+        return "[" + std::string(rendered) + "]";
+    }
+
+    in_addr address{};
+    if (inet_pton(AF_INET, host.c_str(), &address) == 1) {
+        char rendered[INET_ADDRSTRLEN]{};
+        if (inet_ntop(AF_INET, &address, rendered, sizeof(rendered)) == nullptr) {
+            return {};
+        }
+        return rendered;
+    }
+    if (std::all_of(host.begin(), host.end(), [](unsigned char c) {
+            return std::isdigit(c) != 0 || c == '.';
+        })) {
+        return {};
+    }
+    return isValidDnsHost(host) ? host : std::string{};
 }
 
 } // namespace
@@ -104,9 +167,7 @@ std::string sanitizeLogField(const std::string& value, std::size_t maxLength) {
 
 bool shouldRejectCrossSiteMutation(const std::string& method,
                                    const std::string& fetchSite) {
-    const auto normalizedMethod = normalizedToken(method);
-    if (normalizedMethod == "get" || normalizedMethod == "head" ||
-        normalizedMethod == "options") {
+    if (isSafeHttpMethod(method)) {
         return false;
     }
 
@@ -128,6 +189,99 @@ bool contentTypeMatches(const std::string& contentType,
     const auto separator = contentType.find(';');
     const auto mediaType = normalizedToken(contentType.substr(0, separator));
     return mediaType == normalizedToken(expectedMediaType);
+}
+
+std::string canonicalHttpOrigin(const std::string& value) {
+    auto normalized = normalizedToken(value);
+    const auto schemeEnd = normalized.find("://");
+    if (schemeEnd == std::string::npos) {
+        return {};
+    }
+    const auto scheme = normalized.substr(0, schemeEnd);
+    if (scheme != "http" && scheme != "https") {
+        return {};
+    }
+
+    auto authority = normalized.substr(schemeEnd + 3);
+    if (authority.ends_with('/')) {
+        authority.pop_back();
+    }
+    if (authority.empty() || authority.find_first_of("/?#@") != std::string::npos) {
+        return {};
+    }
+
+    std::string host;
+    std::string portText;
+    if (authority.front() == '[') {
+        const auto close = authority.find(']');
+        if (close == std::string::npos) {
+            return {};
+        }
+        host = authority.substr(0, close + 1);
+        const auto remainder = authority.substr(close + 1);
+        if (!remainder.empty()) {
+            if (remainder.front() != ':' || remainder.size() == 1) {
+                return {};
+            }
+            portText = remainder.substr(1);
+        }
+    } else {
+        const auto colon = authority.find(':');
+        if (colon == std::string::npos) {
+            host = authority;
+        } else {
+            if (authority.find(':', colon + 1) != std::string::npos) {
+                return {};
+            }
+            host = authority.substr(0, colon);
+            portText = authority.substr(colon + 1);
+            if (portText.empty()) {
+                return {};
+            }
+        }
+    }
+
+    host = canonicalHost(host);
+    if (host.empty()) {
+        return {};
+    }
+
+    unsigned int port = 0;
+    if (!portText.empty()) {
+        if (!std::all_of(portText.begin(), portText.end(), [](unsigned char c) {
+                return std::isdigit(c) != 0;
+            })) {
+            return {};
+        }
+        for (const auto c : portText) {
+            port = port * 10U + static_cast<unsigned int>(c - '0');
+            if (port > 65535U) {
+                return {};
+            }
+        }
+        if (port == 0U) {
+            return {};
+        }
+    }
+
+    const auto defaultPort = (scheme == "http" && port == 80U) ||
+                             (scheme == "https" && port == 443U);
+    return scheme + "://" + host +
+        (!portText.empty() && !defaultPort ? ":" + std::to_string(port) : "");
+}
+
+bool shouldRejectRequestOrigin(const std::string& method,
+                               const std::string& origin,
+                               std::size_t originCount,
+                               const std::string& expectedOrigin) {
+    if (isSafeHttpMethod(method) || originCount == 0) {
+        return false;
+    }
+    if (originCount != 1) {
+        return true;
+    }
+    const auto canonical = canonicalHttpOrigin(origin);
+    return canonical.empty() || canonical != expectedOrigin;
 }
 
 } // namespace nuigraph

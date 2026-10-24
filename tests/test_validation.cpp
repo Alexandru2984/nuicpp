@@ -364,8 +364,25 @@ void testConfigRejectsWeakSecrets() {
 void testProductionConfigRequiresSafePathsAndHttps() {
     require(configThrows(validConfig("APP_ENV=production\nAPP_BASE_URL=http://example.test\n")),
             "production base URL must use HTTPS");
+    require(configThrows(validConfig("APP_BASE_URL=https://user@example.test\n")),
+            "base URL credentials must be rejected");
+    require(configThrows(validConfig("APP_BASE_URL=https://example.test/path\n")),
+            "base URL paths must be rejected");
+    require(configThrows(validConfig("APP_BASE_URL=https://example.test?query=1\n")),
+            "base URL queries must be rejected");
+    require(configThrows(validConfig("APP_BASE_URL=ftp://example.test\n")),
+            "non-HTTP base URL schemes must be rejected");
+    require(configThrows(validConfig("APP_BASE_URL=https://example.test:0\n")),
+            "invalid base URL ports must be rejected");
     require(configThrows(validConfig("PROJECT_ROOT=relative/path\n")),
             "project root must be absolute");
+
+    const auto path = tmpEnvPath();
+    writeEnvFile(path, validConfig("APP_BASE_URL=HTTP://Example.Test:80/\n"));
+    const auto cfg = Config::load(path);
+    std::remove(path.c_str());
+    require(cfg.baseUrl == "http://example.test",
+            "base URLs should be stored as canonical origins");
 }
 
 void testFrontendShellDefaultsAndRejectsUnknownModes() {
@@ -417,6 +434,7 @@ void testMetricsStayAggregateAndBounded() {
     metrics.observeHttp("PATCH", 503, 2.0);
     metrics.recordSecurityEvent("admin_login", "failed");
     metrics.recordSecurityEvent("fetch_metadata_rejected", "blocked");
+    metrics.recordSecurityEvent("origin_rejected", "blocked");
     metrics.recordSecurityEvent("unsupported_media_type", "blocked");
     metrics.recordSecurityEvent("attacker-controlled-label", "ignored");
     metrics.recordDiagramCreated("import");
@@ -447,6 +465,9 @@ void testMetricsStayAggregateAndBounded() {
     require(body.find("event=\"fetch_metadata_rejected\",outcome=\"blocked\"} 1") !=
                 std::string::npos,
             "metrics should count rejected cross-site mutations");
+    require(body.find("event=\"origin_rejected\",outcome=\"blocked\"} 1") !=
+                std::string::npos,
+            "metrics should count rejected request origins");
     require(body.find("event=\"unsupported_media_type\",outcome=\"blocked\"} 1") !=
                 std::string::npos,
             "metrics should count rejected request media types");
@@ -735,6 +756,39 @@ void testContentTypeMatching() {
             "comma-joined content types should fail closed");
 }
 
+void testRequestOriginPolicy() {
+    require(canonicalHttpOrigin("HTTPS://Example.Test:443/") == "https://example.test",
+            "origins should normalize scheme, host, default port and trailing slash");
+    require(canonicalHttpOrigin("http://127.0.0.1:18123") ==
+                "http://127.0.0.1:18123",
+            "non-default ports should be retained");
+    require(canonicalHttpOrigin("http://[0:0:0:0:0:0:0:1]:8080") ==
+                "http://[::1]:8080",
+            "IPv6 origins should be validated and canonicalized");
+    for (const auto& invalid : {
+             "null", "ftp://example.test", "https://user@example.test",
+             "https://example.test/path", "https://example.test?x=1",
+             "https://example.test:0", "https://example.test:",
+             "https://999.999.999.999", "https://bad..example"}) {
+        require(canonicalHttpOrigin(invalid).empty(),
+                "malformed or non-origin URL should be rejected: " + std::string(invalid));
+    }
+
+    constexpr auto expected = "https://example.test";
+    require(!shouldRejectRequestOrigin("GET", "https://evil.test", 1, expected),
+            "safe reads should not be origin-gated");
+    require(!shouldRejectRequestOrigin("POST", "", 0, expected),
+            "API clients without Origin should remain compatible");
+    require(!shouldRejectRequestOrigin("POST", "HTTPS://EXAMPLE.TEST:443", 1, expected),
+            "the canonical application origin should be accepted");
+    require(shouldRejectRequestOrigin("POST", "https://evil.test", 1, expected),
+            "foreign origins should be rejected");
+    require(shouldRejectRequestOrigin("PUT", "null", 1, expected),
+            "opaque origins should be rejected");
+    require(shouldRejectRequestOrigin("DELETE", expected, 2, expected),
+            "duplicate Origin headers should fail closed");
+}
+
 void testRenderedPagesVersionStaticAssets() {
     constexpr auto version = "0123456789abcdef";
     const auto editor = renderEditorPage("guest", "https://example.test", true, version);
@@ -896,12 +950,13 @@ int main() {
         testRequestIdsAndLogFieldsAreSafe();
         testFetchMetadataMutationPolicy();
         testContentTypeMatching();
+        testRequestOriginPolicy();
         testRenderedPagesVersionStaticAssets();
         testSeoMetadata();
     } catch (const std::exception& e) {
         std::cerr << "test failed: " << e.what() << '\n';
         return EXIT_FAILURE;
     }
-    std::cout << "nuigraph validation tests passed (54 tests)\n";
+    std::cout << "nuigraph validation tests passed (55 tests)\n";
     return EXIT_SUCCESS;
 }

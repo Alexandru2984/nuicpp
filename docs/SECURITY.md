@@ -186,6 +186,16 @@ normal session, authorization and CSRF checks. Rejections use only one bounded
 metric label pair and a structured security event—never the attacker-provided
 header value.
 
+For unsafe methods, a present `Origin` header is an independent fallback and
+must canonically equal `APP_BASE_URL`. Opaque `null`, malformed, foreign or
+duplicate origins receive a no-store `403` before parsing or authentication.
+Safe methods are unaffected, and an absent header stays compatible with CLI/API
+clients. `APP_BASE_URL` itself is normalized at startup and rejected unless it
+is a bare HTTP(S) origin: credentials, paths, queries, fragments, invalid hosts
+and invalid ports are not accepted. Default ports and a single trailing slash
+normalize away, so comparison does not depend on superficial URL spelling.
+Neither rejected origins nor configured hosts become metric labels.
+
 ## Request media types
 
 Before route handlers run, login submissions must declare

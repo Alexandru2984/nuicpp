@@ -145,7 +145,7 @@ operator's exported variables cannot override the files being checked.
 | `APP_ENV` | `production` | |
 | `APP_HOST` | `127.0.0.1` | Never bind publicly; nginx is the only ingress |
 | `APP_PORT` | `18081` | Must match `proxy_pass` in the vhost |
-| `APP_BASE_URL` | `https://nuicpp.micutu.com` | Used to build share URLs |
+| `APP_BASE_URL` | `https://nuicpp.micutu.com` | Bare public origin only (no credentials, path, query or fragment); used for share URLs and unsafe-request Origin validation |
 | `DATABASE_URL` | `postgresql://nuigraph_app:…@localhost/nuigraph_studio` | Runtime role, never the owner role |
 | `AUTH_USERNAME` | admin login name | Guest usernames are `guest_<hex>` and cannot collide |
 | `AUTH_PASSWORD_HASH` | `pbkdf2_sha256$<iters>$<salt>$<hash>` | |

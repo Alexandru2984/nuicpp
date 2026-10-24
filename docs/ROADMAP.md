@@ -147,6 +147,9 @@ rollback notes where applicable.
 - Strict pre-routing media-type contracts for form login and JSON API bodies,
   plus lean body-aware frontend request headers, negative live coverage and a
   bounded rejection metric with its own validated alert/runbook.
+- Canonical `APP_BASE_URL` origin validation and an unsafe-method Origin guard
+  rejecting foreign, opaque and duplicate browser origins, with CLI-compatible
+  omission, live negative tests, bounded telemetry and an operator runbook.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and

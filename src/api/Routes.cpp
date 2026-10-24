@@ -784,6 +784,14 @@ void Routes::registerRoutes(httplib::Server& server) {
             return httplib::Server::HandlerResponse::Handled;
         }
 
+        if (shouldRejectRequestOrigin(req.method, req.get_header_value("Origin"),
+                                      req.get_header_value_count("Origin"), cfg_.baseUrl)) {
+            sendJson(res, 403, errorJson("request origin blocked"));
+            applySecurityHeaders(res);
+            logSecurityEvent(req, res, "origin_rejected", "blocked");
+            return httplib::Server::HandlerResponse::Handled;
+        }
+
         const auto contentType = req.get_header_value("Content-Type");
         const auto contentTypeCount = req.get_header_value_count("Content-Type");
         const auto isLoginForm = req.method == "POST" && req.path == "/login";

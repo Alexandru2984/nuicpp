@@ -1,4 +1,5 @@
 #include "config/Config.hpp"
+#include "utils/Security.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -309,6 +310,11 @@ Config Config::load(const std::string& envPath) {
     cfg.host = getValue(file, "APP_HOST", cfg.host);
     cfg.port = getInt(file, "APP_PORT", cfg.port);
     cfg.baseUrl = getValue(file, "APP_BASE_URL", cfg.baseUrl);
+    cfg.baseUrl = canonicalHttpOrigin(cfg.baseUrl);
+    if (cfg.baseUrl.empty()) {
+        throw std::runtime_error(
+            "APP_BASE_URL must be an HTTP(S) origin without credentials, path, query or fragment");
+    }
     cfg.databaseUrl = getValue(file, "DATABASE_URL");
     cfg.authUsername = getValue(file, "AUTH_USERNAME", cfg.authUsername);
     cfg.authPasswordHash = getValue(file, "AUTH_PASSWORD_HASH");

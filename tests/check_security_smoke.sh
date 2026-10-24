@@ -41,6 +41,7 @@ trap cleanup EXIT
 awk -v port="$PORT" '
   /^APP_HOST=/ { print "APP_HOST=127.0.0.1"; next }
   /^APP_PORT=/ { print "APP_PORT=" port; next }
+  /^APP_BASE_URL=/ { print "APP_BASE_URL=http://127.0.0.1:" port; next }
   { print }
 ' "$ENV_FILE" > "$TMP_ENV"
 
@@ -237,6 +238,70 @@ if [[ "$status" != "200" ]]; then
   exit 1
 fi
 
+origin_headers="$TMP_DIR/origin.headers"
+origin_body="$TMP_DIR/origin.json"
+status="$(curl --noproxy '*' -sS -D "$origin_headers" -o "$origin_body" -w '%{http_code}' \
+  -b "$COOKIE_JAR" -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
+  -H 'Origin: https://foreign.example' \
+  -X POST -d "{\"title\":\"${TEST_TITLE_PREFIX}foreign-origin\",\"description\":\"\",\"nodes\":[],\"edges\":[]}" \
+  "http://127.0.0.1:${PORT}/api/diagrams")"
+if [[ "$status" != "403" ]]; then
+  echo "expected foreign request origin to return 403, got $status" >&2
+  exit 1
+fi
+for expected in \
+  'content-type: application/json' \
+  'cache-control: private, no-store, max-age=0' \
+  'x-content-type-options: nosniff'
+do
+  if ! grep -Fqi "$expected" "$origin_headers"; then
+    echo "expected $expected on an origin rejection" >&2
+    exit 1
+  fi
+done
+python3 - "$origin_body" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as response:
+    assert json.load(response) == {"error": "request origin blocked"}
+PY
+
+for origin in null https://same-site.example; do
+  status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" \
+    -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' -H "Origin: ${origin}" \
+    -X POST -d '{}' "http://127.0.0.1:${PORT}/api/diagrams/${own_id}/duplicate")"
+  if [[ "$status" != "403" ]]; then
+    echo "expected origin ${origin} to return 403, got $status" >&2
+    exit 1
+  fi
+done
+
+status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" \
+  -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
+  -H "Origin: http://127.0.0.1:${PORT}" -H 'Origin: https://foreign.example' \
+  -X POST -d '{}' "http://127.0.0.1:${PORT}/api/diagrams/${own_id}/duplicate")"
+if [[ "$status" != "403" ]]; then
+  echo "expected duplicate Origin headers to return 403, got $status" >&2
+  exit 1
+fi
+
+status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" \
+  -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
+  -H "Origin: http://127.0.0.1:${PORT}" \
+  -X POST -d '{}' "http://127.0.0.1:${PORT}/api/diagrams/${own_id}/duplicate")"
+if [[ "$status" != "201" ]]; then
+  echo "expected configured request origin to be accepted, got $status" >&2
+  exit 1
+fi
+
+status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' \
+  -H 'Origin: https://foreign.example' "http://127.0.0.1:${PORT}/live")"
+if [[ "$status" != "200" ]]; then
+  echo "expected foreign Origin to be ignored on a safe read, got $status" >&2
+  exit 1
+fi
+
 media_headers="$TMP_DIR/media-type.headers"
 media_body="$TMP_DIR/media-type.json"
 status="$(curl --noproxy '*' -sS -D "$media_headers" -o "$media_body" -w '%{http_code}' \
@@ -354,6 +419,7 @@ for series in \
   'nuigraph_security_events_total{event="sharing_change",outcome="rotated"}' \
   'nuigraph_security_events_total{event="sharing_change",outcome="expiry_updated"}' \
   'nuigraph_security_events_total{event="fetch_metadata_rejected",outcome="blocked"}' \
+  'nuigraph_security_events_total{event="origin_rejected",outcome="blocked"}' \
   'nuigraph_security_events_total{event="unsupported_media_type",outcome="blocked"}' \
   'nuigraph_security_events_total{event="session_rekey",outcome="succeeded"}'
 do
@@ -364,6 +430,10 @@ do
 done
 if ! grep -Eq '^nuigraph_security_events_total\{event="fetch_metadata_rejected",outcome="blocked"\} [1-9][0-9]*$' <<<"$metrics_body"; then
   echo "Fetch Metadata rejections were not counted" >&2
+  exit 1
+fi
+if ! grep -Eq '^nuigraph_security_events_total\{event="origin_rejected",outcome="blocked"\} [1-9][0-9]*$' <<<"$metrics_body"; then
+  echo "request origin rejections were not counted" >&2
   exit 1
 fi
 if ! grep -Eq '^nuigraph_security_events_total\{event="unsupported_media_type",outcome="blocked"\} [1-9][0-9]*$' <<<"$metrics_body"; then
@@ -588,6 +658,10 @@ if ! grep -q 'category=security event=csrf_rejected outcome=blocked' "$LOG_FILE"
 fi
 if ! grep -q 'category=security event=fetch_metadata_rejected outcome=blocked' "$LOG_FILE"; then
   echo "expected an explicit Fetch Metadata rejection security event" >&2
+  exit 1
+fi
+if ! grep -q 'category=security event=origin_rejected outcome=blocked' "$LOG_FILE"; then
+  echo "expected an explicit request origin rejection security event" >&2
   exit 1
 fi
 if ! grep -q 'category=security event=unsupported_media_type outcome=blocked' "$LOG_FILE"; then

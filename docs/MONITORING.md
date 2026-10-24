@@ -17,11 +17,11 @@ of rows. Responses are `no-store` and excluded from indexing.
 
 The bounded security series includes allowed/blocked share views, successful
 enable/disable/rotate/expiry-update lifecycle changes, signing-key cookie
-upgrades, rejected cross-site mutations and unsupported request media types.
-Runtime logs use the same outcomes but redact capabilities from page and API
-paths. A sudden blocked-view spike after a planned rotation is expected; an
-unexplained sustained spike should be correlated with access logs without
-recovering or printing the old token.
+upgrades, rejected cross-site mutations, foreign request origins and unsupported
+request media types. Runtime logs use the same outcomes but redact capabilities
+from page and API paths. A sudden blocked-view spike after a planned rotation is
+expected; an unexplained sustained spike should be correlated with access logs
+without recovering or printing the old token.
 
 ## Scrape configuration
 
@@ -122,6 +122,18 @@ only when a real artifact timestamp and restore verification signal exist.
 4. If a legitimate client is affected, verify whether it incorrectly forges a
    browser-reserved header. Non-browser clients should omit it, not claim a
    foreign browser context.
+
+## Foreign request origins
+
+1. Confirm the bounded `origin_rejected/blocked` series and correlate route
+   shapes and request IDs without recording the raw Origin value.
+2. Check `APP_BASE_URL` against the actual public scheme, hostname and port. It
+   must be the bare canonical origin, not a path or internal proxy address.
+3. Isolated failures after a client change may be a client incorrectly sending
+   `Origin`; a browser burst against login/write routes is CSRF probing. Contain
+   a clear hostile source at Cloudflare and keep the application guard enabled.
+4. Duplicate, opaque and malformed origins are deliberately indistinguishable
+   in public responses and telemetry; do not weaken that behavior for debugging.
 
 ## Request contract rejections
 

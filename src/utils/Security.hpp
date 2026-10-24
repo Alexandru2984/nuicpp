@@ -27,4 +27,16 @@ bool shouldRejectCrossSiteMutation(const std::string& method,
 bool contentTypeMatches(const std::string& contentType,
                         const std::string& expectedMediaType);
 
+// Return a canonical scheme/host/optional-port origin, or an empty string for
+// paths, credentials, malformed hosts and unsupported schemes.
+std::string canonicalHttpOrigin(const std::string& value);
+
+// Origin is a browser defence-in-depth signal. Missing headers stay compatible
+// with non-browser API clients; present, duplicate or opaque values fail closed
+// on state-changing methods unless they match the configured application origin.
+bool shouldRejectRequestOrigin(const std::string& method,
+                               const std::string& origin,
+                               std::size_t originCount,
+                               const std::string& expectedOrigin);
+
 } // namespace nuigraph
