@@ -163,6 +163,36 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(page.locator("#grid")).toHaveAttribute("width", "64");
 
       await page.locator("#share-diagram").focus();
+      const firstEdgeKey = await page.locator("#edges > g").first().getAttribute("data-key");
+      expect(firstEdgeKey).toBeTruthy();
+      await page.keyboard.press("Alt+o");
+      const diagramOutline = page.getByRole("dialog", { name: "Diagram outline" });
+      await expect(diagramOutline).toBeVisible();
+      const outlineFilter = diagramOutline.getByRole("searchbox", { name: "Filter diagram objects" });
+      await expect(outlineFilter).toBeFocused();
+      await expect(diagramOutline.getByRole("tree", { name: "Diagram objects" })).toBeVisible();
+      await outlineFilter.fill(firstEdgeKey);
+      const edgeTreeItem = diagramOutline.getByRole("treeitem", { name: new RegExp(firstEdgeKey) });
+      await expect(edgeTreeItem).toHaveAttribute("aria-level", "1");
+      await page.keyboard.press("ArrowDown");
+      await expect(edgeTreeItem).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect(diagramOutline).not.toBeVisible();
+      await expect(page.locator(`#edges > g[data-key="${firstEdgeKey}"]`)).toHaveClass(/edge-selected/);
+      await expect(page.locator("#share-diagram")).toBeFocused();
+
+      await page.keyboard.press("Alt+o");
+      await outlineFilter.fill("node_service");
+      const outlineService = diagramOutline.locator('.diagram-outline-item[data-object-type="node"]');
+      await expect(outlineService).toContainText(unsafeNodeTitle);
+      await expect(outlineService.locator("img")).toHaveCount(0);
+      expect(await page.evaluate(() => globalThis.__nodeNavigatorXss)).toBeUndefined();
+      await outlineService.focus();
+      await page.keyboard.press("Enter");
+      await expect(diagramOutline).not.toBeVisible();
+      await expect(page.locator('#nodes > g[data-key="node_service"]')).toHaveClass(/selected/);
+      await expect(page.locator("#share-diagram")).toBeFocused();
+
       await page.keyboard.press("/");
       const nodeNavigator = page.getByRole("dialog", { name: "Node navigator" });
       await expect(nodeNavigator).toBeVisible();

@@ -42,6 +42,8 @@ admin account for maintenance.
   panel and appearance actions; keyboard shortcuts remain available from `?`.
 - Instant node navigator on `/` searches titles, types and stable keys, then
   selects and centres a result without leaving the canvas or using the network.
+- Accessible diagram outline on `Alt+O` exposes nodes and edges as a searchable
+  ARIA tree with keyboard navigation, selection and canvas centring.
 - Inline node and edge-label editing by double-click, `F2`, `Enter`, command
   palette or a pinned mobile action, with one-step undo and browser-draft
   persistence.

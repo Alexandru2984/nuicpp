@@ -40,6 +40,9 @@ grep -Fq 'id = "multi-node-props"' nui-frontend/frontend/source/frontend/main_pa
 grep -Fq 'Share link lifetime' public/editor.js
 grep -Fq 'NODE_NAVIGATOR_RESULT_LIMIT = 100' public/editor.js
 grep -Fq 'evt.key === "/"' public/editor.js
+grep -Fq 'DIAGRAM_OUTLINE_RESULT_LIMIT = 250' public/editor.js
+grep -Fq 'setAttribute("role", "tree")' public/editor.js
+grep -Fq 'Open diagram outline' public/editor.js
 grep -Fq 'nuigraph:mobile-actions:v1' public/editor.js
 grep -Fq 'className = "command-palette-overlay"' public/editor.js
 test "$(grep -Fc 'if (state.current.nodes?.length) zoomToFit();' public/editor.js)" -eq 2

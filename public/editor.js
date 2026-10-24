@@ -346,6 +346,7 @@
       { id: "distribute-vertical", label: "Distribute selected nodes vertically", shortLabel: "Space V", category: "Arrange", keywords: "multi selection equal spacing", mobile: true, enabled: () => canArrangeSelection(3), run: () => arrangeSelection("distribute-vertical") },
       { id: "review", label: "Review diagram quality", shortLabel: "Review", category: "Analyze", keywords: "lint cycle orphan duplicate missing label", mobile: true, enabled: () => Boolean(state.current), run: showDiagramReview },
       { id: "find-node", label: "Find and focus node", shortLabel: "Find", category: "Analyze", keywords: "navigate search locate jump", shortcut: "/", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: openNodeNavigator },
+      { id: "diagram-outline", label: "Open diagram outline", shortLabel: "Outline", category: "Analyze", keywords: "accessibility screen reader tree nodes edges navigate", shortcut: "Alt + O", mobile: true, enabled: () => Boolean(state.current?.nodes?.length || state.current?.edges?.length), run: openDiagramOutline },
       { id: "frame-selection", label: "Frame selection", shortLabel: "Frame", category: "View", keywords: "zoom center focus selected nodes edge", shortcut: "Shift + 2", mobile: true, enabled: () => selectedFrameNodes().length > 0, run: frameSelection },
       { id: "fit", label: "Zoom to fit", shortLabel: "Fit", category: "View", keywords: "frame center canvas", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: zoomToFit },
       { id: "tool-select", label: "Use select tool", shortLabel: "Select", category: "Tools", keywords: "pointer", mobile: true, run: () => triggerTool("select") },
@@ -965,6 +966,214 @@
     input.focus();
   }
 
+  // SVG conveys the visual graph, while this flat ARIA tree exposes the same
+  // objects as ordinary focusable controls. It includes edges as well as nodes
+  // and searches the complete graph, but caps each rendered result set so a
+  // deliberately huge valid diagram cannot lock up assistive technology.
+  const DIAGRAM_OUTLINE_RESULT_LIMIT = 250;
+
+  function openDiagramOutline() {
+    const nodes = Array.isArray(state.current?.nodes) ? state.current.nodes : [];
+    const edges = Array.isArray(state.current?.edges) ? state.current.edges : [];
+    if (!nodes.length && !edges.length) return;
+    const existing = document.querySelector(".diagram-outline-overlay");
+    if (existing) {
+      existing.querySelector("input")?.focus();
+      return;
+    }
+    closeDialog(".command-palette-overlay");
+    document.querySelector(".shortcuts-overlay")?.remove();
+    sheetControls.closeAll(false);
+
+    const previousFocus = document.activeElement;
+    const byKey = new Map(nodes.map((node) => [node.key, node]));
+    const nodeName = (key) => byKey.get(key)?.title || key || "Unknown node";
+    const objects = [
+      ...nodes.map((node) => ({
+        type: "node",
+        key: node.key,
+        label: node.title || "Untitled node",
+        metadata: `${node.type || "node"} node - ${node.key}`,
+        search: `${node.title || ""} ${node.type || ""} ${node.key || ""}`
+      })),
+      ...edges.map((edge) => {
+        const source = nodeName(edge.source);
+        const target = nodeName(edge.target);
+        const direction = edge.directed ? "Directed edge" : "Undirected edge";
+        return {
+          type: "edge",
+          key: edge.key,
+          label: edge.label || "Unlabelled edge",
+          metadata: `${direction} - ${source} to ${target} - ${edge.key}`,
+          search: `${edge.label || ""} ${edge.key || ""} ${edge.source || ""} ${edge.target || ""} ${source} ${target} ${direction}`
+        };
+      })
+    ];
+
+    const overlay = document.createElement("div");
+    overlay.className = "command-palette-overlay diagram-outline-overlay";
+    const dialog = document.createElement("section");
+    dialog.className = "diagram-outline";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", "diagram-outline-title");
+
+    const head = document.createElement("div");
+    head.className = "command-palette-head";
+    const title = document.createElement("h2");
+    title.id = "diagram-outline-title";
+    title.textContent = "Diagram outline";
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "command-close";
+    closeButton.textContent = "Close";
+    head.append(title, closeButton);
+
+    const input = document.createElement("input");
+    input.type = "search";
+    input.className = "command-search";
+    input.placeholder = "Filter nodes and edges...";
+    input.autocomplete = "off";
+    input.setAttribute("aria-label", "Filter diagram objects");
+    input.setAttribute("aria-controls", "diagram-outline-tree");
+
+    const status = document.createElement("div");
+    status.className = "command-status";
+    status.setAttribute("aria-live", "polite");
+    const tree = document.createElement("div");
+    tree.id = "diagram-outline-tree";
+    tree.className = "command-results diagram-outline-tree";
+    tree.setAttribute("role", "tree");
+    tree.setAttribute("aria-label", "Diagram objects");
+    dialog.append(head, input, status, tree);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    let visible = [];
+    let activeIndex = 0;
+    const closeOutline = () => {
+      overlay.remove();
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+    overlay.closeDialog = closeOutline;
+    closeButton.onclick = closeOutline;
+    overlay.onclick = (evt) => { if (evt.target === overlay) closeOutline(); };
+
+    const itemButtons = () => [...tree.querySelectorAll(".diagram-outline-item")];
+    const updateActive = (focus = false) => {
+      const buttons = itemButtons();
+      activeIndex = Math.min(activeIndex, Math.max(0, buttons.length - 1));
+      buttons.forEach((button, index) => {
+        const active = index === activeIndex;
+        button.classList.toggle("active", active);
+        button.tabIndex = active ? 0 : -1;
+      });
+      const active = buttons[activeIndex];
+      if (focus && active) {
+        active.focus();
+        active.scrollIntoView({ block: "nearest" });
+      }
+    };
+
+    const chooseVisible = (index) => {
+      const object = visible[index];
+      if (object && focusReviewTarget({ type: object.type, key: object.key })) closeOutline();
+    };
+
+    const renderObjects = () => {
+      const words = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      const matching = objects.filter((object) => {
+        const haystack = `${object.label} ${object.metadata} ${object.search}`.toLowerCase();
+        return words.every((word) => haystack.includes(word));
+      });
+      visible = matching.slice(0, DIAGRAM_OUTLINE_RESULT_LIMIT);
+      activeIndex = 0;
+      tree.replaceChildren();
+      for (const [index, object] of visible.entries()) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.id = `diagram-outline-item-${index}`;
+        button.className = "command-item diagram-outline-item";
+        button.dataset.objectType = object.type;
+        button.dataset.objectKey = object.key;
+        button.setAttribute("role", "treeitem");
+        button.setAttribute("aria-level", "1");
+        const selected = state.selected?.type === object.type && state.selected?.key === object.key;
+        button.setAttribute("aria-selected", String(selected));
+
+        const copy = document.createElement("span");
+        copy.className = "command-copy";
+        const label = document.createElement("strong");
+        label.textContent = object.label;
+        const metadata = document.createElement("small");
+        metadata.textContent = object.metadata;
+        copy.append(label, metadata);
+        button.appendChild(copy);
+        button.onclick = () => chooseVisible(index);
+        button.onfocus = () => {
+          activeIndex = index;
+          updateActive();
+        };
+        button.onpointerenter = () => {
+          activeIndex = index;
+          updateActive();
+        };
+        tree.appendChild(button);
+      }
+      if (!visible.length) {
+        const empty = document.createElement("div");
+        empty.className = "command-empty";
+        empty.textContent = "No matching diagram objects";
+        tree.appendChild(empty);
+      }
+      const nodeCount = matching.filter((object) => object.type === "node").length;
+      const edgeCount = matching.length - nodeCount;
+      const totals = `${nodeCount} node${nodeCount === 1 ? "" : "s"} and ${edgeCount} edge${edgeCount === 1 ? "" : "s"}`;
+      status.textContent = matching.length > visible.length
+        ? `Showing ${visible.length} of ${matching.length} objects (${totals}); refine the filter for more.`
+        : totals;
+      updateActive();
+    };
+
+    input.oninput = renderObjects;
+    overlay.addEventListener("keydown", (evt) => {
+      if (evt.key === "Escape") {
+        evt.preventDefault();
+        evt.stopPropagation();
+        closeOutline();
+        return;
+      }
+      const buttons = itemButtons();
+      if ((evt.key === "ArrowDown" || evt.key === "ArrowUp") &&
+          (document.activeElement === input || document.activeElement?.matches(".diagram-outline-item"))) {
+        evt.preventDefault();
+        if (buttons.length) {
+          const delta = evt.key === "ArrowDown" ? 1 : -1;
+          activeIndex = document.activeElement === input
+            ? (delta > 0 ? 0 : buttons.length - 1)
+            : (activeIndex + delta + buttons.length) % buttons.length;
+          updateActive(true);
+        }
+        return;
+      }
+      if ((evt.key === "Home" || evt.key === "End") && document.activeElement?.matches(".diagram-outline-item")) {
+        evt.preventDefault();
+        activeIndex = evt.key === "Home" ? 0 : Math.max(0, buttons.length - 1);
+        updateActive(true);
+        return;
+      }
+      if ((evt.key === "Enter" || evt.key === " ") && document.activeElement?.matches(".diagram-outline-item")) {
+        evt.preventDefault();
+        chooseVisible(activeIndex);
+        return;
+      }
+      trapDialogFocus(evt, dialog);
+    });
+
+    renderObjects();
+    input.focus();
+  }
+
   function showDiagramReview() {
     if (!state.current) return;
     const analyzer = globalThis.NuiGraphReview?.analyzeDiagram;
@@ -1059,6 +1268,7 @@
   const SHORTCUTS = [
     ["Ctrl / Cmd + K", "Open command palette"],
     ["/", "Find and focus a node"],
+    ["Alt + O", "Open the accessible diagram outline"],
     ["F2 / Enter", "Edit selected node or edge label"],
     ["Shift + 2", "Frame the current selection"],
     ["Ctrl / Cmd + S", "Save diagram"],
@@ -3422,6 +3632,11 @@
         evt.preventDefault();
         if (document.querySelector(".command-palette-overlay")) closeDialog(".command-palette-overlay");
         else openCommandPalette();
+        return;
+      }
+      if (evt.altKey && !evt.ctrlKey && !evt.metaKey && evt.key.toLowerCase() === "o") {
+        evt.preventDefault();
+        if (!document.querySelector('[role="dialog"]')) openDiagramOutline();
         return;
       }
       if (evt.target.matches("input, textarea, select") || evt.target.isContentEditable) return;

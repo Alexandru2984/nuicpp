@@ -102,6 +102,9 @@ rollback notes where applicable.
 - Forced-colour/high-contrast rendering for graph objects and controls, restored
   keyboard focus rings on form fields/canvas, and reduced-motion handling with
   real Chromium media emulation coverage.
+- Searchable screen-reader diagram outline for nodes and edges, with an ARIA
+  tree, roving keyboard focus, direct canvas selection and bounded rendering
+  tested against untrusted labels in Chromium.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -157,8 +160,8 @@ High risk remain open.
   selective restore and duplicate-as-branch.
 - Autosave to the server with visible sync state, offline mutation queue and
   conflict-resolution UI.
-- WCAG 2.2 AA pass: screen-reader object tree, focus trapping for sheets/dialogs and
-  accessible status announcements.
+- WCAG 2.2 AA pass: focus trapping for sheets/dialogs and accessible status
+  announcements.
 - Romanian plus English localisation, locale-aware dates and RTL-ready layout.
 - Cross-browser visual and interaction tests at phone, tablet, desktop and
   coarse-pointer breakpoints.
