@@ -119,4 +119,15 @@ bool shouldRejectCrossSiteMutation(const std::string& method,
     return normalizedToken(fetchSite) != "same-origin";
 }
 
+bool contentTypeMatches(const std::string& contentType,
+                        const std::string& expectedMediaType) {
+    if (contentType.empty() || expectedMediaType.empty() ||
+        contentType.find(',') != std::string::npos) {
+        return false;
+    }
+    const auto separator = contentType.find(';');
+    const auto mediaType = normalizedToken(contentType.substr(0, separator));
+    return mediaType == normalizedToken(expectedMediaType);
+}
+
 } // namespace nuigraph

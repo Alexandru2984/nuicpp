@@ -144,6 +144,9 @@ rollback notes where applicable.
 - Central Fetch Metadata request firewall rejecting same-site, cross-site and
   ambiguous browser writes before routing, with fail-closed unit/live tests,
   structured events, bounded Prometheus telemetry and a validated abuse alert.
+- Strict pre-routing media-type contracts for form login and JSON API bodies,
+  plus lean body-aware frontend request headers, negative live coverage and a
+  bounded rejection metric with its own validated alert/runbook.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and

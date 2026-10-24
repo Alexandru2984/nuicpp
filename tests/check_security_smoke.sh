@@ -237,6 +237,75 @@ if [[ "$status" != "200" ]]; then
   exit 1
 fi
 
+media_headers="$TMP_DIR/media-type.headers"
+media_body="$TMP_DIR/media-type.json"
+status="$(curl --noproxy '*' -sS -D "$media_headers" -o "$media_body" -w '%{http_code}' \
+  -b "$COOKIE_JAR" -H "X-CSRF-Token: $CSRF" -H 'Content-Type: text/plain' \
+  -X POST -d "{\"title\":\"${TEST_TITLE_PREFIX}wrong-media\",\"description\":\"\",\"nodes\":[],\"edges\":[]}" \
+  "http://127.0.0.1:${PORT}/api/diagrams")"
+if [[ "$status" != "415" ]]; then
+  echo "expected non-JSON API body to return 415, got $status" >&2
+  exit 1
+fi
+for expected in \
+  'content-type: application/json' \
+  'cache-control: private, no-store, max-age=0' \
+  'x-content-type-options: nosniff'
+do
+  if ! grep -Fqi "$expected" "$media_headers"; then
+    echo "expected $expected on an unsupported media type response" >&2
+    exit 1
+  fi
+done
+python3 - "$media_body" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as response:
+    assert json.load(response) == {"error": "unsupported media type"}
+PY
+
+status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' \
+  -H 'Content-Type: application/json' -X POST -d '{}' \
+  "http://127.0.0.1:${PORT}/login")"
+if [[ "$status" != "415" ]]; then
+  echo "expected JSON login body to return 415, got $status" >&2
+  exit 1
+fi
+
+status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" \
+  -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
+  -H 'Content-Type: text/plain' -X POST -d '{}' \
+  "http://127.0.0.1:${PORT}/api/diagrams/${own_id}/duplicate")"
+if [[ "$status" != "415" ]]; then
+  echo "expected conflicting Content-Type headers to return 415, got $status" >&2
+  exit 1
+fi
+
+status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" \
+  -H "X-CSRF-Token: $CSRF" -H 'Content-Type: Application/JSON; charset=utf-8' \
+  -X POST -d '{}' "http://127.0.0.1:${PORT}/api/diagrams/${own_id}/duplicate")"
+if [[ "$status" != "201" ]]; then
+  echo "expected parameterized JSON media type to be accepted, got $status" >&2
+  exit 1
+fi
+
+status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' \
+  -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' \
+  -X POST -d 'username=ignored&password=ignored' \
+  "http://127.0.0.1:${PORT}/login")"
+if [[ "$status" != "401" ]]; then
+  echo "expected parameterized form media type to reach login, got $status" >&2
+  exit 1
+fi
+
+status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" \
+  -H 'Content-Type: text/plain' "http://127.0.0.1:${PORT}/api/diagrams")"
+if [[ "$status" != "200" ]]; then
+  echo "expected Content-Type to be ignored on a bodyless safe read, got $status" >&2
+  exit 1
+fi
+
 # The app sets these itself rather than depending on the vhost staying correct,
 # so they must be present even when nginx is not in the path.
 for probe in health live ready; do
@@ -285,6 +354,7 @@ for series in \
   'nuigraph_security_events_total{event="sharing_change",outcome="rotated"}' \
   'nuigraph_security_events_total{event="sharing_change",outcome="expiry_updated"}' \
   'nuigraph_security_events_total{event="fetch_metadata_rejected",outcome="blocked"}' \
+  'nuigraph_security_events_total{event="unsupported_media_type",outcome="blocked"}' \
   'nuigraph_security_events_total{event="session_rekey",outcome="succeeded"}'
 do
   if ! grep -Fq "$series" <<<"$metrics_body"; then
@@ -294,6 +364,10 @@ do
 done
 if ! grep -Eq '^nuigraph_security_events_total\{event="fetch_metadata_rejected",outcome="blocked"\} [1-9][0-9]*$' <<<"$metrics_body"; then
   echo "Fetch Metadata rejections were not counted" >&2
+  exit 1
+fi
+if ! grep -Eq '^nuigraph_security_events_total\{event="unsupported_media_type",outcome="blocked"\} [1-9][0-9]*$' <<<"$metrics_body"; then
+  echo "unsupported media type rejections were not counted" >&2
   exit 1
 fi
 if ! grep -qi '^content-type: text/plain; version=0.0.4; charset=utf-8' "$metrics_headers"; then
@@ -514,6 +588,10 @@ if ! grep -q 'category=security event=csrf_rejected outcome=blocked' "$LOG_FILE"
 fi
 if ! grep -q 'category=security event=fetch_metadata_rejected outcome=blocked' "$LOG_FILE"; then
   echo "expected an explicit Fetch Metadata rejection security event" >&2
+  exit 1
+fi
+if ! grep -q 'category=security event=unsupported_media_type outcome=blocked' "$LOG_FILE"; then
+  echo "expected an explicit unsupported media type security event" >&2
   exit 1
 fi
 if ! grep -q 'category=security event=share_view outcome=allowed.*path=/d/<redacted>' "$LOG_FILE"; then

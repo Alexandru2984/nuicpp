@@ -773,17 +773,39 @@ void Routes::registerRoutes(httplib::Server& server) {
         }
         res.set_header("X-Request-ID", requestId);
 
-        if (!shouldRejectCrossSiteMutation(req.method,
-                                           req.get_header_value("Sec-Fetch-Site"))) {
+        if (shouldRejectCrossSiteMutation(req.method,
+                                          req.get_header_value("Sec-Fetch-Site"))) {
+            // This is intentionally ahead of authentication, parsing,
+            // throttling and every route handler. A rejected browser request
+            // must have no side effects, including consuming a login attempt.
+            sendJson(res, 403, errorJson("cross-site request blocked"));
+            applySecurityHeaders(res);
+            logSecurityEvent(req, res, "fetch_metadata_rejected", "blocked");
+            return httplib::Server::HandlerResponse::Handled;
+        }
+
+        const auto contentType = req.get_header_value("Content-Type");
+        const auto contentTypeCount = req.get_header_value_count("Content-Type");
+        const auto isLoginForm = req.method == "POST" && req.path == "/login";
+        const auto isApiMutation = req.path.starts_with("/api/") &&
+            req.method != "GET" && req.method != "HEAD" && req.method != "OPTIONS";
+        const auto invalidLoginType = isLoginForm &&
+            (contentTypeCount != 1 ||
+             !contentTypeMatches(contentType, "application/x-www-form-urlencoded"));
+        const auto invalidApiType = isApiMutation &&
+            (!req.body.empty() || req.has_header("Content-Type")) &&
+            (contentTypeCount != 1 ||
+             !contentTypeMatches(contentType, "application/json"));
+        if (!invalidLoginType && !invalidApiType) {
             return httplib::Server::HandlerResponse::Unhandled;
         }
 
-        // This is intentionally ahead of authentication, parsing, throttling
-        // and every route handler. A rejected browser request must have no side
-        // effects, including consuming a login attempt or write-rate token.
-        sendJson(res, 403, errorJson("cross-site request blocked"));
+        // Parsing content under a media type the route did not declare can
+        // create browser/proxy inconsistencies. Reject before auth, CSRF or
+        // persistent throttles and never reflect the supplied header.
+        sendJson(res, 415, errorJson("unsupported media type"));
         applySecurityHeaders(res);
-        logSecurityEvent(req, res, "fetch_metadata_rejected", "blocked");
+        logSecurityEvent(req, res, "unsupported_media_type", "blocked");
         return httplib::Server::HandlerResponse::Handled;
     });
 

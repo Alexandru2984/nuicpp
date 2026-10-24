@@ -417,6 +417,7 @@ void testMetricsStayAggregateAndBounded() {
     metrics.observeHttp("PATCH", 503, 2.0);
     metrics.recordSecurityEvent("admin_login", "failed");
     metrics.recordSecurityEvent("fetch_metadata_rejected", "blocked");
+    metrics.recordSecurityEvent("unsupported_media_type", "blocked");
     metrics.recordSecurityEvent("attacker-controlled-label", "ignored");
     metrics.recordDiagramCreated("import");
     metrics.recordDiagramCreated("attacker-controlled-source");
@@ -446,6 +447,9 @@ void testMetricsStayAggregateAndBounded() {
     require(body.find("event=\"fetch_metadata_rejected\",outcome=\"blocked\"} 1") !=
                 std::string::npos,
             "metrics should count rejected cross-site mutations");
+    require(body.find("event=\"unsupported_media_type\",outcome=\"blocked\"} 1") !=
+                std::string::npos,
+            "metrics should count rejected request media types");
     require(body.find("source=\"import\"} 1") != std::string::npos,
             "metrics should count successful import creations");
     require(body.find("nuigraph_database_size_bytes 4096") != std::string::npos,
@@ -713,6 +717,24 @@ void testFetchMetadataMutationPolicy() {
             "unknown Fetch Metadata values should fail closed");
 }
 
+void testContentTypeMatching() {
+    require(contentTypeMatches("application/json", "application/json"),
+            "exact JSON media types should match");
+    require(contentTypeMatches(" Application/JSON ; charset=utf-8 ", "application/json"),
+            "media type matching should ignore case, surrounding whitespace and parameters");
+    require(contentTypeMatches("application/x-www-form-urlencoded; charset=UTF-8",
+                               "application/x-www-form-urlencoded"),
+            "form media types should allow standard parameters");
+    require(!contentTypeMatches("", "application/json"),
+            "missing content types should not match");
+    require(!contentTypeMatches("application/jsonp", "application/json"),
+            "media type prefixes should not match");
+    require(!contentTypeMatches("application/ld+json", "application/json"),
+            "undeclared structured JSON types should not match");
+    require(!contentTypeMatches("application/json, text/plain", "application/json"),
+            "comma-joined content types should fail closed");
+}
+
 void testRenderedPagesVersionStaticAssets() {
     constexpr auto version = "0123456789abcdef";
     const auto editor = renderEditorPage("guest", "https://example.test", true, version);
@@ -873,12 +895,13 @@ int main() {
         testSensitivePathsAreRedacted();
         testRequestIdsAndLogFieldsAreSafe();
         testFetchMetadataMutationPolicy();
+        testContentTypeMatching();
         testRenderedPagesVersionStaticAssets();
         testSeoMetadata();
     } catch (const std::exception& e) {
         std::cerr << "test failed: " << e.what() << '\n';
         return EXIT_FAILURE;
     }
-    std::cout << "nuigraph validation tests passed (53 tests)\n";
+    std::cout << "nuigraph validation tests passed (54 tests)\n";
     return EXIT_SUCCESS;
 }

@@ -16,6 +16,7 @@ for alert in \
   NuiGraphAdminLoginAttack \
   NuiGraphAdminLoginSucceeded \
   NuiGraphCrossSiteMutationSpike \
+  NuiGraphUnsupportedMediaTypeSpike \
   NuiGraphBlockedShareViewSpike \
   NuiGraphRateLimitStorageFailure \
   NuiGraphDiagramCapacityHigh \

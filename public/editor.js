@@ -98,7 +98,12 @@
   async function api(path, options = {}) {
     const method = (options.method || "GET").toUpperCase();
     const { headers: requestedHeaders = {}, ...fetchOptions } = options;
-    const headers = { "Content-Type": "application/json", ...requestedHeaders };
+    const headers = { ...requestedHeaders };
+    if (fetchOptions.body !== undefined && !Object.keys(headers).some(
+      (name) => name.toLowerCase() === "content-type"
+    )) {
+      headers["Content-Type"] = "application/json";
+    }
     if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
       headers["X-CSRF-Token"] = await ensureCsrfToken();
     }

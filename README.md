@@ -155,12 +155,15 @@ Summarised here, detailed in [`docs/SECURITY.md`](docs/SECURITY.md).
 - CSRF tokens bound to the exact session cookie on authenticated JSON writes,
   backed by a central Fetch Metadata firewall that rejects browser mutations
   unless `Sec-Fetch-Site` identifies the exact application origin.
+- Strict request media types: API bodies accept only `application/json`, login
+  accepts only form encoding, and the frontend does not attach a JSON type to
+  bodyless reads or deletes.
 - Rate limiting at the edge and in the app, plus atomic per-guest and global
   diagram and logical-byte quotas so concurrent writes cannot grow retained
   user content past the configured ceilings.
 - End-to-end request IDs and redacted structured security events for login,
-  authorization, CSRF, cross-site mutation rejection, quota, rate-limit, share
-  lifecycle/view and storage failures.
+  authorization, CSRF, cross-site/media-type rejection, quota, rate-limit,
+  share lifecycle/view and storage failures.
 - Defensive id parsing, exhaustive input validation, parameterised SQL only,
   no shell execution, no user-controlled filesystem paths.
 - CSP without `unsafe-inline` for scripts or styles, plus the usual header set,

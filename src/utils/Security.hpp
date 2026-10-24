@@ -21,4 +21,10 @@ std::string sanitizeLogField(const std::string& value, std::size_t maxLength = 1
 bool shouldRejectCrossSiteMutation(const std::string& method,
                                    const std::string& fetchSite);
 
+// Match only the media type token, case-insensitively, while allowing standard
+// parameters such as `charset=utf-8`. Prefix matches and comma-joined values
+// are deliberately rejected.
+bool contentTypeMatches(const std::string& contentType,
+                        const std::string& expectedMediaType);
+
 } // namespace nuigraph

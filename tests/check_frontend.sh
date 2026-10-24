@@ -50,6 +50,7 @@ grep -Fq 'function cutSelected()' public/editor.js
 grep -Fq 'evt.key.toLowerCase() === "x"' public/editor.js
 grep -Fq 'function toggleSelectedGeometryLock()' public/editor.js
 grep -Fq 'metadata.geometry_locked = true' public/editor.js
+grep -Fq 'if (fetchOptions.body !== undefined' public/editor.js
 grep -Fq 'id="grid-size"' src/ui/NuiApp.cpp
 grep -Fq 'id = "grid-size"' nui-frontend/frontend/source/frontend/main_page.cpp
 grep -Fq 'id="multi-node-props"' src/ui/NuiApp.cpp

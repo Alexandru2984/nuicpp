@@ -17,10 +17,11 @@ of rows. Responses are `no-store` and excluded from indexing.
 
 The bounded security series includes allowed/blocked share views, successful
 enable/disable/rotate/expiry-update lifecycle changes, signing-key cookie
-upgrades and rejected cross-site mutations. Runtime logs use the same outcomes
-but redact capabilities from page and API paths. A sudden blocked-view spike
-after a planned rotation is expected; an unexplained sustained spike should be
-correlated with access logs without recovering or printing the old token.
+upgrades, rejected cross-site mutations and unsupported request media types.
+Runtime logs use the same outcomes but redact capabilities from page and API
+paths. A sudden blocked-view spike after a planned rotation is expected; an
+unexplained sustained spike should be correlated with access logs without
+recovering or printing the old token.
 
 ## Scrape configuration
 
@@ -121,6 +122,17 @@ only when a real artifact timestamp and restore verification signal exist.
 4. If a legitimate client is affected, verify whether it incorrectly forges a
    browser-reserved header. Non-browser clients should omit it, not claim a
    foreign browser context.
+
+## Request contract rejections
+
+1. Confirm the bounded `unsupported_media_type/blocked` series and split the
+   affected route shapes using redacted request logs and IDs.
+2. After a release, first rule out an old or third-party client sending API JSON
+   as `text/plain`, or sending login credentials with a JSON media type. Correct
+   that client; do not broaden parsers to guess payload formats.
+3. Never add raw `Content-Type` values to logs or metrics. A sustained hostile
+   pattern is input probing and can be contained at the edge using route and
+   source signals already available there.
 
 ## Share-link probing or expiry noise
 

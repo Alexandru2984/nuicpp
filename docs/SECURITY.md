@@ -186,6 +186,24 @@ normal session, authorization and CSRF checks. Rejections use only one bounded
 metric label pair and a structured security event—never the attacker-provided
 header value.
 
+## Request media types
+
+Before route handlers run, login submissions must declare
+`application/x-www-form-urlencoded`. A state-changing `/api/` request that
+carries a body or a `Content-Type` header must declare `application/json`.
+Matching is case-insensitive and permits standard semicolon parameters such as
+`charset=utf-8`, but rejects prefix tricks, structured JSON variants that the
+API did not declare and comma-joined/conflicting values. Violations receive a
+no-store `415` before authentication, CSRF parsing or persistent rate-limit
+state can be touched. The supplied header is never reflected, logged or used as
+a metric label.
+
+Bodyless API mutations remain compatible without a media type, as do safe
+reads regardless of an irrelevant request `Content-Type`. The browser client
+sets `application/json` only when it actually supplies a body; this avoids
+misrepresenting bodyless GET and DELETE requests while keeping every parsed
+payload explicit.
+
 Persistent rate-limit bucket keys use `RATE_LIMIT_SECRET`. Rotating it starts new
 pseudonymous identities; old database rows become unreachable and expire within
 their normal 10-minute window instead of containing reusable client data.
