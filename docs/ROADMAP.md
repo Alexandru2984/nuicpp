@@ -99,6 +99,9 @@ rollback notes where applicable.
 - Keyboard movement for single and multi-node selections, with grid-aware Arrow
   steps, five-step Shift acceleration, server-equivalent coordinate bounds and
   key-repeat coalescing into one undo entry.
+- Forced-colour/high-contrast rendering for graph objects and controls, restored
+  keyboard focus rings on form fields/canvas, and reduced-motion handling with
+  real Chromium media emulation coverage.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -154,8 +157,7 @@ High risk remain open.
   selective restore and duplicate-as-branch.
 - Autosave to the server with visible sync state, offline mutation queue and
   conflict-resolution UI.
-- WCAG 2.2 AA pass: screen-reader object tree,
-  high-contrast/forced-colour mode, focus trapping for sheets/dialogs and
+- WCAG 2.2 AA pass: screen-reader object tree, focus trapping for sheets/dialogs and
   accessible status announcements.
 - Romanian plus English localisation, locale-aware dates and RTL-ready layout.
 - Cross-browser visual and interaction tests at phone, tablet, desktop and

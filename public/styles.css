@@ -158,6 +158,16 @@ input:focus, select:focus, textarea:focus {
   outline: none;
 }
 
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#canvas:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -4px;
+}
+
 input[type="color"] {
   padding: 3px;
   min-height: var(--tap-sm);
@@ -947,6 +957,62 @@ body.dirty .draft-status { color: var(--warn); }
     animation-duration: .01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
+  }
+}
+
+/* Windows High Contrast and equivalent forced-colour modes cannot rely on
+   authored fills, shadows or translucent selection states. Preserve every
+   state with system colours and outlines instead. */
+@media (forced-colors: active) {
+  #grid path { stroke: GrayText; }
+
+  .node-shape,
+  .node-outline {
+    fill: Canvas;
+    stroke: CanvasText;
+    filter: none;
+  }
+
+  .node-title,
+  .node-subtitle,
+  .edge-label {
+    fill: CanvasText;
+    stroke: Canvas;
+  }
+
+  .selected .node-outline,
+  .edge-selected .edge-path {
+    stroke: Highlight;
+    stroke-width: 4;
+    filter: none;
+  }
+
+  .edge-path { stroke: CanvasText !important; }
+  .edge-selected .edge-path { stroke: Highlight !important; }
+
+  .marquee {
+    fill: transparent;
+    stroke: Highlight;
+  }
+
+  .resize-handle {
+    fill: Highlight;
+    stroke: Canvas;
+  }
+
+  .align-guide { stroke: Highlight; }
+
+  button.active,
+  .mobile-action-bar button.active {
+    outline: 2px solid Highlight;
+    outline-offset: -3px;
+  }
+
+  .mobile-action-bar {
+    border-color: CanvasText;
+    background: Canvas;
+    box-shadow: none;
+    backdrop-filter: none;
   }
 }
 

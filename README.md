@@ -53,6 +53,9 @@ admin account for maintenance.
   scales a selected node set or both endpoints of a selected edge.
 - Diagram search filter over the sidebar list.
 - Light and dark themes, remembered per browser.
+- System forced-colour/high-contrast support preserves node, edge, selection,
+  resize and focus states; reduced-motion preferences disable transitions and
+  animations without removing functionality.
 
 ### Diagrams
 

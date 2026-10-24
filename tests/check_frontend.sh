@@ -45,6 +45,9 @@ grep -Fq 'className = "command-palette-overlay"' public/editor.js
 test "$(grep -Fc 'if (state.current.nodes?.length) zoomToFit();' public/editor.js)" -eq 2
 grep -Fq '.mobile-action-bar' public/styles.css
 grep -Fq '.inline-label-editor' public/styles.css
+grep -Fq '@media (forced-colors: active)' public/styles.css
+grep -Fq '@media (prefers-reduced-motion: reduce)' public/styles.css
+grep -Fq '#canvas:focus-visible' public/styles.css
 node tests/test_diagram_review.cjs
 node tests/test_diagram_arrange.cjs
 if grep -Eqi '<[^>]+[[:space:]]on[a-z]+[[:space:]]*=' public/offline.html; then

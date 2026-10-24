@@ -49,6 +49,21 @@ test.describe("desktop security and offline lifecycle", () => {
 
     await expect(page.locator("#canvas")).toBeVisible();
     await expect(page.locator("#diagram-title")).toHaveValue("Untitled diagram");
+    await page.emulateMedia({ forcedColors: "active", reducedMotion: "reduce" });
+    await page.locator("#canvas").focus();
+    const accessibilityMedia = await page.evaluate(() => ({
+      forcedColors: matchMedia("(forced-colors: active)").matches,
+      reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+      canvasOutline: getComputedStyle(document.querySelector("#canvas")).outlineStyle,
+      activeOutline: getComputedStyle(document.querySelector("#snap-toggle")).outlineStyle
+    }));
+    expect(accessibilityMedia).toEqual({
+      forcedColors: true,
+      reducedMotion: true,
+      canvasOutline: "solid",
+      activeOutline: "solid"
+    });
+    await page.emulateMedia({ forcedColors: "none", reducedMotion: "no-preference" });
     await page.locator("#grid-size").selectOption("64");
     await expect(page.locator("#grid")).toHaveAttribute("width", "64");
     await expect(page.locator("#grid")).toHaveAttribute("height", "64");
