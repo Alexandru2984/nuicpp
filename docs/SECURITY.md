@@ -367,6 +367,10 @@ documented in `DEPLOY.md`.
   systemd copies the runtime file into a private per-service credential mount;
   the service UID cannot read the source file. The database owner credential is
   separate and available only to the root-run migration step.
+- A dependency-free repository scanner runs in CTest and CI before release. It
+  detects provider credentials, private-key markers, credential-bearing database
+  URLs and high-entropy values assigned to secret-like names. Reports contain
+  only the rule and source location; candidate values are always redacted.
 - Database-backed release tests require `APP_ENV=test` and verify through
   PostgreSQL that both the connected database and role names end in `_test`.
   Deploy makes unavailable tests fatal; local CTest reports them as skipped.

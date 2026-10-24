@@ -36,6 +36,11 @@ plausible locked npm graph and the absence of configuration-secret names. It
 also rejects a semver Nui tag: the reviewed `v3.5.0` source is pinned to upstream
 commit `547f34d694acfae7abf802733273113fcacddc98`.
 
+The independent `nuigraph-secret-scan` gate scans tracked and non-ignored
+working-tree files before release. It has no third-party runtime dependency and
+rejects known provider token formats, private keys, credential URLs and generic
+high-entropy secret assignments while redacting candidates from CI output.
+
 ## Upgrade procedure
 
 1. Resolve the desired upstream Nui release to its full commit using the
@@ -63,4 +68,3 @@ npm inventory includes development and platform-optional packages because they
 are part of the locked build graph even when they are not shipped to browsers.
 The repository also has no declared project licence; choose and add one before
 public distribution rather than inferring a licence from dependencies.
-

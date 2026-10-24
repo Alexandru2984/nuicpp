@@ -83,6 +83,9 @@ jobs:
       - name: Audit shell scripts
         run: shellcheck scripts/*.sh tests/*.sh
 
+      - name: Reject committed secrets
+        run: python3 scripts/scan_secrets.py
+
       - name: Audit C++ sources
         run: >-
           cppcheck

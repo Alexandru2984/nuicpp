@@ -204,8 +204,8 @@ The build is clean under `-Wall -Wextra -Wpedantic`.
 ctest --test-dir build --output-on-failure
 ```
 
-Fourteen suites cover unit validation, frontend assets, the nginx candidate,
-Prometheus rules, incident-runbook integrity, CycloneDX SBOM generation, real
+Fifteen suites cover unit validation, frontend assets, the nginx candidate,
+Prometheus rules, incident-runbook integrity, secret scanning, CycloneDX SBOM generation, real
 Chromium behavior, live security/API behavior, shared persistent rate limits,
 concurrent row/logical-byte quota enforcement, signing-key rotation, and
 migration-ledger integrity. The eight database-backed suites use
@@ -223,6 +223,11 @@ mobile action customisation, 44px touch targets and
 persistence across reload. CI
 installs its pinned browser runtime; locally run
 `nui-frontend/node_modules/.bin/playwright install chromium` after `npm ci`.
+
+`scripts/scan_secrets.py` rejects provider tokens, private-key markers,
+credential-bearing database URLs and generic high-entropy credential
+assignments without echoing candidate values. It scans tracked and untracked
+non-ignored source files locally and runs as a dedicated CTest/CI gate.
 
 GitHub Actions runs the full build and all live suites against a disposable
 PostgreSQL database, plus ShellCheck, Cppcheck, npm audit, and CodeQL. Workflow

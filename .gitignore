@@ -10,5 +10,7 @@
 *.tmp
 *.swp
 *.o
+*.pyc
+__pycache__/
 nuigraph-studio
 .DS_Store

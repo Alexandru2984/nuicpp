@@ -135,6 +135,9 @@ rollback notes where applicable.
 - Persistent per-node geometry locks with mixed-selection semantics across
   drag, resize, nudge, batch sizing, arrangement and auto-layout, plus visible
   high-contrast state and screen-reader announcements.
+- Dependency-free, fail-closed working-tree secret scanning in local CTest and
+  CI, with provider/generic credential detection, explicit placeholder handling
+  and regression tests proving that findings are redacted from logs.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
