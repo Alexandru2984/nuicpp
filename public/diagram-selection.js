@@ -5,12 +5,8 @@
 })(typeof globalThis === "object" ? globalThis : null, () => {
   "use strict";
 
-  // Connectivity is intentionally weak: a directed relationship still joins
-  // two objects in the same visual subgraph. The iterative walk stays safe for
-  // deep diagrams and returns keys in the diagram's stable display order.
-  function connectedNodeKeys(diagram, seedKeys) {
-    if (!Array.isArray(diagram?.nodes) || !Array.isArray(seedKeys)) return [];
-
+  function graphIndex(diagram) {
+    if (!Array.isArray(diagram?.nodes)) return null;
     const orderedKeys = [];
     const nodeKeys = new Set();
     for (const node of diagram.nodes) {
@@ -19,9 +15,6 @@
       orderedKeys.push(node.key);
     }
 
-    const visited = new Set(seedKeys.filter((key) => nodeKeys.has(key)));
-    if (!visited.size) return [];
-
     const adjacency = new Map(orderedKeys.map((key) => [key, []]));
     const edges = Array.isArray(diagram.edges) ? diagram.edges : [];
     for (const edge of edges) {
@@ -29,17 +22,42 @@
       adjacency.get(edge.source).push(edge.target);
       adjacency.get(edge.target).push(edge.source);
     }
+    return { orderedKeys, nodeKeys, adjacency };
+  }
+
+  function validSeeds(index, seedKeys) {
+    if (!index || !Array.isArray(seedKeys)) return new Set();
+    return new Set(seedKeys.filter((key) => index.nodeKeys.has(key)));
+  }
+
+  // Connectivity is intentionally weak: a directed relationship still joins
+  // two objects in the same visual subgraph. The iterative walk stays safe for
+  // deep diagrams and returns keys in the diagram's stable display order.
+  function connectedNodeKeys(diagram, seedKeys) {
+    const graph = graphIndex(diagram);
+    const visited = validSeeds(graph, seedKeys);
+    if (!visited.size) return [];
 
     const queue = [...visited];
-    for (let index = 0; index < queue.length; index += 1) {
-      for (const neighbour of adjacency.get(queue[index]) || []) {
+    for (let cursor = 0; cursor < queue.length; cursor += 1) {
+      for (const neighbour of graph.adjacency.get(queue[cursor]) || []) {
         if (visited.has(neighbour)) continue;
         visited.add(neighbour);
         queue.push(neighbour);
       }
     }
-    return orderedKeys.filter((key) => visited.has(key));
+    return graph.orderedKeys.filter((key) => visited.has(key));
   }
 
-  return Object.freeze({ connectedNodeKeys });
+  function neighbourNodeKeys(diagram, seedKeys) {
+    const index = graphIndex(diagram);
+    const selected = validSeeds(index, seedKeys);
+    if (!selected.size) return [];
+    for (const seed of [...selected]) {
+      for (const neighbour of index.adjacency.get(seed) || []) selected.add(neighbour);
+    }
+    return index.orderedKeys.filter((key) => selected.has(key));
+  }
+
+  return Object.freeze({ connectedNodeKeys, neighbourNodeKeys });
 });

@@ -126,6 +126,8 @@ rollback notes where applicable.
 - Iterative weak-component selection from one or many graph nodes, exposed in
   the command palette and customisable phone actions, with deterministic,
   mutation-free and deep-graph unit coverage plus disconnected-graph E2E.
+- One-hop neighbor expansion for single or multi-node selections, preserving
+  deterministic diagram order and treating directed links as visual adjacency.
 - Atomic cut/paste for node selections and their internal edges, with one-step
   undo, collision-safe regenerated keys, read-only gating and browser coverage.
 

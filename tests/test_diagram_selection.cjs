@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { connectedNodeKeys } = require("../public/diagram-selection.js");
+const { connectedNodeKeys, neighbourNodeKeys } = require("../public/diagram-selection.js");
 
 const diagram = {
   nodes: ["a", "b", "c", "isolated", "x", "y"].map((key) => ({ key })),
@@ -23,6 +23,14 @@ assert.deepEqual(connectedNodeKeys(diagram, ["missing"]), [],
 assert.deepEqual(connectedNodeKeys({ nodes: diagram.nodes }, ["a"]), ["a"],
   "a missing edge list must behave like an empty graph");
 assert.deepEqual(connectedNodeKeys(null, ["a"]), []);
+assert.deepEqual(neighbourNodeKeys(diagram, ["a"]), ["a", "b"],
+  "one-hop selection must include the seed and direct weak neighbours only");
+assert.deepEqual(neighbourNodeKeys(diagram, ["b"]), ["a", "b", "c"],
+  "incoming and outgoing directed relationships must both count as neighbours");
+assert.deepEqual(neighbourNodeKeys(diagram, ["a", "x"]), ["a", "b", "x", "y"],
+  "multiple seeds must union their one-hop neighbourhoods");
+assert.deepEqual(neighbourNodeKeys(diagram, ["isolated"]), ["isolated"]);
+assert.deepEqual(neighbourNodeKeys(diagram, ["missing"]), []);
 assert.equal(JSON.stringify(diagram), before, "selection analysis must not mutate the diagram");
 
 const specialKeys = {
@@ -31,6 +39,7 @@ const specialKeys = {
 };
 assert.deepEqual(connectedNodeKeys(specialKeys, ["__proto__"]), ["__proto__", "constructor"],
   "node keys must never enter an object-prototype lookup");
+assert.deepEqual(neighbourNodeKeys(specialKeys, ["__proto__"]), ["__proto__", "constructor"]);
 
 const deepNodeCount = 20000;
 const deep = {
@@ -44,5 +53,7 @@ const deep = {
 const deepSelection = connectedNodeKeys(deep, ["deep_0"]);
 assert.equal(deepSelection.length, deepNodeCount, "deep graphs must not overflow the call stack");
 assert.equal(deepSelection.at(-1), `deep_${deepNodeCount - 1}`);
+assert.deepEqual(neighbourNodeKeys(deep, ["deep_0"]), ["deep_0", "deep_1"],
+  "one-hop selection must not accidentally traverse an entire deep graph");
 
 console.log("diagram selection tests passed");

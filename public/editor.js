@@ -364,6 +364,7 @@
       { id: "distribute-horizontal", label: "Distribute selected nodes horizontally", shortLabel: "Space H", category: "Arrange", keywords: "multi selection equal spacing", mobile: true, enabled: () => canArrangeSelection(3), run: () => arrangeSelection("distribute-horizontal") },
       { id: "distribute-vertical", label: "Distribute selected nodes vertically", shortLabel: "Space V", category: "Arrange", keywords: "multi selection equal spacing", mobile: true, enabled: () => canArrangeSelection(3), run: () => arrangeSelection("distribute-vertical") },
       { id: "review", label: "Review diagram quality", shortLabel: "Review", category: "Analyze", keywords: "lint cycle orphan duplicate missing label", mobile: true, enabled: () => Boolean(state.current), run: showDiagramReview },
+      { id: "select-neighbours", label: "Select direct neighbors", shortLabel: "Neighbors", category: "Analyze", keywords: "adjacent one hop graph incoming outgoing neighbours expand selection", mobile: true, enabled: () => selectedNodeKeys().length > 0, run: selectNeighbourNodes },
       { id: "select-connected", label: "Select connected component", shortLabel: "Connected", category: "Analyze", keywords: "graph traversal reachable weak component expand selection neighbours", mobile: true, enabled: () => selectedNodeKeys().length > 0, run: selectConnectedNodes },
       { id: "find-node", label: "Find and focus node", shortLabel: "Find", category: "Analyze", keywords: "navigate search locate jump", shortcut: "/", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: openNodeNavigator },
       { id: "diagram-outline", label: "Open diagram outline", shortLabel: "Outline", category: "Analyze", keywords: "accessibility screen reader tree nodes edges navigate", shortcut: "Alt + O", mobile: true, enabled: () => Boolean(state.current?.nodes?.length || state.current?.edges?.length), run: openDiagramOutline },
@@ -2150,21 +2151,29 @@
     canvas.focus({ preventScroll: true });
   }
 
-  function selectConnectedNodes() {
+  function applyGraphSelection(method, description) {
     if (!state.current) return;
-    const connectedNodeKeys = globalThis.NuiGraphSelection?.connectedNodeKeys;
-    if (typeof connectedNodeKeys !== "function") {
-      toast("Connectivity analysis is unavailable; reload the editor assets.", "error");
+    const selectKeys = globalThis.NuiGraphSelection?.[method];
+    if (typeof selectKeys !== "function") {
+      toast("Graph selection is unavailable; reload the editor assets.", "error");
       return;
     }
-    const keys = connectedNodeKeys(state.current, selectedNodeKeys());
+    const keys = selectKeys(state.current, selectedNodeKeys());
     if (!keys.length) return;
     selectNodeKeys(keys);
     state.edgeSource = null;
     setTool("select");
     render();
     canvas.focus({ preventScroll: true });
-    toast(`${keys.length} connected node${keys.length === 1 ? "" : "s"} selected.`);
+    toast(`${keys.length} ${description} node${keys.length === 1 ? "" : "s"} selected.`);
+  }
+
+  function selectNeighbourNodes() {
+    applyGraphSelection("neighbourNodeKeys", "neighboring");
+  }
+
+  function selectConnectedNodes() {
+    applyGraphSelection("connectedNodeKeys", "connected");
   }
 
   // A rubber-band drag can go up and to the left, so the stored corners are the

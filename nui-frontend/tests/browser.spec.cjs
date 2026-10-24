@@ -320,6 +320,18 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(page.locator("#canvas")).toBeFocused();
 
       await page.keyboard.press("Control+k");
+      const neighboursPalette = page.getByRole("dialog", { name: "Command palette" });
+      await neighboursPalette.getByRole("combobox", { name: "Search commands" }).fill("select direct neighbors");
+      await expect(neighboursPalette.getByRole("option", { name: /Select direct neighbors/ })).toBeEnabled();
+      await page.keyboard.press("Enter");
+      await expect(neighboursPalette).not.toBeVisible();
+      await expect(page.locator("#nodes > g.selected")).toHaveCount(2);
+      await expect(page.locator('#nodes > g[data-key="node_start"]')).not.toHaveClass(/selected/);
+      await expect(page.locator('#nodes > g[data-key="node_isolated"]')).not.toHaveClass(/selected/);
+      await expect(editorLiveStatus).toHaveText("2 nodes selected.");
+      await expect(page.locator("#canvas")).toBeFocused();
+
+      await page.keyboard.press("Control+k");
       const connectedPalette = page.getByRole("dialog", { name: "Command palette" });
       await connectedPalette.getByRole("combobox", { name: "Search commands" }).fill("select connected component");
       await expect(connectedPalette.getByRole("option", { name: /Select connected component/ })).toBeEnabled();
@@ -675,6 +687,7 @@ test.describe("phone layout", () => {
     await expect(customizer.getByLabel("Cycle grid size", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Align selected nodes left", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Select all nodes", { exact: true })).toBeVisible();
+    await expect(customizer.getByLabel("Select direct neighbors", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Select connected component", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Duplicate selected nodes", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Cut selected nodes", { exact: true })).toBeVisible();
