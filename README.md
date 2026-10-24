@@ -83,6 +83,9 @@ admin account for maintenance.
   orphan nodes, invalid or duplicate edges, self-loops and directed cycles, then
   focuses the selected finding without sending diagram content to another service.
 - Zoom-to-fit frames the entire graph while reserving room for mobile controls.
+- Adaptive world-coordinate rulers track pan and zoom with bounded 1/2/5 scale
+  steps. They default on for larger screens, off on phones, and remember the
+  user's command-palette or mobile-action preference.
 - Actual Size resets zoom to 100% around the viewport centre from the clickable
   zoom indicator, `Shift+1`, the command palette or a pinned mobile action.
 - Frame Selection (`Shift+2`, command palette or mobile action) centres and

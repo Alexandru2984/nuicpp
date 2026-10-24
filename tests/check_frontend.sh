@@ -6,6 +6,7 @@ node --check public/app.js >/dev/null
 node --check public/diagram-review.js >/dev/null
 node --check public/diagram-arrange.js >/dev/null
 node --check public/diagram-selection.js >/dev/null
+node --check public/canvas-rulers.js >/dev/null
 node --check public/offline.js >/dev/null
 node --check public/sw.js >/dev/null
 node --check public/nui/bootstrap.js >/dev/null
@@ -20,6 +21,7 @@ grep -q 'asset("/offline.js")' public/sw.js
 grep -q 'asset("/diagram-review.js")' public/sw.js
 grep -q 'asset("/diagram-arrange.js")' public/sw.js
 grep -q 'asset("/diagram-selection.js")' public/sw.js
+grep -q 'asset("/canvas-rulers.js")' public/sw.js
 grep -q '<script src="/offline.js?v=__ASSET_VERSION__"></script>' public/offline.html
 grep -Fq 'const assetQuery = document.currentScript' public/app.js
 grep -Fq 'navigator.serviceWorker.register(`/sw.js' public/app.js
@@ -27,13 +29,17 @@ grep -Fq 'script.src = `/editor.js' public/app.js
 grep -Fq 'review.src = `/diagram-review.js' public/app.js
 grep -Fq 'arrange.src = `/diagram-arrange.js' public/app.js
 grep -Fq 'selection.src = `/diagram-selection.js' public/app.js
+grep -Fq 'rulers.src = `/canvas-rulers.js' public/app.js
+grep -Fq 'selection.onload = attachRulers' public/app.js
 for loader in public/nui/bootstrap.js nui-frontend/static/source/index.js; do
   grep -Fq 'review.src = `/diagram-review.js' "$loader"
   grep -Fq 'arrange.src = `/diagram-arrange.js' "$loader"
   grep -Fq 'selection.src = `/diagram-selection.js' "$loader"
+  grep -Fq 'rulers.src = `/canvas-rulers.js' "$loader"
   grep -Fq 'review.onload = attachArrange' "$loader"
   grep -Fq 'arrange.onload = attachSelection' "$loader"
-  grep -Fq 'selection.onload = attachEditor' "$loader"
+  grep -Fq 'selection.onload = attachRulers' "$loader"
+  grep -Fq 'rulers.onload = attachEditor' "$loader"
 done
 grep -Fq 'css.href = `/styles.css' public/editor.js
 grep -Fq 'Ctrl / Cmd + K' public/editor.js
@@ -44,6 +50,8 @@ grep -Fq 'applyBatchProperties' public/editor.js
 grep -Fq 'Frame selection' public/editor.js
 grep -Fq 'Actual size (100%)' public/editor.js
 grep -Fq 'function resetZoom()' public/editor.js
+grep -Fq 'Toggle canvas rulers' public/editor.js
+grep -Fq 'function drawCanvasRulers()' public/editor.js
 grep -Fq 'evt.code === "Digit1"' public/editor.js
 grep -Fq 'evt.code === "Digit2"' public/editor.js
 grep -Fq 'function snapValue(value, grid = state.gridSize)' public/editor.js
@@ -91,6 +99,7 @@ grep -Fq 'className = "command-palette-overlay"' public/editor.js
 test "$(grep -Fc 'if (state.current.nodes?.length) zoomToFit();' public/editor.js)" -eq 2
 grep -Fq '.mobile-action-bar' public/styles.css
 grep -Fq '.inline-label-editor' public/styles.css
+grep -Fq '.canvas-rulers' public/styles.css
 grep -Fq '@media (forced-colors: active)' public/styles.css
 grep -Fq '.node-lock-body' public/styles.css
 grep -Fq '@media (prefers-reduced-motion: reduce)' public/styles.css
@@ -98,6 +107,7 @@ grep -Fq '#canvas:focus-visible' public/styles.css
 node tests/test_diagram_review.cjs
 node tests/test_diagram_arrange.cjs
 node tests/test_diagram_selection.cjs
+node tests/test_canvas_rulers.cjs
 if rg -n 'innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval[[:space:]]*\(|new Function' public --glob '*.js'; then
   echo "public JavaScript must not use HTML/code execution sinks" >&2
   exit 1

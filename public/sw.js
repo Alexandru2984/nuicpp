@@ -15,6 +15,7 @@ const SHELL = [
   asset("/diagram-review.js"),
   asset("/diagram-arrange.js"),
   asset("/diagram-selection.js"),
+  asset("/canvas-rulers.js"),
   asset("/editor.js"),
   asset("/offline.html"),
   asset("/offline.js"),

@@ -86,6 +86,10 @@ test.describe("desktop security and offline lifecycle", () => {
     await expect(editorLiveStatus).toHaveAttribute("aria-live", "polite");
     await expect(page.locator("#canvas")).toHaveAttribute("aria-describedby", "editor-live-status");
     await expect(page.locator("#draft-status")).toHaveAttribute("aria-live", "polite");
+    await expect(page.locator(".canvas-rulers")).toBeVisible();
+    expect(await page.evaluate(() => typeof globalThis.NuiGraphRulers?.rulerMarks)).toBe("function");
+    await expect.poll(() => page.locator("#canvas-ruler-horizontal").getAttribute("width"))
+      .not.toBeNull();
     await expectNoHighImpactAccessibilityViolations(page, testInfo, "desktop-editor");
     await page.emulateMedia({ forcedColors: "active", reducedMotion: "reduce" });
     await page.locator("#canvas").focus();
@@ -139,6 +143,7 @@ test.describe("desktop security and offline lifecycle", () => {
     expect(cachedPaths).toContain("/diagram-review.js");
     expect(cachedPaths).toContain("/diagram-arrange.js");
     expect(cachedPaths).toContain("/diagram-selection.js");
+    expect(cachedPaths).toContain("/canvas-rulers.js");
 
     const title = page.locator("#diagram-title");
     await title.focus();
@@ -188,6 +193,17 @@ test.describe("desktop security and offline lifecycle", () => {
     await expect(page.getByRole("option", { name: /Actual size \(100%\)/ })).toBeVisible();
     await page.keyboard.press("Enter");
     await expect(actualSize).toHaveText("100%");
+
+    await page.keyboard.press("Control+k");
+    await page.getByRole("combobox", { name: "Search commands" }).fill("toggle canvas rulers");
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".canvas-rulers")).toBeHidden();
+    expect(await page.evaluate(() => localStorage.getItem("nuigraph:canvas-rulers:v1"))).toBe("off");
+    await page.keyboard.press("Control+k");
+    await page.getByRole("combobox", { name: "Search commands" }).fill("toggle canvas rulers");
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".canvas-rulers")).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem("nuigraph:canvas-rulers:v1"))).toBe("on");
 
     let sharingTestId = null;
     try {
@@ -697,6 +713,7 @@ test.describe("phone layout", () => {
     await page.goto("/", { waitUntil: "networkidle" });
 
     await expect(page.locator("#canvas")).toBeVisible();
+    await expect(page.locator(".canvas-rulers")).toBeHidden();
     await expect(page.locator(".mobile-action-bar")).toBeVisible();
     await expect(page.locator(".top-actions")).not.toBeVisible();
     await expect(page.locator(".toolbox")).not.toBeVisible();
@@ -754,6 +771,7 @@ test.describe("phone layout", () => {
     await expect(customizer.getByLabel("Edit selected label", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Frame selection", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Actual size (100%)", { exact: true })).toBeVisible();
+    await expect(customizer.getByLabel("Toggle canvas rulers", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Cycle grid size", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Align selected nodes left", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Toggle node geometry lock", { exact: true })).toBeVisible();

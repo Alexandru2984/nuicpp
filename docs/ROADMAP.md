@@ -97,6 +97,9 @@ rollback notes where applicable.
   command palette or a customisable mobile action, with phone-safe padding.
 - Centre-preserving Actual Size resets zoom to 100% from the desktop indicator,
   `Shift+1`, the command palette or a customisable mobile action.
+- Adaptive world-coordinate canvas rulers use bounded 1/2/5 scale steps, track
+  pan/zoom at device-pixel resolution and persist an explicit desktop/mobile
+  visibility preference.
 - Configurable 8/16/32/64 px grid shared by rendering, node creation, dragging
   and resizing. The preference stays local and can be changed from the desktop
   toolbar or cycled from the command palette/mobile actions.
@@ -201,7 +204,6 @@ High risk remain open.
 
 ## P2 — editor quality and responsive UX
 
-- Canvas rulers.
 - Orthogonal/smart edge routing, ports/anchors, curved connectors, waypoints and
   collision avoidance.
 - Groups, frames, layers, lock/hide controls, reusable components and multiple

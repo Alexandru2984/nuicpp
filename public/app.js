@@ -18,18 +18,31 @@
     document.head.appendChild(script);
   };
 
+  const attachRulers = () => {
+    if (globalThis.NuiGraphRulers) {
+      attachEditor();
+      return;
+    }
+    const rulers = document.createElement("script");
+    rulers.src = `/canvas-rulers.js${assetQuery}`;
+    rulers.defer = true;
+    rulers.onload = attachEditor;
+    rulers.onerror = attachEditor;
+    document.head.appendChild(rulers);
+  };
+
   const attachSelection = () => {
     if (globalThis.NuiGraphSelection) {
-      attachEditor();
+      attachRulers();
       return;
     }
     const selection = document.createElement("script");
     selection.src = `/diagram-selection.js${assetQuery}`;
     selection.defer = true;
-    selection.onload = attachEditor;
+    selection.onload = attachRulers;
     // Basic editing remains available if this optional analysis engine is
     // missing; its command provides a focused recovery message.
-    selection.onerror = attachEditor;
+    selection.onerror = attachRulers;
     document.head.appendChild(selection);
   };
 

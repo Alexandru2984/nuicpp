@@ -365,6 +365,36 @@ body.dirty .draft-status { color: var(--warn); }
   touch-action: none;
 }
 
+.canvas-rulers {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.canvas-rulers[hidden] { display: none; }
+
+.canvas-ruler-horizontal,
+.canvas-ruler-vertical {
+  position: absolute;
+  display: block;
+}
+
+.canvas-ruler-horizontal { top: 0; left: 24px; }
+.canvas-ruler-vertical { top: 24px; left: 0; }
+
+.canvas-ruler-corner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 24px;
+  height: 24px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
 #grid-bg { fill: url(#grid); }
 
 .inline-label-editor {
@@ -1030,6 +1060,11 @@ body.dirty .draft-status { color: var(--warn); }
   }
 
   .align-guide { stroke: Highlight; }
+
+  .canvas-ruler-corner {
+    border-color: CanvasText;
+    background: Canvas;
+  }
 
   .node-lock-body {
     fill: CanvasText;

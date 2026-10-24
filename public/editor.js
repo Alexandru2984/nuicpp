@@ -11,6 +11,8 @@
   const nodeTypes = ["process", "decision", "database", "service", "api", "note", "external"];
   const GRID_SIZES = [8, 16, 32, 64];
   const GRID_SIZE_STORAGE = "nuigraph:grid-size:v1";
+  const RULER_STORAGE = "nuigraph:canvas-rulers:v1";
+  const RULER_SIZE = 24;
   const colors = {
     process: "#38bdf8",
     decision: "#f59e0b",
@@ -32,6 +34,7 @@
     tool: "select",
     snap: true,
     gridSize: 16,
+    rulers: false,
     zoom: 1,
     pan: { x: 80, y: 70 },
     edgeSource: null,
@@ -61,6 +64,10 @@
   const viewport = el("viewport");
   const nodesLayer = el("nodes");
   const edgesLayer = el("edges");
+  let rulerLayer = null;
+  let horizontalRuler = null;
+  let verticalRuler = null;
+  let rulerResizeObserver = null;
   // A selected canvas object needs a real keyboard focus target before Enter
   // can be a safe, predictable editing shortcut.
   canvas.tabIndex = 0;
@@ -293,6 +300,7 @@
       document.documentElement.dataset.theme = next;
       localStorage.setItem("nuigraph:theme", next);
       paint();
+      drawCanvasRulers();
     };
     paint();
     document.querySelector(".top-actions")?.prepend(button);
@@ -377,6 +385,7 @@
       { id: "find-node", label: "Find and focus node", shortLabel: "Find", category: "Analyze", keywords: "navigate search locate jump", shortcut: "/", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: openNodeNavigator },
       { id: "diagram-outline", label: "Open diagram outline", shortLabel: "Outline", category: "Analyze", keywords: "accessibility screen reader tree nodes edges navigate", shortcut: "Alt + O", mobile: true, enabled: () => Boolean(state.current?.nodes?.length || state.current?.edges?.length), run: openDiagramOutline },
       { id: "actual-size", label: "Actual size (100%)", shortLabel: "100%", category: "View", keywords: "reset zoom scale one to one", shortcut: "Shift + 1", mobile: true, run: resetZoom },
+      { id: "rulers", label: "Toggle canvas rulers", shortLabel: "Rulers", category: "View", keywords: "coordinates measurement axes guides", mobile: true, active: () => state.rulers, run: toggleCanvasRulers },
       { id: "frame-selection", label: "Frame selection", shortLabel: "Frame", category: "View", keywords: "zoom center focus selected nodes edge", shortcut: "Shift + 2", mobile: true, enabled: () => selectedFrameNodes().length > 0, run: frameSelection },
       { id: "fit", label: "Zoom to fit", shortLabel: "Fit", category: "View", keywords: "frame center canvas", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: zoomToFit },
       { id: "tool-select", label: "Use select tool", shortLabel: "Select", category: "Tools", keywords: "pointer", mobile: true, run: () => triggerTool("select") },
@@ -664,7 +673,10 @@
       const command = commands.get(button.dataset.commandId);
       if (!command) return;
       button.disabled = !commandEnabled(command);
-      button.classList.toggle("active", command.id === `tool-${state.tool}`);
+      const active = command.active ? Boolean(command.active()) : command.id === `tool-${state.tool}`;
+      button.classList.toggle("active", active);
+      if (command.active) button.setAttribute("aria-pressed", String(active));
+      else button.removeAttribute("aria-pressed");
       button.classList.toggle("has-changes", command.id === "save" && state.dirty);
       let accessibleLabel = command.id === "save" && state.dirty
         ? "Save diagram - unsaved changes"
@@ -1676,6 +1688,148 @@
   const MIN_ZOOM = 0.25;
   const MAX_ZOOM = 2.5;
 
+  function prepareRulerCanvas(element, width, height) {
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    const pixelWidth = Math.max(1, Math.round(width * pixelRatio));
+    const pixelHeight = Math.max(1, Math.round(height * pixelRatio));
+    if (element.width !== pixelWidth || element.height !== pixelHeight) {
+      element.width = pixelWidth;
+      element.height = pixelHeight;
+    }
+    element.style.width = `${width}px`;
+    element.style.height = `${height}px`;
+    const context = element.getContext("2d");
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    context.clearRect(0, 0, width, height);
+    return context;
+  }
+
+  function rulerColors() {
+    if (window.matchMedia("(forced-colors: active)").matches) {
+      return { background: "Canvas", line: "CanvasText", text: "CanvasText" };
+    }
+    const styles = getComputedStyle(document.documentElement);
+    return {
+      background: styles.getPropertyValue("--panel").trim() || "#121820",
+      line: styles.getPropertyValue("--line").trim() || "#253241",
+      text: styles.getPropertyValue("--muted").trim() || "#91a4b7"
+    };
+  }
+
+  function drawCanvasRulers() {
+    if (!rulerLayer) return;
+    const engine = globalThis.NuiGraphRulers;
+    rulerLayer.hidden = !state.rulers || !engine;
+    if (rulerLayer.hidden) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const horizontalWidth = Math.max(1, Math.floor(rect.width - RULER_SIZE));
+    const verticalHeight = Math.max(1, Math.floor(rect.height - RULER_SIZE));
+    const colors = rulerColors();
+    const horizontal = prepareRulerCanvas(horizontalRuler, horizontalWidth, RULER_SIZE);
+    const vertical = prepareRulerCanvas(verticalRuler, RULER_SIZE, verticalHeight);
+    horizontal.fillStyle = colors.background;
+    horizontal.fillRect(0, 0, horizontalWidth, RULER_SIZE);
+    vertical.fillStyle = colors.background;
+    vertical.fillRect(0, 0, RULER_SIZE, verticalHeight);
+
+    horizontal.strokeStyle = colors.line;
+    horizontal.fillStyle = colors.text;
+    horizontal.font = "10px ui-monospace, SFMono-Regular, Consolas, monospace";
+    horizontal.textBaseline = "top";
+    horizontal.beginPath();
+    for (const mark of engine.rulerMarks(rect.width, state.pan.x, state.zoom).marks) {
+      if (mark.screen < RULER_SIZE || mark.screen > rect.width) continue;
+      const x = mark.screen - RULER_SIZE;
+      const tick = mark.major ? 9 : 5;
+      horizontal.moveTo(x + 0.5, RULER_SIZE - tick);
+      horizontal.lineTo(x + 0.5, RULER_SIZE);
+      if (mark.major && x + 4 < horizontalWidth) horizontal.fillText(mark.label, x + 3, 2);
+    }
+    horizontal.moveTo(0, RULER_SIZE - 0.5);
+    horizontal.lineTo(horizontalWidth, RULER_SIZE - 0.5);
+    horizontal.stroke();
+
+    vertical.strokeStyle = colors.line;
+    vertical.fillStyle = colors.text;
+    vertical.font = "10px ui-monospace, SFMono-Regular, Consolas, monospace";
+    vertical.textBaseline = "top";
+    vertical.beginPath();
+    for (const mark of engine.rulerMarks(rect.height, state.pan.y, state.zoom).marks) {
+      if (mark.screen < RULER_SIZE || mark.screen > rect.height) continue;
+      const y = mark.screen - RULER_SIZE;
+      const tick = mark.major ? 9 : 5;
+      vertical.moveTo(RULER_SIZE - tick, y + 0.5);
+      vertical.lineTo(RULER_SIZE, y + 0.5);
+      if (mark.major && y > 2) {
+        vertical.save();
+        vertical.translate(2, y - 3);
+        vertical.rotate(-Math.PI / 2);
+        vertical.fillText(mark.label, 0, 0);
+        vertical.restore();
+      }
+    }
+    vertical.moveTo(RULER_SIZE - 0.5, 0);
+    vertical.lineTo(RULER_SIZE - 0.5, verticalHeight);
+    vertical.stroke();
+  }
+
+  function toggleCanvasRulers() {
+    if (!globalThis.NuiGraphRulers) {
+      toast("Canvas rulers are unavailable; reload the release assets.", "error");
+      return;
+    }
+    state.rulers = !state.rulers;
+    try {
+      localStorage.setItem(RULER_STORAGE, state.rulers ? "on" : "off");
+    } catch {
+      // The preference remains active for this tab when storage is unavailable.
+    }
+    drawCanvasRulers();
+    refreshMobileActionBar();
+    toast(`Canvas rulers ${state.rulers ? "shown" : "hidden"}.`);
+  }
+
+  function initCanvasRulers() {
+    const wrap = canvas.closest(".canvas-wrap");
+    if (!wrap) return;
+    let stored = null;
+    try {
+      stored = localStorage.getItem(RULER_STORAGE);
+    } catch {
+      stored = null;
+    }
+    state.rulers = Boolean(globalThis.NuiGraphRulers) && (stored === "on" ||
+      (stored !== "off" && !window.matchMedia("(max-width: 760px)").matches));
+
+    rulerLayer = document.createElement("div");
+    rulerLayer.className = "canvas-rulers";
+    rulerLayer.setAttribute("aria-hidden", "true");
+    horizontalRuler = document.createElement("canvas");
+    horizontalRuler.id = "canvas-ruler-horizontal";
+    horizontalRuler.className = "canvas-ruler-horizontal";
+    verticalRuler = document.createElement("canvas");
+    verticalRuler.id = "canvas-ruler-vertical";
+    verticalRuler.className = "canvas-ruler-vertical";
+    const corner = document.createElement("span");
+    corner.className = "canvas-ruler-corner";
+    rulerLayer.append(horizontalRuler, verticalRuler, corner);
+    wrap.appendChild(rulerLayer);
+
+    if (typeof ResizeObserver === "function") {
+      rulerResizeObserver = new ResizeObserver(drawCanvasRulers);
+      rulerResizeObserver.observe(wrap);
+    } else {
+      window.addEventListener("resize", drawCanvasRulers);
+    }
+    const forcedColors = window.matchMedia("(forced-colors: active)");
+    if (typeof forcedColors.addEventListener === "function") {
+      forcedColors.addEventListener("change", drawCanvasRulers);
+    } else if (typeof forcedColors.addListener === "function") {
+      forcedColors.addListener(drawCanvasRulers);
+    }
+  }
+
   function clampZoom(value) {
     return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value));
   }
@@ -1716,13 +1870,15 @@
     const width = Math.max(1, maxX - minX);
     const height = Math.max(1, maxY - minY);
     const mobile = window.matchMedia("(max-width: 760px)").matches;
+    const rulerInset = state.rulers ? RULER_SIZE : 0;
     const horizontalPadding = mobile ? 28 : 64;
-    const topPadding = mobile ? 28 : 64;
+    const leftPadding = horizontalPadding + rulerInset;
+    const topPadding = (mobile ? 28 : 64) + rulerInset;
     const bottomPadding = mobile ? 84 : 64;
-    const availableWidth = Math.max(1, rect.width - horizontalPadding * 2);
+    const availableWidth = Math.max(1, rect.width - leftPadding - horizontalPadding);
     const availableHeight = Math.max(1, rect.height - topPadding - bottomPadding);
     state.zoom = Math.min(maximumZoom, clampZoom(Math.min(availableWidth / width, availableHeight / height)));
-    state.pan.x = horizontalPadding + (availableWidth - width * state.zoom) / 2 - minX * state.zoom;
+    state.pan.x = leftPadding + (availableWidth - width * state.zoom) / 2 - minX * state.zoom;
     state.pan.y = topPadding + (availableHeight - height * state.zoom) / 2 - minY * state.zoom;
     render();
   }
@@ -3172,6 +3328,7 @@
   function render() {
     viewport.setAttribute("transform", `translate(${state.pan.x} ${state.pan.y}) scale(${state.zoom})`);
     el("zoom-label").textContent = `${Math.round(state.zoom * 100)}%`;
+    drawCanvasRulers();
     if (state.current) {
       el("diagram-title").value = state.readOnly ? `${state.current.title} (read-only)` : state.current.title;
     }
@@ -4079,6 +4236,7 @@
 
   initBindings();
   initSheets();
+  initCanvasRulers();
   initMobileActionBar();
   initTheme();
   initGridSize();

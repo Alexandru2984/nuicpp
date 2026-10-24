@@ -949,6 +949,9 @@ void Routes::registerRoutes(httplib::Server& server) {
     server.Get("/diagram-selection.js", [this](const httplib::Request& req, httplib::Response& res) {
         serveStatic(req, res, cfg_.projectRoot + "/public/diagram-selection.js");
     });
+    server.Get("/canvas-rulers.js", [this](const httplib::Request& req, httplib::Response& res) {
+        serveStatic(req, res, cfg_.projectRoot + "/public/canvas-rulers.js");
+    });
     server.Get("/editor.js", [this](const httplib::Request& req, httplib::Response& res) {
         serveStatic(req, res, cfg_.projectRoot + "/public/editor.js");
     });

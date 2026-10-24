@@ -14,15 +14,27 @@ window.addEventListener("load", () => {
       document.body.appendChild(script);
     };
 
+    const attachRulers = () => {
+      if (globalThis.NuiGraphRulers) {
+        attachEditor();
+        return;
+      }
+      const rulers = document.createElement("script");
+      rulers.src = `/canvas-rulers.js${nuigraphAssetQuery}`;
+      rulers.onload = attachEditor;
+      rulers.onerror = attachEditor;
+      document.body.appendChild(rulers);
+    };
+
     const attachSelection = () => {
       if (globalThis.NuiGraphSelection) {
-        attachEditor();
+        attachRulers();
         return;
       }
       const selection = document.createElement("script");
       selection.src = `/diagram-selection.js${nuigraphAssetQuery}`;
-      selection.onload = attachEditor;
-      selection.onerror = attachEditor;
+      selection.onload = attachRulers;
+      selection.onerror = attachRulers;
       document.body.appendChild(selection);
     };
 

@@ -594,6 +594,12 @@ if ! grep -q 'NuiGraphSelection' <<<"$selection_script"; then
   exit 1
 fi
 
+rulers_script="$(curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/canvas-rulers.js")"
+if ! grep -q 'NuiGraphRulers' <<<"$rulers_script"; then
+  echo "expected the local canvas ruler engine to be served" >&2
+  exit 1
+fi
+
 robots="$(curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/robots.txt")"
 for rule in 'Disallow: /api/' 'Disallow: /d/' 'Disallow: /login' 'Disallow: /metrics' 'Sitemap: http://127.0.0.1:'; do
   if ! grep -q "$rule" <<<"$robots"; then
