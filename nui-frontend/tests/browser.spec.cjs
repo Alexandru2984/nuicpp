@@ -68,9 +68,16 @@ test.describe("desktop security and offline lifecycle", () => {
 
     const csp = response.headers()["content-security-policy"] || "";
     expect(csp).toContain("default-src 'self'");
+    expect(csp).toContain("frame-src 'none'");
+    expect(csp).toContain("media-src 'none'");
+    expect(csp).toContain("worker-src 'self'");
     expect(csp).not.toContain("'unsafe-inline'");
     expect(csp).not.toContain("'unsafe-eval'");
     expect(csp).not.toContain("'wasm-unsafe-eval'");
+    expect(response.headers()["origin-agent-cluster"]).toBe("?1");
+    expect(response.headers()["x-permitted-cross-domain-policies"]).toBe("none");
+    expect(response.headers()["cache-control"]).toContain("no-store");
+    expect(response.headers()["cdn-cache-control"]).toBe("no-store");
 
     await expect(page.locator("#canvas")).toBeVisible();
     await expect(page.locator("#diagram-title")).toHaveValue("Untitled diagram");

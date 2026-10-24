@@ -302,13 +302,20 @@ Set by both nginx and the app (`applySecurityHeaders`), kept in step by hand:
 Content-Security-Policy: default-src 'self';
   script-src 'self' https://static.cloudflareinsights.com;
   style-src 'self';
+  font-src 'self';
   img-src 'self' data: blob:;
+  media-src 'none'; frame-src 'none';
   connect-src 'self' https://cloudflareinsights.com;
+  worker-src 'self'; manifest-src 'self';
   object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'
 X-Frame-Options: DENY
 X-Content-Type-Options: nosniff
+X-Permitted-Cross-Domain-Policies: none
 Referrer-Policy: strict-origin-when-cross-origin
-Permissions-Policy: geolocation=(), microphone=(), camera=(), interest-cohort=()
+Permissions-Policy: accelerometer=(), camera=(), clipboard-read=(),
+  clipboard-write=(self), display-capture=(), fullscreen=(self), geolocation=(),
+  gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()
+Origin-Agent-Cluster: ?1
 Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Resource-Policy: same-origin
 Strict-Transport-Security: max-age=31536000; includeSubDomains   (nginx only)
@@ -334,11 +341,15 @@ Notes:
 
 Two rules that are security-relevant, not just performance:
 
-- JSON responses carry `Cache-Control: no-store`. They are per-session data.
+- JSON/API, login/logout, editor/docs, bearer-share and probe responses carry
+  `private, no-store` plus matching CDN/Cloudflare policies, legacy expiry and
+  `Vary: Cookie`. A central post-route guard applies this even if a future
+  individual handler forgets; these responses are session-, capability- or
+  operational-state-specific.
 - The service worker (`public/sw.js`) never touches `/api/`, `/login`,
   `/logout`, `/health`, `/live`, or `/ready`. The Cache API is origin-wide and
   outlives the session cookie, so caching those would hand one visitor's diagrams
-  to the next person using the same browser profile. Only nine static
+  to the next person using the same browser profile. Only eleven static
   shell/offline assets are cached.
 
 At startup the app hashes every regular, non-symlink file under `public/` and

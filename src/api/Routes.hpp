@@ -48,6 +48,7 @@ private:
     void logSecurityEvent(const httplib::Request& req, const httplib::Response& res,
                           const std::string& event, const std::string& outcome) const;
     void applySecurityHeaders(httplib::Response& res) const;
+    void applyNoStoreHeaders(httplib::Response& res) const;
 
     const Config& cfg_;
     PostgresStorage& storage_;

@@ -162,7 +162,11 @@ Summarised here, detailed in [`docs/SECURITY.md`](docs/SECURITY.md).
 - Defensive id parsing, exhaustive input validation, parameterised SQL only,
   no shell execution, no user-controlled filesystem paths.
 - CSP without `unsafe-inline` for scripts or styles, plus the usual header set,
-  sent by both nginx and the app.
+  explicit frame/media/worker/manifest restrictions, origin-agent isolation and
+  feature permissions, sent consistently by both nginx and the app.
+- User/session shells, bearer shares, login/logout, APIs and probes are guarded
+  centrally with browser, CDN and Cloudflare `no-store` policies plus
+  `Vary: Cookie`; immutable caching remains limited to digest-matched assets.
 
 ## Stack
 

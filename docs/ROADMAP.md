@@ -138,6 +138,9 @@ rollback notes where applicable.
 - Dependency-free, fail-closed working-tree secret scanning in local CTest and
   CI, with provider/generic credential detection, explicit placeholder handling
   and regression tests proving that findings are redacted from logs.
+- Browser/CDN cache denial centralised for session shells, bearer pages, APIs,
+  authentication and probes, plus synchronized application/nginx origin-agent,
+  cross-domain and explicit CSP/Permissions-Policy hardening.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and

@@ -244,7 +244,7 @@ if ! grep -qi '^content-type: text/plain; version=0.0.4; charset=utf-8' "$metric
   echo "metrics endpoint returned the wrong content type" >&2
   exit 1
 fi
-if ! grep -qi '^cache-control: no-store' "$metrics_headers"; then
+if ! grep -Eqi '^cache-control:.*(^|[[:space:],])no-store([[:space:],]|$)' "$metrics_headers"; then
   echo "metrics endpoint must not be cached" >&2
   exit 1
 fi
@@ -264,7 +264,9 @@ for header in \
   "content-security-policy" \
   "x-frame-options" \
   "x-content-type-options" \
+  "x-permitted-cross-domain-policies" \
   "referrer-policy" \
+  "origin-agent-cluster" \
   "cross-origin-opener-policy" \
   "cross-origin-resource-policy" \
   "permissions-policy" \
@@ -285,6 +287,16 @@ fi
 
 if grep -qi "^content-security-policy:.*unsafe-inline" <<<"$headers"; then
   echo "content security policy must not allow unsafe-inline" >&2
+  exit 1
+fi
+for directive in "font-src 'self'" "media-src 'none'" "frame-src 'none'" "worker-src 'self'" "manifest-src 'self'"; do
+  if ! grep -Fqi "$directive" <<<"$headers"; then
+    echo "content security policy is missing $directive" >&2
+    exit 1
+  fi
+done
+if ! grep -Fqi 'permissions-policy: accelerometer=(), camera=(), clipboard-read=(), clipboard-write=(self)' <<<"$headers"; then
+  echo "permissions policy must deny clipboard reads and scope writes to self" >&2
   exit 1
 fi
 
@@ -356,6 +368,23 @@ if ! grep -q 'name="robots" content="noindex, nofollow, noarchive"' <<<"$share_h
   exit 1
 fi
 
+for sensitive_path in / /login /docs "/d/${own_share_slug}" /api/session /live /ready /metrics; do
+  sensitive_headers="$(curl --noproxy '*' -sS -D - -o /dev/null "http://127.0.0.1:${PORT}${sensitive_path}")"
+  for expected in \
+    "cache-control: private, no-store, max-age=0" \
+    "cdn-cache-control: no-store" \
+    "cloudflare-cdn-cache-control: no-store" \
+    "pragma: no-cache" \
+    "expires: 0" \
+    "vary: Cookie"
+  do
+    if ! grep -Fqi "${expected}" <<<"$sensitive_headers"; then
+      echo "expected $expected on sensitive path $sensitive_path" >&2
+      exit 1
+    fi
+  done
+done
+
 api_headers="$(curl --noproxy '*' -sS -D - -o /dev/null "http://127.0.0.1:${PORT}/api/session")"
 if ! grep -qi '^x-robots-tag:.*noindex' <<<"$api_headers"; then
   echo "expected X-Robots-Tag noindex on JSON API responses" >&2
@@ -364,7 +393,7 @@ fi
 
 sw_headers="$(curl --noproxy '*' -sS -D - -o /dev/null "http://127.0.0.1:${PORT}/sw.js")"
 for expected in \
-  "cache-control: no-store" \
+  "cache-control: private, no-store, max-age=0" \
   "cdn-cache-control: no-store" \
   "cloudflare-cdn-cache-control: no-store"
 do

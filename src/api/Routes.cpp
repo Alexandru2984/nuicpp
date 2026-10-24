@@ -372,10 +372,15 @@ Routes::Routes(const Config& cfg, PostgresStorage& storage, Metrics& metrics)
 void Routes::applySecurityHeaders(httplib::Response& res) const {
     res.set_header("X-Content-Type-Options", "nosniff");
     res.set_header("X-Frame-Options", "DENY");
+    res.set_header("X-Permitted-Cross-Domain-Policies", "none");
     res.set_header("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.set_header("Origin-Agent-Cluster", "?1");
     res.set_header("Cross-Origin-Opener-Policy", "same-origin");
     res.set_header("Cross-Origin-Resource-Policy", "same-origin");
-    res.set_header("Permissions-Policy", "geolocation=(), microphone=(), camera=(), interest-cohort=()");
+    res.set_header("Permissions-Policy",
+                   "accelerometer=(), camera=(), clipboard-read=(), clipboard-write=(self), "
+                   "display-capture=(), fullscreen=(self), geolocation=(), gyroscope=(), "
+                   "magnetometer=(), microphone=(), payment=(), usb=()");
     // Cloudflare injects its Web Analytics beacon at the edge, so the script
     // host has to be allowed even though nothing in this repo references it.
     // 'unsafe-inline' is deliberately NOT granted: the beacon's inline loader
@@ -387,10 +392,22 @@ void Routes::applySecurityHeaders(httplib::Response& res) const {
     }
     policy += " https://static.cloudflareinsights.com; "
               "style-src 'self'; "
+              "font-src 'self'; "
               "img-src 'self' data: blob:; "
+              "media-src 'none'; frame-src 'none'; "
               "connect-src 'self' https://cloudflareinsights.com; "
+              "worker-src 'self'; manifest-src 'self'; "
               "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
     res.set_header("Content-Security-Policy", policy);
+}
+
+void Routes::applyNoStoreHeaders(httplib::Response& res) const {
+    res.set_header("Cache-Control", "private, no-store, max-age=0");
+    res.set_header("CDN-Cache-Control", "no-store");
+    res.set_header("Cloudflare-CDN-Cache-Control", "no-store");
+    res.set_header("Pragma", "no-cache");
+    res.set_header("Expires", "0");
+    res.set_header("Vary", "Cookie");
 }
 
 // Shell URLs carry a digest of the complete public asset tree. Only an exact
@@ -413,9 +430,7 @@ void Routes::serveStatic(const httplib::Request& req, httplib::Response& res,
     const auto etag = "\"" + sha256Hex(body).substr(0, 32) + "\"";
     res.set_header("ETag", etag);
     if (noStore) {
-        res.set_header("Cache-Control", "no-store, max-age=0");
-        res.set_header("CDN-Cache-Control", "no-store");
-        res.set_header("Cloudflare-CDN-Cache-Control", "no-store");
+        applyNoStoreHeaders(res);
     } else if (req.has_param("v") && req.get_param_value("v") == assetVersion_) {
         res.set_header("Cache-Control", "public, max-age=31536000, immutable");
         res.set_header("CDN-Cache-Control", "public, max-age=31536000, immutable");
@@ -435,7 +450,7 @@ void Routes::serveStatic(const httplib::Request& req, httplib::Response& res,
 
 void Routes::sendJson(httplib::Response& res, int status, const nlohmann::json& body) const {
     res.status = status;
-    res.set_header("Cache-Control", "no-store");
+    applyNoStoreHeaders(res);
     res.set_header("X-Robots-Tag", "noindex, nofollow, nosnippet");
     res.set_content(jsonResponse(body), "application/json");
 }
@@ -751,8 +766,17 @@ bool Routes::ensureAuthenticated(const httplib::Request& req, httplib::Response&
 }
 
 void Routes::registerRoutes(httplib::Server& server) {
-    server.set_post_routing_handler([this](const httplib::Request&, httplib::Response& res) {
+    server.set_post_routing_handler([this](const httplib::Request& req, httplib::Response& res) {
         applySecurityHeaders(res);
+        const auto& path = req.path;
+        if (path == "/" || path == "/docs" || path == "/login" || path == "/logout" ||
+            path == "/health" || path == "/live" || path == "/ready" || path == "/metrics" ||
+            path.starts_with("/api/") || path.starts_with("/d/")) {
+            // These responses are authenticated, user-specific, bearer-token
+            // addressed or operational. No browser, CDN or shared proxy may
+            // retain them, even when a future handler forgets its own policy.
+            applyNoStoreHeaders(res);
+        }
     });
 
     server.Get("/health", [this](const httplib::Request&, httplib::Response& res) {
@@ -779,7 +803,7 @@ void Routes::registerRoutes(httplib::Server& server) {
     });
 
     server.Get("/metrics", [this](const httplib::Request& req, httplib::Response& res) {
-        res.set_header("Cache-Control", "no-store");
+        applyNoStoreHeaders(res);
         res.set_header("X-Robots-Tag", "noindex, nofollow, nosnippet");
         if (!isLocalMetricsRequest(req)) {
             // Behave as if the endpoint does not exist across the proxy trust

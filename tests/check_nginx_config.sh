@@ -51,6 +51,14 @@ require_text "$VHOST" 'listen [::]:443 ssl;'
 require_text "$VHOST" 'listen 443 ssl;'
 require_text "$VHOST" 'listen [::]:80;'
 require_text "$VHOST" 'listen 80;'
+require_text "$VHOST" 'proxy_hide_header Origin-Agent-Cluster;'
+require_text "$VHOST" 'proxy_hide_header X-Permitted-Cross-Domain-Policies;'
+require_text "$VHOST" 'add_header Origin-Agent-Cluster "?1" always;'
+require_text "$VHOST" 'add_header X-Permitted-Cross-Domain-Policies "none" always;'
+require_text "$VHOST" 'clipboard-read=(), clipboard-write=(self)'
+require_text "$VHOST" "font-src 'self';"
+require_text "$VHOST" "media-src 'none'; frame-src 'none';"
+require_text "$VHOST" "worker-src 'self'; manifest-src 'self';"
 require_text "$RATE_LIMITS" "map \$uri \$nuicpp_log_uri {"
 require_text "$RATE_LIMITS" 'log_format nuicpp_redacted'
 
