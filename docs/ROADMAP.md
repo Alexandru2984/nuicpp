@@ -117,6 +117,9 @@ rollback notes where applicable.
 - Atomic selection duplication with internal-edge preservation, bounded
   coordinates/titles and collision-safe node/edge keys tested at the server's
   64-character boundary.
+- Removed the remaining public `innerHTML` sinks from diagram, template and
+  version rendering, with a fail-closed CI sink scan and API-originated DOM-XSS
+  regression coverage.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and

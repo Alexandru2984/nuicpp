@@ -181,11 +181,13 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(page.locator("#share-diagram")).toHaveAttribute("title", "Enable sharing");
 
       const unsafeNodeTitle = 'Service <img src=x onerror="globalThis.__nodeNavigatorXss=1">';
+      const unsafeDiagramTitle = 'Diagram <img src=x onerror="globalThis.__diagramListXss=1">';
       const maxLengthNodeKey = "n".repeat(64);
       const maxLengthEdgeKey = "e".repeat(64);
-      await page.evaluate(async ({ id, title, longNodeKey, longEdgeKey }) => {
+      await page.evaluate(async ({ id, title, diagramTitle, longNodeKey, longEdgeKey }) => {
         const session = await (await fetch("/api/session", { credentials: "same-origin" })).json();
         const diagram = await (await fetch(`/api/diagrams/${id}`, { credentials: "same-origin" })).json();
+        diagram.title = diagramTitle;
         diagram.nodes.find((node) => node.key === "node_service").title = title;
         const decision = diagram.nodes.find((node) => node.key === "node_decision");
         for (const edge of diagram.edges) {
@@ -208,6 +210,7 @@ test.describe("desktop security and offline lifecycle", () => {
       }, {
         id: sharingTestId,
         title: unsafeNodeTitle,
+        diagramTitle: unsafeDiagramTitle,
         longNodeKey: maxLengthNodeKey,
         longEdgeKey: maxLengthEdgeKey
       });
@@ -215,6 +218,10 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(page.locator("#share-diagram")).toBeEnabled();
       await expect(page.locator("#grid-size")).toHaveValue("64");
       await expect(page.locator("#grid")).toHaveAttribute("width", "64");
+      const currentDiagramListItem = page.locator("#diagram-list .diagram-item.active");
+      await expect(currentDiagramListItem.locator(".diagram-name")).toHaveText(unsafeDiagramTitle);
+      await expect(currentDiagramListItem.locator("img")).toHaveCount(0);
+      expect(await page.evaluate(() => globalThis.__diagramListXss)).toBeUndefined();
 
       await page.locator("#share-diagram").focus();
       const diagramNodeCount = await page.locator("#nodes > g").count();

@@ -55,6 +55,9 @@ admin account for maintenance.
   close on Escape and restore focus to the control that opened them.
 - Automated axe-core scans gate serious and critical accessibility regressions
   across desktop, command-dialog, phone and mobile-sheet browser states.
+- Public JavaScript is gated against `innerHTML`, adjacent-markup insertion,
+  dynamic code execution and document writes; API/DB text is rendered through
+  DOM text nodes and covered with malicious-title browser tests.
 - Inline node and edge-label editing by double-click, `F2`, `Enter`, command
   palette or a pinned mobile action, with one-step undo and browser-draft
   persistence.

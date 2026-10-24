@@ -67,6 +67,10 @@ grep -Fq '@media (prefers-reduced-motion: reduce)' public/styles.css
 grep -Fq '#canvas:focus-visible' public/styles.css
 node tests/test_diagram_review.cjs
 node tests/test_diagram_arrange.cjs
+if rg -n 'innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval[[:space:]]*\(|new Function' public --glob '*.js'; then
+  echo "public JavaScript must not use HTML/code execution sinks" >&2
+  exit 1
+fi
 if grep -Eqi '<[^>]+[[:space:]]on[a-z]+[[:space:]]*=' public/offline.html; then
   echo "offline page must not contain inline event handlers" >&2
   exit 1

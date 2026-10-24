@@ -3106,21 +3106,31 @@
     for (const d of items) {
       const item = document.createElement("div");
       item.className = `diagram-item ${state.current?.id === d.id ? "active" : ""}`;
-      item.innerHTML = `
-        <div class="diagram-row">
-          <div class="diagram-name"></div>
-          <div class="small-actions">
-            <button data-act="open">Open</button>
-            <button data-act="dup">Copy</button>
-            <button data-act="del" class="danger">Del</button>
-          </div>
-        </div>
-        <div class="meta">${d.node_count || 0} nodes, ${d.edge_count || 0} edges</div>
-        <div class="meta">Updated ${d.updated_at || ""}</div>`;
-      item.querySelector(".diagram-name").textContent = d.title;
-      item.querySelector('[data-act="open"]').onclick = () => openDiagram(d.id);
-      item.querySelector('[data-act="dup"]').onclick = () => duplicateDiagram(d.id);
-      item.querySelector('[data-act="del"]').onclick = () => deleteDiagram(d);
+      const row = document.createElement("div");
+      row.className = "diagram-row";
+      const name = document.createElement("div");
+      name.className = "diagram-name";
+      name.textContent = d.title;
+      const actions = document.createElement("div");
+      actions.className = "small-actions";
+      const open = mobileBarButton("Open");
+      open.dataset.act = "open";
+      open.onclick = () => openDiagram(d.id);
+      const duplicate = mobileBarButton("Copy");
+      duplicate.dataset.act = "dup";
+      duplicate.onclick = () => duplicateDiagram(d.id);
+      const remove = mobileBarButton("Del", "danger");
+      remove.dataset.act = "del";
+      remove.onclick = () => deleteDiagram(d);
+      actions.append(open, duplicate, remove);
+      row.append(name, actions);
+      const counts = document.createElement("div");
+      counts.className = "meta";
+      counts.textContent = `${d.node_count || 0} nodes, ${d.edge_count || 0} edges`;
+      const updated = document.createElement("div");
+      updated.className = "meta";
+      updated.textContent = `Updated ${d.updated_at || ""}`;
+      item.append(row, counts, updated);
       list.appendChild(item);
     }
 
@@ -3160,17 +3170,25 @@
     for (const template of state.templates) {
       const item = document.createElement("div");
       item.className = "diagram-item";
-      item.innerHTML = `
-        <div class="diagram-row">
-          <div class="diagram-name"></div>
-          <div class="small-actions"><button data-act="use">Use</button></div>
-        </div>
-        <div class="meta"></div>
-        <div class="meta"></div>`;
-      item.querySelector(".diagram-name").textContent = template.title;
-      item.querySelectorAll(".meta")[0].textContent = `${template.category || "Template"} - ${template.node_count || 0} nodes, ${template.edge_count || 0} edges`;
-      item.querySelectorAll(".meta")[1].textContent = template.description || "";
-      item.querySelector('[data-act="use"]').onclick = () => createFromTemplate(template.key);
+      const row = document.createElement("div");
+      row.className = "diagram-row";
+      const name = document.createElement("div");
+      name.className = "diagram-name";
+      name.textContent = template.title;
+      const actions = document.createElement("div");
+      actions.className = "small-actions";
+      const use = mobileBarButton("Use");
+      use.dataset.act = "use";
+      use.onclick = () => createFromTemplate(template.key);
+      actions.appendChild(use);
+      row.append(name, actions);
+      const summary = document.createElement("div");
+      summary.className = "meta";
+      summary.textContent = `${template.category || "Template"} - ${template.node_count || 0} nodes, ${template.edge_count || 0} edges`;
+      const description = document.createElement("div");
+      description.className = "meta";
+      description.textContent = template.description || "";
+      item.append(row, summary, description);
       list.appendChild(item);
     }
   }
@@ -3318,14 +3336,27 @@
     for (const v of data.versions || []) {
       const item = document.createElement("div");
       item.className = "version-item";
-      item.innerHTML = `<strong>v${v.version_number}</strong><span class="meta">${v.created_at}</span><span class="meta"></span>` +
-        `<div class="small-actions"><button data-act="diff">Diff</button><button data-act="restore">Restore</button></div>`;
-      item.querySelectorAll(".meta")[1].textContent = v.note || "";
-      item.querySelector('[data-act="diff"]').onclick = async () => {
+      const version = document.createElement("strong");
+      version.textContent = `v${v.version_number}`;
+      const created = document.createElement("span");
+      created.className = "meta";
+      created.textContent = v.created_at;
+      const note = document.createElement("span");
+      note.className = "meta";
+      note.textContent = v.note || "";
+      const actions = document.createElement("div");
+      actions.className = "small-actions";
+      const diff = mobileBarButton("Diff");
+      diff.dataset.act = "diff";
+      const restore = mobileBarButton("Restore");
+      restore.dataset.act = "restore";
+      actions.append(diff, restore);
+      item.append(version, created, note, actions);
+      diff.onclick = async () => {
         const snapshot = await api(`/api/diagrams/${state.current.id}/versions/${v.id}`);
         showDiff(v, diffDiagrams(snapshot, state.current));
       };
-      item.querySelector('[data-act="restore"]').onclick = async () => {
+      restore.onclick = async () => {
         if (!confirm(`Restore version ${v.version_number}?`)) return;
         if (state.readOnly) return;
         const diagramId = state.current.id;
