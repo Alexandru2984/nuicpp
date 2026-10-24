@@ -346,8 +346,9 @@
       { id: "fork", label: "Fork shared diagram", shortLabel: "Fork", category: "Diagram", keywords: "copy public link own", mobile: true, enabled: () => Boolean(state.current) && state.readOnly && Boolean(sharedSlugFromPath()), run: forkSharedDiagram },
       { id: "undo", label: "Undo", shortLabel: "Undo", category: "Edit", shortcut: "Ctrl / Cmd + Z", mobile: true, enabled: () => state.history.length > 0 && !state.readOnly, run: undo },
       { id: "redo", label: "Redo", shortLabel: "Redo", category: "Edit", shortcut: "Ctrl / Cmd + Y", mobile: true, enabled: () => state.future.length > 0 && !state.readOnly, run: redo },
-      { id: "copy", label: "Copy selection", shortLabel: "Copy", category: "Edit", shortcut: "Ctrl / Cmd + C", enabled: () => Boolean(state.selected), run: copySelected },
+      { id: "copy", label: "Copy selection", shortLabel: "Copy", category: "Edit", shortcut: "Ctrl / Cmd + C", enabled: () => selectedNodeKeys().length > 0, run: copySelected },
       { id: "paste", label: "Paste selection", shortLabel: "Paste", category: "Edit", shortcut: "Ctrl / Cmd + V", enabled: () => Boolean(state.clipboard?.nodes?.length) && !state.readOnly, run: pasteSelected },
+      { id: "duplicate-selection", label: "Duplicate selected nodes", shortLabel: "Duplicate", category: "Edit", keywords: "clone copy nodes edges", shortcut: "Ctrl / Cmd + D", mobile: true, enabled: () => selectedNodeKeys().length > 0 && !state.readOnly, run: duplicateSelected },
       { id: "select-all", label: "Select all nodes", shortLabel: "All", category: "Edit", keywords: "multi selection everything batch", shortcut: "Ctrl / Cmd + A", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: selectAllNodes },
       // The persisted mobile-action id stays stable as edge support expands the command.
       { id: "edit-node-label", label: "Edit selected label", shortLabel: "Rename", category: "Edit", keywords: "inline rename node edge title", shortcut: "F2 / Enter", mobile: true, enabled: () => Boolean(editableSelectedLabelTarget()) && !state.readOnly, run: openInlineLabelEditor },
@@ -1315,6 +1316,7 @@
     ["Ctrl / Cmd + Y", "Redo"],
     ["Ctrl / Cmd + C", "Copy selection"],
     ["Ctrl / Cmd + V", "Paste"],
+    ["Ctrl / Cmd + D", "Duplicate selected nodes"],
     ["Ctrl / Cmd + A", "Select all nodes"],
     ["Delete / Backspace", "Delete selection"],
     ["Escape", "Clear selection, close panels"],
@@ -3390,36 +3392,80 @@
     refreshMobileActionBar();
   }
 
-  function copySelected() {
-    if (!state.current || !state.selected) return;
+  function clipboardFromSelection() {
+    if (!state.current || !state.selected) return null;
     const keys = selectedNodeKeys();
-    if (keys.length) {
-      const keySet = new Set(keys);
-      state.clipboard = {
-        nodes: state.current.nodes.filter((n) => keySet.has(n.key)).map((n) => ({ ...n, metadata: { ...(n.metadata || {}) } })),
-        edges: state.current.edges.filter((e) => keySet.has(e.source) && keySet.has(e.target)).map((e) => ({ ...e, metadata: { ...(e.metadata || {}) } }))
-      };
+    if (!keys.length) return null;
+    const keySet = new Set(keys);
+    return {
+      nodes: state.current.nodes.filter((node) => keySet.has(node.key))
+        .map((node) => ({ ...node, metadata: { ...(node.metadata || {}) } })),
+      edges: state.current.edges.filter((edge) => keySet.has(edge.source) && keySet.has(edge.target))
+        .map((edge) => ({ ...edge, metadata: { ...(edge.metadata || {}) } }))
+    };
+  }
+
+  function copySelected() {
+    const clipboard = clipboardFromSelection();
+    if (clipboard) state.clipboard = clipboard;
+  }
+
+  function nextAvailableKey(base, used, nonce) {
+    const safeBase = String(base || "object").replace(/[^A-Za-z0-9_-]/g, "_") || "object";
+    for (let attempt = 0; ; attempt += 1) {
+      const suffix = `_${nonce}_${attempt.toString(36)}`;
+      const key = `${safeBase.slice(0, 64 - suffix.length)}${suffix}`;
+      if (used.has(key)) continue;
+      used.add(key);
+      return key;
     }
   }
 
-  function pasteSelected() {
-    if (!state.current || state.readOnly || !state.clipboard?.nodes?.length) return;
+  function pasteClipboard(clipboard) {
+    if (!state.current || state.readOnly || !clipboard?.nodes?.length) return false;
     pushHistory();
-    const suffix = Date.now();
+    const nonce = Date.now().toString(36);
+    const nodeKeys = new Set(state.current.nodes.map((node) => node.key));
+    const edgeKeys = new Set(state.current.edges.map((edge) => edge.key));
     const keyMap = new Map();
     const pastedKeys = [];
-    for (const node of state.clipboard.nodes) {
-      const key = `${node.key}_${suffix}`.slice(0, 64);
+    for (const node of clipboard.nodes) {
+      const key = nextAvailableKey(node.key, nodeKeys, nonce);
       keyMap.set(node.key, key);
       pastedKeys.push(key);
-      state.current.nodes.push({ ...node, key, title: `${node.title} Copy`, x: node.x + 48, y: node.y + 48, metadata: { ...(node.metadata || {}) } });
+      state.current.nodes.push({
+        ...node,
+        key,
+        title: `${String(node.title || "Untitled node").slice(0, 155)} Copy`,
+        x: clamp(node.x + 48, -100000, 100000),
+        y: clamp(node.y + 48, -100000, 100000),
+        metadata: { ...(node.metadata || {}) }
+      });
     }
-    for (const edge of state.clipboard.edges || []) {
+    for (const edge of clipboard.edges || []) {
       if (!keyMap.has(edge.source) || !keyMap.has(edge.target)) continue;
-      state.current.edges.push({ ...edge, key: `${edge.key}_${suffix}`.slice(0, 64), source: keyMap.get(edge.source), target: keyMap.get(edge.target), metadata: { ...(edge.metadata || {}) } });
+      state.current.edges.push({
+        ...edge,
+        key: nextAvailableKey(edge.key, edgeKeys, nonce),
+        source: keyMap.get(edge.source),
+        target: keyMap.get(edge.target),
+        metadata: { ...(edge.metadata || {}) }
+      });
     }
-    state.selected = pastedKeys.length === 1 ? { type: "node", key: pastedKeys[0] } : { type: "nodes", keys: pastedKeys };
+    selectNodeKeys(pastedKeys);
     render();
+    return true;
+  }
+
+  function pasteSelected() {
+    pasteClipboard(state.clipboard);
+  }
+
+  function duplicateSelected() {
+    const clipboard = clipboardFromSelection();
+    if (pasteClipboard(clipboard)) {
+      toast(`${clipboard.nodes.length} node${clipboard.nodes.length === 1 ? "" : "s"} duplicated.`);
+    }
   }
 
   function autoLayout() {
@@ -3767,6 +3813,12 @@
           !document.querySelector('[role="dialog"]')) {
         evt.preventDefault();
         selectAllNodes();
+        return;
+      }
+      if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "d" && !evt.altKey &&
+          !document.querySelector('[role="dialog"]')) {
+        evt.preventDefault();
+        duplicateSelected();
         return;
       }
       if (evt.shiftKey && evt.code === "Digit2" && !evt.ctrlKey && !evt.metaKey && !evt.altKey &&

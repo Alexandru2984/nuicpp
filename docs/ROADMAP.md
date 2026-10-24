@@ -114,6 +114,9 @@ rollback notes where applicable.
   violation.
 - Select-all-nodes through `Ctrl/Cmd+A`, command palette or a pinned phone
   action, feeding the existing batch inspector, arrangement and framing flows.
+- Atomic selection duplication with internal-edge preservation, bounded
+  coordinates/titles and collision-safe node/edge keys tested at the server's
+  64-character boundary.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and

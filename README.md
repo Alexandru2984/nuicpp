@@ -36,6 +36,9 @@ admin account for maintenance.
   `Shift+Arrow` moves five steps and held-key repeats collapse into one undo.
 - `Ctrl/Cmd+A` selects every node for immediate framing, alignment, batch
   inspection or movement, and is also available from commands/mobile actions.
+- `Ctrl/Cmd+D` duplicates selected nodes plus their internal edges as one
+  undoable edit; collision-safe keys remain valid even when originals use the
+  full 64-character server limit.
 - Eight resize handles on a single selected node, honouring the same 72x48 to
   600x400 bounds the server clamps to.
 - Alignment guides while dragging: edges and centres latch onto neighbouring

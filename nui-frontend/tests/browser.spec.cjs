@@ -181,10 +181,19 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(page.locator("#share-diagram")).toHaveAttribute("title", "Enable sharing");
 
       const unsafeNodeTitle = 'Service <img src=x onerror="globalThis.__nodeNavigatorXss=1">';
-      await page.evaluate(async ({ id, title }) => {
+      const maxLengthNodeKey = "n".repeat(64);
+      const maxLengthEdgeKey = "e".repeat(64);
+      await page.evaluate(async ({ id, title, longNodeKey, longEdgeKey }) => {
         const session = await (await fetch("/api/session", { credentials: "same-origin" })).json();
         const diagram = await (await fetch(`/api/diagrams/${id}`, { credentials: "same-origin" })).json();
         diagram.nodes.find((node) => node.key === "node_service").title = title;
+        const decision = diagram.nodes.find((node) => node.key === "node_decision");
+        for (const edge of diagram.edges) {
+          if (edge.source === decision.key) edge.source = longNodeKey;
+          if (edge.target === decision.key) edge.target = longNodeKey;
+        }
+        decision.key = longNodeKey;
+        diagram.edges[0].key = longEdgeKey;
         const response = await fetch(`/api/diagrams/${id}`, {
           method: "PUT",
           credentials: "same-origin",
@@ -196,7 +205,12 @@ test.describe("desktop security and offline lifecycle", () => {
           body: JSON.stringify(diagram)
         });
         if (!response.ok) throw new Error(`Could not prepare navigator fixture: ${response.status}`);
-      }, { id: sharingTestId, title: unsafeNodeTitle });
+      }, {
+        id: sharingTestId,
+        title: unsafeNodeTitle,
+        longNodeKey: maxLengthNodeKey,
+        longEdgeKey: maxLengthEdgeKey
+      });
       await page.reload({ waitUntil: "networkidle" });
       await expect(page.locator("#share-diagram")).toBeEnabled();
       await expect(page.locator("#grid-size")).toHaveValue("64");
@@ -209,6 +223,33 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(page.locator("#nodes > g.selected")).toHaveCount(diagramNodeCount);
       await expect(editorLiveStatus).toHaveText(`${diagramNodeCount} nodes selected.`);
       await expect(page.locator("#canvas")).toBeFocused();
+      const diagramEdgeCount = await page.locator("#edges > g").count();
+      await page.keyboard.press("Control+d");
+      await expect(page.locator("#nodes > g")).toHaveCount(diagramNodeCount * 2);
+      await expect(page.locator("#edges > g")).toHaveCount(diagramEdgeCount * 2);
+      await expect(page.locator("#nodes > g.selected")).toHaveCount(diagramNodeCount);
+      const duplicateIntegrity = await page.evaluate(({ longNodeKey, longEdgeKey }) => {
+        const nodeKeys = [...document.querySelectorAll("#nodes > g")].map((node) => node.dataset.key);
+        const edgeKeys = [...document.querySelectorAll("#edges > g")].map((edge) => edge.dataset.key);
+        return {
+          nodeKeys,
+          edgeKeys,
+          longNodeFamily: nodeKeys.filter((key) => key.startsWith(longNodeKey.slice(0, 24))).length,
+          longEdgeFamily: edgeKeys.filter((key) => key.startsWith(longEdgeKey.slice(0, 24))).length,
+          decisionCopies: [...document.querySelectorAll("#nodes .node-title")]
+            .filter((title) => title.textContent === "Decision Copy").length
+        };
+      }, { longNodeKey: maxLengthNodeKey, longEdgeKey: maxLengthEdgeKey });
+      expect(new Set(duplicateIntegrity.nodeKeys).size).toBe(duplicateIntegrity.nodeKeys.length);
+      expect(new Set(duplicateIntegrity.edgeKeys).size).toBe(duplicateIntegrity.edgeKeys.length);
+      expect(duplicateIntegrity.nodeKeys.every((key) => /^[A-Za-z0-9_-]{1,64}$/.test(key))).toBe(true);
+      expect(duplicateIntegrity.edgeKeys.every((key) => /^[A-Za-z0-9_-]{1,64}$/.test(key))).toBe(true);
+      expect(duplicateIntegrity.longNodeFamily).toBe(2);
+      expect(duplicateIntegrity.longEdgeFamily).toBe(2);
+      expect(duplicateIntegrity.decisionCopies).toBe(1);
+      await page.keyboard.press("Control+z");
+      await expect(page.locator("#nodes > g")).toHaveCount(diagramNodeCount);
+      await expect(page.locator("#edges > g")).toHaveCount(diagramEdgeCount);
 
       const firstEdgeKey = await page.locator("#edges > g").first().getAttribute("data-key");
       expect(firstEdgeKey).toBeTruthy();
@@ -588,6 +629,7 @@ test.describe("phone layout", () => {
     await expect(customizer.getByLabel("Cycle grid size", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Align selected nodes left", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Select all nodes", { exact: true })).toBeVisible();
+    await expect(customizer.getByLabel("Duplicate selected nodes", { exact: true })).toBeVisible();
     await customizer.getByLabel("Add node", { exact: true }).uncheck();
     await customizer.getByLabel("Zoom to fit", { exact: true }).check();
     await customizer.getByRole("button", { name: "Apply", exact: true }).click();
