@@ -13,6 +13,7 @@ Nui::ElementRenderer MainPage::render() {
     using Nui::Elements::button;
     using Nui::Elements::div;
     using Nui::Elements::form;
+    using Nui::Elements::h1;
     using Nui::Elements::h2;
     using Nui::Elements::header;
     using Nui::Elements::input;
@@ -32,7 +33,7 @@ Nui::ElementRenderer MainPage::render() {
         div{id = "app"}(
             header{class_ = "topbar"}(
                 div{class_ = "app-title"}(
-                    strong{}("NuiGraph Studio"),
+                    h1{}("NuiGraph Studio"),
                     input{id = "diagram-title", maxLength = "120", value = "Untitled diagram", AttributeFactory("aria-label") = "Diagram name"}()
                 ),
                 div{class_ = "top-actions"}(

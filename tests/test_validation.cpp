@@ -762,12 +762,24 @@ void testSeoMetadata() {
             "public editor should carry Open Graph metadata");
     require(editor.find("name=\"twitter:card\"") != std::string::npos,
             "public editor should carry Twitter metadata");
+    require(editor.find("itemtype=\"https://schema.org/SoftwareApplication\"") != std::string::npos,
+            "public editor should expose SoftwareApplication microdata");
+    require(editor.find("itemprop=\"applicationCategory\" content=\"DesignApplication\"") != std::string::npos,
+            "public editor should classify the application");
+    require(editor.find("property=\"og:locale\" content=\"en_US\"") != std::string::npos,
+            "public editor should identify its Open Graph locale");
+    require(editor.find("<h1>NuiGraph Studio</h1>") != std::string::npos,
+            "public editor should have one semantic primary heading");
 
     const auto privateShare = renderEditorPage("guest", "https://example.test", false);
     require(privateShare.find("noindex, nofollow, noarchive") != std::string::npos,
             "bearer share page should opt out of indexing");
     require(privateShare.find("rel=\"canonical\"") == std::string::npos,
             "bearer share page should not advertise a canonical URL");
+    require(privateShare.find("schema.org/SoftwareApplication") == std::string::npos,
+            "bearer share page should not advertise public application microdata");
+    require(privateShare.find("itemprop=") == std::string::npos,
+            "bearer share page should omit structured application properties");
 
     const auto docs = renderDocsPage("https://example.test/");
     require(docs.find("rel=\"canonical\" href=\"https://example.test/docs\"") != std::string::npos,

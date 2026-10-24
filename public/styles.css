@@ -232,7 +232,9 @@ h2 { font-size: 14px; color: var(--text-strong); }
   min-width: 0;
 }
 
-.app-title strong {
+.app-title h1 {
+  margin: 0;
+  font-size: inherit;
   white-space: nowrap;
   color: var(--text-strong);
 }
@@ -820,7 +822,7 @@ body.dirty .draft-status { color: var(--warn); }
   }
 
   .app-title { gap: 8px; width: 100%; }
-  .app-title strong { font-size: 15px; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .app-title h1 { font-size: 15px; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   #diagram-title { width: auto; min-height: var(--tap); }
 
   /* The command palette and customisable bottom bar replace two horizontally
@@ -959,7 +961,7 @@ body.dirty .draft-status { color: var(--warn); }
 }
 
 @media (max-width: 380px) {
-  .app-title strong { display: none; }
+  .app-title h1 { display: none; }
 }
 
 /* Respect a reduced-motion preference: keep the state changes, drop the

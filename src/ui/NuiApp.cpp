@@ -22,7 +22,7 @@ std::string assetUrl(const std::string& path, const std::string& assetVersion) {
 }
 
 std::string publicMetadata(const std::string& title, const std::string& canonicalUrl,
-                           bool indexable) {
+                           bool indexable, bool softwareApplication = false) {
     std::string metadata =
         "  <meta name=\"description\" content=\"" + std::string(kDescription) + "\">\n" +
         "  <meta name=\"robots\" content=\"" +
@@ -37,12 +37,24 @@ std::string publicMetadata(const std::string& title, const std::string& canonica
         "  <link rel=\"canonical\" href=\"" + escapedUrl + "\">\n"
         "  <meta property=\"og:type\" content=\"website\">\n"
         "  <meta property=\"og:site_name\" content=\"NuiGraph Studio\">\n"
+        "  <meta property=\"og:locale\" content=\"en_US\">\n"
         "  <meta property=\"og:title\" content=\"" + escapedTitle + "\">\n"
         "  <meta property=\"og:description\" content=\"" + std::string(kDescription) + "\">\n"
         "  <meta property=\"og:url\" content=\"" + escapedUrl + "\">\n"
         "  <meta name=\"twitter:card\" content=\"summary\">\n"
         "  <meta name=\"twitter:title\" content=\"" + escapedTitle + "\">\n"
-        "  <meta name=\"twitter:description\" content=\"" + std::string(kDescription) + "\">\n";
+        "  <meta name=\"twitter:description\" content=\"" + std::string(kDescription) + "\">\n"
+        "  <link rel=\"alternate\" hreflang=\"en\" href=\"" + escapedUrl + "\">\n"
+        "  <link rel=\"alternate\" hreflang=\"x-default\" href=\"" + escapedUrl + "\">\n";
+    if (softwareApplication) {
+        metadata +=
+            "  <meta itemprop=\"name\" content=\"NuiGraph Studio\">\n"
+            "  <meta itemprop=\"description\" content=\"" + std::string(kDescription) + "\">\n"
+            "  <meta itemprop=\"applicationCategory\" content=\"DesignApplication\">\n"
+            "  <meta itemprop=\"operatingSystem\" content=\"Any modern browser\">\n"
+            "  <meta itemprop=\"isAccessibleForFree\" content=\"true\">\n"
+            "  <link itemprop=\"url\" href=\"" + escapedUrl + "\">\n";
+    }
     return metadata;
 }
 
@@ -79,13 +91,13 @@ std::string renderLoginPage(const std::string& error, const std::string& assetVe
 std::string renderEditorPage(const std::string& username, const std::string& baseUrl,
                              bool indexable, const std::string& assetVersion) {
     const auto canonicalUrl = normalizedBaseUrl(baseUrl) + "/";
-    return std::string(R"HTML(<!doctype html>
-<html lang="en">
+    return std::string("<!doctype html>\n<html lang=\"en\"") +
+        (indexable ? " itemscope itemtype=\"https://schema.org/SoftwareApplication\"" : "") + R"HTML(>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NuiGraph Studio</title>
-)HTML") + publicMetadata("NuiGraph Studio — Browser Diagram Editor", canonicalUrl, indexable) + R"HTML(  <meta name="theme-color" content="#0b0f14">
+  <title>NuiGraph Studio — Browser Diagram Editor</title>
+)HTML" + publicMetadata("NuiGraph Studio — Browser Diagram Editor", canonicalUrl, indexable, indexable) + R"HTML(  <meta name="theme-color" content="#0b0f14">
   <link rel="stylesheet" href=")HTML" + assetUrl("/styles.css", assetVersion) + R"HTML(">
   <link rel="manifest" href=")HTML" + assetUrl("/manifest.webmanifest", assetVersion) + R"HTML(">
   <link rel="icon" href=")HTML" + assetUrl("/icons/icon.svg", assetVersion) + R"HTML(" type="image/svg+xml">
@@ -95,7 +107,7 @@ std::string renderEditorPage(const std::string& username, const std::string& bas
   <div id="app" data-user=")HTML" + htmlEscape(username) + R"HTML(">
     <header class="topbar">
       <div class="app-title">
-        <strong>NuiGraph Studio</strong>
+        <h1>NuiGraph Studio</h1>
         <input id="diagram-title" maxlength="120" value="Untitled diagram" aria-label="Diagram name">
       </div>
       <div class="top-actions">
@@ -217,7 +229,7 @@ std::string renderDocsPage(const std::string& baseUrl, const std::string& assetV
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NuiGraph Studio Docs</title>
+  <title>Documentation | NuiGraph Studio</title>
 )HTML") + publicMetadata("NuiGraph Studio Documentation", canonicalUrl, true) + R"HTML(  <link rel="stylesheet" href=")HTML" + assetUrl("/styles.css", assetVersion) + R"HTML(">
 </head>
 <body class="docs-body">

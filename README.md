@@ -58,6 +58,9 @@ admin account for maintenance.
 - Public JavaScript is gated against `innerHTML`, adjacent-markup insertion,
   dynamic code execution and document writes; API/DB text is rendered through
   DOM text nodes and covered with malicious-title browser tests.
+- Public editor SEO includes canonical and language alternates, Open Graph and
+  Twitter metadata, SoftwareApplication microdata, a semantic `h1`, sitemap,
+  robots policy and an installable categorised PWA manifest.
 - Inline node and edge-label editing by double-click, `F2`, `Enter`, command
   palette or a pinned mobile action, with one-step undo and browser-draft
   persistence.

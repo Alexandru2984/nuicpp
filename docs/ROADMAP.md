@@ -120,6 +120,9 @@ rollback notes where applicable.
 - Removed the remaining public `innerHTML` sinks from diagram, template and
   version rendering, with a fail-closed CI sink scan and API-originated DOM-XSS
   regression coverage.
+- SoftwareApplication microdata, semantic primary heading, locale/language
+  alternates and a richer PWA manifest across the server and Nui shells, while
+  bearer shares remain explicitly absent from public metadata and indexing.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and

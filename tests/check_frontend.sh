@@ -44,6 +44,10 @@ grep -Fq 'id="grid-size"' src/ui/NuiApp.cpp
 grep -Fq 'id = "grid-size"' nui-frontend/frontend/source/frontend/main_page.cpp
 grep -Fq 'id="multi-node-props"' src/ui/NuiApp.cpp
 grep -Fq 'id = "multi-node-props"' nui-frontend/frontend/source/frontend/main_page.cpp
+grep -Fq '<h1>NuiGraph Studio</h1>' src/ui/NuiApp.cpp
+grep -Fq 'h1{}("NuiGraph Studio")' nui-frontend/frontend/source/frontend/main_page.cpp
+grep -Fq 'schema.org/SoftwareApplication' public/nui/index.html
+grep -Fq 'schema.org/SoftwareApplication' nui-frontend/static/index.html
 grep -Fq 'Share link lifetime' public/editor.js
 grep -Fq 'NODE_NAVIGATOR_RESULT_LIMIT = 100' public/editor.js
 grep -Fq 'evt.key === "/"' public/editor.js

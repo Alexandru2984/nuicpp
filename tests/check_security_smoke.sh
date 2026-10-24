@@ -289,7 +289,7 @@ if grep -qi "^content-security-policy:.*unsafe-inline" <<<"$headers"; then
 fi
 
 root_html="$(curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/")"
-for marker in 'name="description"' 'rel="canonical"' 'property="og:title"' 'name="twitter:card"'; do
+for marker in 'name="description"' 'rel="canonical"' 'property="og:title"' 'property="og:locale"' 'name="twitter:card"' 'schema.org/SoftwareApplication' 'itemprop="applicationCategory"' '<h1>NuiGraph Studio</h1>'; do
   if ! grep -q "$marker" <<<"$root_html"; then
     echo "expected SEO marker $marker on the public editor" >&2
     exit 1
