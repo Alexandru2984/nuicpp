@@ -128,6 +128,8 @@ rollback notes where applicable.
   mutation-free and deep-graph unit coverage plus disconnected-graph E2E.
 - One-hop neighbor expansion for single or multi-node selections, preserving
   deterministic diagram order and treating directed links as visual adjacency.
+- Direction-aware source and sink selection based on validated in/out degree,
+  with deterministic handling of undirected, isolated and malformed topology.
 - Atomic cut/paste for node selections and their internal edges, with one-step
   undo, collision-safe regenerated keys, read-only gating and browser coverage.
 - Persistent per-node geometry locks with mixed-selection semantics across

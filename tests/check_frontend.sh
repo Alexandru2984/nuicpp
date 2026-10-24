@@ -41,6 +41,7 @@ grep -Fq 'evt.key === "ArrowLeft"' public/editor.js
 grep -Fq 'function selectAllNodes()' public/editor.js
 grep -Fq 'function selectConnectedNodes()' public/editor.js
 grep -Fq 'function selectNeighbourNodes()' public/editor.js
+grep -Fq 'function selectTerminalNodes(mode)' public/editor.js
 grep -Fq 'evt.key.toLowerCase() === "a"' public/editor.js
 grep -Fq 'function nextAvailableKey(base, used, nonce)' public/editor.js
 grep -Fq 'function duplicateSelected()' public/editor.js

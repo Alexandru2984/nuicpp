@@ -59,5 +59,25 @@
     return index.orderedKeys.filter((key) => selected.has(key));
   }
 
-  return Object.freeze({ connectedNodeKeys, neighbourNodeKeys });
+  function terminalNodeKeys(diagram, mode) {
+    if (mode !== "source" && mode !== "sink") return [];
+    const index = graphIndex(diagram);
+    if (!index) return [];
+    const incoming = new Map(index.orderedKeys.map((key) => [key, 0]));
+    const outgoing = new Map(index.orderedKeys.map((key) => [key, 0]));
+    const edges = Array.isArray(diagram.edges) ? diagram.edges : [];
+    for (const edge of edges) {
+      if (!index.nodeKeys.has(edge?.source) || !index.nodeKeys.has(edge?.target)) continue;
+      outgoing.set(edge.source, outgoing.get(edge.source) + 1);
+      incoming.set(edge.target, incoming.get(edge.target) + 1);
+      if (!edge.directed) {
+        incoming.set(edge.source, incoming.get(edge.source) + 1);
+        outgoing.set(edge.target, outgoing.get(edge.target) + 1);
+      }
+    }
+    const degree = mode === "source" ? incoming : outgoing;
+    return index.orderedKeys.filter((key) => degree.get(key) === 0);
+  }
+
+  return Object.freeze({ connectedNodeKeys, neighbourNodeKeys, terminalNodeKeys });
 });

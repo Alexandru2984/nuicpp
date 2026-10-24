@@ -42,6 +42,9 @@ admin account for maintenance.
 - Select Direct Neighbors expands a selection by exactly one incoming or
   outgoing relationship, making local dependency inspection fast without
   losing the original seed nodes.
+- Source/Sink selection finds directional entry points and outputs in one
+  action; undirected relationships count both ways, invalid endpoints are
+  ignored and isolated nodes correctly qualify as both.
 - `Ctrl/Cmd+D` duplicates selected nodes plus their internal edges as one
   undoable edit; collision-safe keys remain valid even when originals use the
   full 64-character server limit.

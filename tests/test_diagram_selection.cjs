@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { connectedNodeKeys, neighbourNodeKeys } = require("../public/diagram-selection.js");
+const { connectedNodeKeys, neighbourNodeKeys, terminalNodeKeys } = require("../public/diagram-selection.js");
 
 const diagram = {
   nodes: ["a", "b", "c", "isolated", "x", "y"].map((key) => ({ key })),
@@ -31,6 +31,12 @@ assert.deepEqual(neighbourNodeKeys(diagram, ["a", "x"]), ["a", "b", "x", "y"],
   "multiple seeds must union their one-hop neighbourhoods");
 assert.deepEqual(neighbourNodeKeys(diagram, ["isolated"]), ["isolated"]);
 assert.deepEqual(neighbourNodeKeys(diagram, ["missing"]), []);
+assert.deepEqual(terminalNodeKeys(diagram, "source"), ["a", "c", "isolated"],
+  "sources must have no valid incoming directed or undirected relationship");
+assert.deepEqual(terminalNodeKeys(diagram, "sink"), ["b", "isolated"],
+  "sinks must have no valid outgoing directed or undirected relationship");
+assert.deepEqual(terminalNodeKeys(diagram, "unknown"), [], "unknown terminal modes must fail closed");
+assert.deepEqual(terminalNodeKeys(null, "source"), []);
 assert.equal(JSON.stringify(diagram), before, "selection analysis must not mutate the diagram");
 
 const specialKeys = {

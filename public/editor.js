@@ -365,6 +365,8 @@
       { id: "distribute-vertical", label: "Distribute selected nodes vertically", shortLabel: "Space V", category: "Arrange", keywords: "multi selection equal spacing", mobile: true, enabled: () => canArrangeSelection(3), run: () => arrangeSelection("distribute-vertical") },
       { id: "toggle-geometry-lock", label: "Toggle node geometry lock", shortLabel: "Lock", category: "Arrange", keywords: "position size freeze unlock protect layout", mobile: true, enabled: () => selectedNodeKeys().length > 0 && !state.readOnly, run: toggleSelectedGeometryLock },
       { id: "review", label: "Review diagram quality", shortLabel: "Review", category: "Analyze", keywords: "lint cycle orphan duplicate missing label", mobile: true, enabled: () => Boolean(state.current), run: showDiagramReview },
+      { id: "select-sources", label: "Select source nodes", shortLabel: "Sources", category: "Analyze", keywords: "entry roots indegree incoming architecture", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: () => selectTerminalNodes("source") },
+      { id: "select-sinks", label: "Select sink nodes", shortLabel: "Sinks", category: "Analyze", keywords: "output leaves outdegree outgoing architecture", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: () => selectTerminalNodes("sink") },
       { id: "select-neighbours", label: "Select direct neighbors", shortLabel: "Neighbors", category: "Analyze", keywords: "adjacent one hop graph incoming outgoing neighbours expand selection", mobile: true, enabled: () => selectedNodeKeys().length > 0, run: selectNeighbourNodes },
       { id: "select-connected", label: "Select connected component", shortLabel: "Connected", category: "Analyze", keywords: "graph traversal reachable weak component expand selection neighbours", mobile: true, enabled: () => selectedNodeKeys().length > 0, run: selectConnectedNodes },
       { id: "find-node", label: "Find and focus node", shortLabel: "Find", category: "Analyze", keywords: "navigate search locate jump", shortcut: "/", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: openNodeNavigator },
@@ -2212,6 +2214,24 @@
 
   function selectConnectedNodes() {
     applyGraphSelection("connectedNodeKeys", "connected");
+  }
+
+  function selectTerminalNodes(mode) {
+    if (!state.current) return;
+    const terminalNodeKeys = globalThis.NuiGraphSelection?.terminalNodeKeys;
+    if (typeof terminalNodeKeys !== "function") {
+      toast("Graph selection is unavailable; reload the editor assets.", "error");
+      return;
+    }
+    const keys = terminalNodeKeys(state.current, mode);
+    selectNodeKeys(keys);
+    state.edgeSource = null;
+    setTool("select");
+    render();
+    canvas.focus({ preventScroll: true });
+    toast(keys.length
+      ? `${keys.length} ${mode} node${keys.length === 1 ? "" : "s"} selected.`
+      : `No ${mode} nodes found.`);
   }
 
   // A rubber-band drag can go up and to the left, so the stored corners are the

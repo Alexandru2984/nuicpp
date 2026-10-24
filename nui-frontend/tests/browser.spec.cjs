@@ -367,6 +367,26 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(editorLiveStatus).toHaveText(`${diagramNodeCount - 1} nodes selected.`);
       await expect(page.locator("#canvas")).toBeFocused();
 
+      await page.keyboard.press("Control+k");
+      const sourcesPalette = page.getByRole("dialog", { name: "Command palette" });
+      await sourcesPalette.getByRole("combobox", { name: "Search commands" }).fill("select source nodes");
+      await page.keyboard.press("Enter");
+      await expect(page.locator("#nodes > g.selected")).toHaveCount(2);
+      await expect(page.locator('#nodes > g[data-key="node_start"]')).toHaveClass(/selected/);
+      await expect(page.locator('#nodes > g[data-key="node_isolated"]')).toHaveClass(/selected/);
+      await expect(page.locator('#nodes > g[data-key="node_service"]')).not.toHaveClass(/selected/);
+
+      await page.keyboard.press("Control+k");
+      const sinksPalette = page.getByRole("dialog", { name: "Command palette" });
+      await sinksPalette.getByRole("combobox", { name: "Search commands" }).fill("select sink nodes");
+      await page.keyboard.press("Enter");
+      await expect(page.locator("#nodes > g.selected")).toHaveCount(2);
+      await expect(page.locator('#nodes > g[data-key="node_start"]')).not.toHaveClass(/selected/);
+      await expect(page.locator('#nodes > g[data-key="node_isolated"]')).toHaveClass(/selected/);
+      await expect(page.locator('#nodes > g[data-key="node_service"]')).toHaveClass(/selected/);
+      await expect(editorLiveStatus).toHaveText("2 nodes selected.");
+      await expect(page.locator("#canvas")).toBeFocused();
+
       await page.keyboard.press("/");
       const nodeNavigator = page.getByRole("dialog", { name: "Node navigator" });
       await expect(nodeNavigator).toBeVisible();
@@ -715,6 +735,8 @@ test.describe("phone layout", () => {
     await expect(customizer.getByLabel("Select all nodes", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Select direct neighbors", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Select connected component", { exact: true })).toBeVisible();
+    await expect(customizer.getByLabel("Select source nodes", { exact: true })).toBeVisible();
+    await expect(customizer.getByLabel("Select sink nodes", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Duplicate selected nodes", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Cut selected nodes", { exact: true })).toBeVisible();
     await customizer.getByLabel("Add node", { exact: true }).uncheck();
