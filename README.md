@@ -201,7 +201,9 @@ primary path and does not need WebAssembly code generation in its CSP.
 a Nui C++ frontend compiled to `public/nui/index.js` plus a `.wasm` module.
 Configuration validation refuses to start or release this mode if its HTML,
 loader or regular (non-symlink) WebAssembly artifact is missing; there is no
-silent fallback that can hide a broken build.
+silent fallback that can hide a broken build. Both its source and shipped loader
+start the same review, arrangement and graph-selection engines as the primary
+shell before attaching the shared editor.
 
 ## Build
 

@@ -48,6 +48,8 @@ rollback notes where applicable.
 - Explicit frontend-shell selection: the complete server-rendered path is the
   production default with a tighter CSP, while Nui mode fails configuration and
   release checks unless its HTML, loader and non-symlink WASM artifact exist.
+- Nui source and shipped loaders now attach the same review, arrangement and
+  graph-selection engines as the server shell, with static parity gates in CI.
 - Loopback-only, no-store Prometheus telemetry with bounded labels for HTTP,
   latency, security, creation, readiness, storage and DB-pool signals, plus
   promtool-validated alert rules and response procedures. Live collector and

@@ -9,6 +9,7 @@ node --check public/diagram-selection.js >/dev/null
 node --check public/offline.js >/dev/null
 node --check public/sw.js >/dev/null
 node --check public/nui/bootstrap.js >/dev/null
+node --check nui-frontend/static/source/index.js >/dev/null
 node --check nui-frontend/tests/browser.spec.cjs >/dev/null
 node -e 'require("./nui-frontend/node_modules/@axe-core/playwright")' >/dev/null
 grep -q "nuigraph:draft:" public/editor.js
@@ -26,6 +27,14 @@ grep -Fq 'script.src = `/editor.js' public/app.js
 grep -Fq 'review.src = `/diagram-review.js' public/app.js
 grep -Fq 'arrange.src = `/diagram-arrange.js' public/app.js
 grep -Fq 'selection.src = `/diagram-selection.js' public/app.js
+for loader in public/nui/bootstrap.js nui-frontend/static/source/index.js; do
+  grep -Fq 'review.src = `/diagram-review.js' "$loader"
+  grep -Fq 'arrange.src = `/diagram-arrange.js' "$loader"
+  grep -Fq 'selection.src = `/diagram-selection.js' "$loader"
+  grep -Fq 'review.onload = attachArrange' "$loader"
+  grep -Fq 'arrange.onload = attachSelection' "$loader"
+  grep -Fq 'selection.onload = attachEditor' "$loader"
+done
 grep -Fq 'css.href = `/styles.css' public/editor.js
 grep -Fq 'Ctrl / Cmd + K' public/editor.js
 grep -Fq 'Find and focus node' public/editor.js
