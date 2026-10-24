@@ -15,4 +15,10 @@ std::string generateRequestId();
 std::string logTimestamp();
 std::string sanitizeLogField(const std::string& value, std::size_t maxLength = 160);
 
+// Browser-managed Sec-Fetch-* headers cannot be set by page JavaScript. Keep
+// non-browser clients compatible when the header is absent, but fail closed for
+// any explicitly non-same-origin state-changing request.
+bool shouldRejectCrossSiteMutation(const std::string& method,
+                                   const std::string& fetchSite);
+
 } // namespace nuigraph

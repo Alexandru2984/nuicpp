@@ -18,6 +18,23 @@ bool isSinglePathSegment(std::string_view value) {
     return !value.empty() && value.find('/') == std::string_view::npos;
 }
 
+std::string normalizedToken(std::string value) {
+    const auto first = std::find_if_not(value.begin(), value.end(), [](unsigned char c) {
+        return std::isspace(c) != 0;
+    });
+    const auto last = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char c) {
+        return std::isspace(c) != 0;
+    }).base();
+    if (first >= last) {
+        return {};
+    }
+    std::string out(first, last);
+    std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return out;
+}
+
 } // namespace
 
 std::string redactRequestPath(const std::string& path) {
@@ -83,6 +100,23 @@ std::string sanitizeLogField(const std::string& value, std::size_t maxLength) {
         out.push_back(safe ? static_cast<char>(c) : '_');
     }
     return out;
+}
+
+bool shouldRejectCrossSiteMutation(const std::string& method,
+                                   const std::string& fetchSite) {
+    const auto normalizedMethod = normalizedToken(method);
+    if (normalizedMethod == "get" || normalizedMethod == "head" ||
+        normalizedMethod == "options") {
+        return false;
+    }
+
+    // Sec-Fetch-Site is not universally sent by API clients. Existing CSRF
+    // checks remain authoritative for those callers; when a browser does send
+    // the header, only the application's exact origin may mutate state.
+    if (fetchSite.empty()) {
+        return false;
+    }
+    return normalizedToken(fetchSite) != "same-origin";
 }
 
 } // namespace nuigraph

@@ -416,6 +416,7 @@ void testMetricsStayAggregateAndBounded() {
     metrics.observeHttp("GET", 200, 0.02);
     metrics.observeHttp("PATCH", 503, 2.0);
     metrics.recordSecurityEvent("admin_login", "failed");
+    metrics.recordSecurityEvent("fetch_metadata_rejected", "blocked");
     metrics.recordSecurityEvent("attacker-controlled-label", "ignored");
     metrics.recordDiagramCreated("import");
     metrics.recordDiagramCreated("attacker-controlled-source");
@@ -442,6 +443,9 @@ void testMetricsStayAggregateAndBounded() {
             "metrics should collapse unknown methods into a bounded label");
     require(body.find("event=\"admin_login\",outcome=\"failed\"} 1") != std::string::npos,
             "metrics should count known security outcomes");
+    require(body.find("event=\"fetch_metadata_rejected\",outcome=\"blocked\"} 1") !=
+                std::string::npos,
+            "metrics should count rejected cross-site mutations");
     require(body.find("source=\"import\"} 1") != std::string::npos,
             "metrics should count successful import creations");
     require(body.find("nuigraph_database_size_bytes 4096") != std::string::npos,
@@ -688,6 +692,27 @@ void testRequestIdsAndLogFieldsAreSafe() {
             "log fields must not permit line or key injection");
 }
 
+void testFetchMetadataMutationPolicy() {
+    require(!shouldRejectCrossSiteMutation("GET", "cross-site"),
+            "cross-site reads should remain available");
+    require(!shouldRejectCrossSiteMutation("HEAD", "same-site"),
+            "cross-site HEAD requests should remain available");
+    require(!shouldRejectCrossSiteMutation("OPTIONS", "cross-site"),
+            "preflight requests should reach normal routing");
+    require(!shouldRejectCrossSiteMutation("POST", ""),
+            "API clients without Fetch Metadata should remain compatible");
+    require(!shouldRejectCrossSiteMutation(" post ", " Same-Origin "),
+            "same-origin browser mutations should be accepted case-insensitively");
+    require(shouldRejectCrossSiteMutation("POST", "cross-site"),
+            "cross-site form submissions should be rejected");
+    require(shouldRejectCrossSiteMutation("PUT", "same-site"),
+            "sibling origins should not be trusted with writes");
+    require(shouldRejectCrossSiteMutation("DELETE", "none"),
+            "unsafe browser requests need an explicit same-origin signal");
+    require(shouldRejectCrossSiteMutation("PATCH", "malformed"),
+            "unknown Fetch Metadata values should fail closed");
+}
+
 void testRenderedPagesVersionStaticAssets() {
     constexpr auto version = "0123456789abcdef";
     const auto editor = renderEditorPage("guest", "https://example.test", true, version);
@@ -847,12 +872,13 @@ int main() {
         testRateLimiterEvictionKeepsThrottledKeys();
         testSensitivePathsAreRedacted();
         testRequestIdsAndLogFieldsAreSafe();
+        testFetchMetadataMutationPolicy();
         testRenderedPagesVersionStaticAssets();
         testSeoMetadata();
     } catch (const std::exception& e) {
         std::cerr << "test failed: " << e.what() << '\n';
         return EXIT_FAILURE;
     }
-        std::cout << "nuigraph validation tests passed (52 tests)\n";
+    std::cout << "nuigraph validation tests passed (53 tests)\n";
     return EXIT_SUCCESS;
 }

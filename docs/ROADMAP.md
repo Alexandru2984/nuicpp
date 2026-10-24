@@ -141,6 +141,9 @@ rollback notes where applicable.
 - Browser/CDN cache denial centralised for session shells, bearer pages, APIs,
   authentication and probes, plus synchronized application/nginx origin-agent,
   cross-domain and explicit CSP/Permissions-Policy hardening.
+- Central Fetch Metadata request firewall rejecting same-site, cross-site and
+  ambiguous browser writes before routing, with fail-closed unit/live tests,
+  structured events, bounded Prometheus telemetry and a validated abuse alert.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and

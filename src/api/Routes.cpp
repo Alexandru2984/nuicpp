@@ -766,6 +766,27 @@ bool Routes::ensureAuthenticated(const httplib::Request& req, httplib::Response&
 }
 
 void Routes::registerRoutes(httplib::Server& server) {
+    server.set_pre_routing_handler([this](const httplib::Request& req, httplib::Response& res) {
+        auto requestId = normalizeRequestId(req.get_header_value("X-Request-ID"));
+        if (requestId.empty()) {
+            requestId = generateRequestId();
+        }
+        res.set_header("X-Request-ID", requestId);
+
+        if (!shouldRejectCrossSiteMutation(req.method,
+                                           req.get_header_value("Sec-Fetch-Site"))) {
+            return httplib::Server::HandlerResponse::Unhandled;
+        }
+
+        // This is intentionally ahead of authentication, parsing, throttling
+        // and every route handler. A rejected browser request must have no side
+        // effects, including consuming a login attempt or write-rate token.
+        sendJson(res, 403, errorJson("cross-site request blocked"));
+        applySecurityHeaders(res);
+        logSecurityEvent(req, res, "fetch_metadata_rejected", "blocked");
+        return httplib::Server::HandlerResponse::Handled;
+    });
+
     server.set_post_routing_handler([this](const httplib::Request& req, httplib::Response& res) {
         applySecurityHeaders(res);
         const auto& path = req.path;

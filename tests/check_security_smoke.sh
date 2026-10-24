@@ -112,6 +112,7 @@ curl --noproxy '*' -fsS -b "$COOKIE_JAR" \
 
 status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" \
   -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
+  -H 'Sec-Fetch-Site: same-origin' \
   -X POST -d '{}' "http://127.0.0.1:${PORT}/api/diagrams/${own_id}/duplicate")"
 if [[ "$status" != "200" && "$status" != "201" ]]; then
   echo "expected duplicate of the visitor's own diagram to succeed, got $status" >&2
@@ -186,6 +187,56 @@ if [[ "$status" != "403" ]]; then
   exit 1
 fi
 
+# Fetch Metadata is an early browser-only boundary in front of login, CSRF,
+# parsing and rate limits. A real browser does not allow page JavaScript to
+# forge Sec-Fetch-Site, while CLI clients that omit it remain compatible.
+fetch_headers="$TMP_DIR/fetch-metadata.headers"
+fetch_body="$TMP_DIR/fetch-metadata.json"
+status="$(curl --noproxy '*' -sS -D "$fetch_headers" -o "$fetch_body" -w '%{http_code}' \
+  -H 'Sec-Fetch-Site: cross-site' -H 'Content-Type: application/x-www-form-urlencoded' \
+  -X POST -d 'username=ignored&password=ignored' \
+  "http://127.0.0.1:${PORT}/login")"
+if [[ "$status" != "403" ]]; then
+  echo "expected cross-site login submission to return 403, got $status" >&2
+  exit 1
+fi
+for expected in \
+  'content-type: application/json' \
+  'cache-control: private, no-store, max-age=0' \
+  'x-content-type-options: nosniff'
+do
+  if ! grep -Fqi "$expected" "$fetch_headers"; then
+    echo "expected $expected on a Fetch Metadata rejection" >&2
+    exit 1
+  fi
+done
+python3 - "$fetch_body" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as response:
+    assert json.load(response) == {"error": "cross-site request blocked"}
+PY
+
+for fetch_site in cross-site same-site none; do
+  status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -b "$COOKIE_JAR" \
+    -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
+    -H "Sec-Fetch-Site: ${fetch_site}" \
+    -X POST -d "{\"title\":\"${TEST_TITLE_PREFIX}fetch-${fetch_site}\",\"description\":\"\",\"nodes\":[],\"edges\":[]}" \
+    "http://127.0.0.1:${PORT}/api/diagrams")"
+  if [[ "$status" != "403" ]]; then
+    echo "expected ${fetch_site} mutation to return 403, got $status" >&2
+    exit 1
+  fi
+done
+
+status="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' \
+  -H 'Sec-Fetch-Site: cross-site' "http://127.0.0.1:${PORT}/live")"
+if [[ "$status" != "200" ]]; then
+  echo "expected cross-site safe read to remain available, got $status" >&2
+  exit 1
+fi
+
 # The app sets these itself rather than depending on the vhost staying correct,
 # so they must be present even when nginx is not in the path.
 for probe in health live ready; do
@@ -233,6 +284,7 @@ for series in \
   'nuigraph_security_events_total{event="sharing_change",outcome="disabled"}' \
   'nuigraph_security_events_total{event="sharing_change",outcome="rotated"}' \
   'nuigraph_security_events_total{event="sharing_change",outcome="expiry_updated"}' \
+  'nuigraph_security_events_total{event="fetch_metadata_rejected",outcome="blocked"}' \
   'nuigraph_security_events_total{event="session_rekey",outcome="succeeded"}'
 do
   if ! grep -Fq "$series" <<<"$metrics_body"; then
@@ -240,6 +292,10 @@ do
     exit 1
   fi
 done
+if ! grep -Eq '^nuigraph_security_events_total\{event="fetch_metadata_rejected",outcome="blocked"\} [1-9][0-9]*$' <<<"$metrics_body"; then
+  echo "Fetch Metadata rejections were not counted" >&2
+  exit 1
+fi
 if ! grep -qi '^content-type: text/plain; version=0.0.4; charset=utf-8' "$metrics_headers"; then
   echo "metrics endpoint returned the wrong content type" >&2
   exit 1
@@ -454,6 +510,10 @@ fi
 
 if ! grep -q 'category=security event=csrf_rejected outcome=blocked' "$LOG_FILE"; then
   echo "expected an explicit CSRF rejection security event" >&2
+  exit 1
+fi
+if ! grep -q 'category=security event=fetch_metadata_rejected outcome=blocked' "$LOG_FILE"; then
+  echo "expected an explicit Fetch Metadata rejection security event" >&2
   exit 1
 fi
 if ! grep -q 'category=security event=share_view outcome=allowed.*path=/d/<redacted>' "$LOG_FILE"; then

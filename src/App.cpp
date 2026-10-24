@@ -40,15 +40,6 @@ int App::run() {
     server.set_idle_interval(1, 0);
     server.set_payload_max_length(cfg_.maxImportBytes + 65536);
 
-    server.set_pre_routing_handler([](const httplib::Request& req, httplib::Response& res) {
-        auto requestId = normalizeRequestId(req.get_header_value("X-Request-ID"));
-        if (requestId.empty()) {
-            requestId = generateRequestId();
-        }
-        res.set_header("X-Request-ID", requestId);
-        return httplib::Server::HandlerResponse::Unhandled;
-    });
-
     // Without this an uncaught exception in a handler tears the connection down
     // with no record of what happened.
     server.set_exception_handler([](const httplib::Request& req, httplib::Response& res, std::exception_ptr ep) {

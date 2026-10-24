@@ -16,11 +16,11 @@ PostgreSQL's live-row estimates so the monitor does not repeatedly scan millions
 of rows. Responses are `no-store` and excluded from indexing.
 
 The bounded security series includes allowed/blocked share views, successful
-enable/disable/rotate/expiry-update lifecycle changes and signing-key cookie
-upgrades. Runtime logs use the same outcomes but redact capabilities from page
-and API paths. A sudden blocked-view spike after a planned rotation is expected;
-an unexplained sustained spike should be correlated with access logs without
-recovering or printing the old token.
+enable/disable/rotate/expiry-update lifecycle changes, signing-key cookie
+upgrades and rejected cross-site mutations. Runtime logs use the same outcomes
+but redact capabilities from page and API paths. A sudden blocked-view spike
+after a planned rotation is expected; an unexplained sustained spike should be
+correlated with access logs without recovering or printing the old token.
 
 ## Scrape configuration
 
@@ -108,6 +108,19 @@ only when a real artifact timestamp and restore verification signal exist.
 2. Block abusive sources at the edge; do not weaken application throttling.
 3. Treat any unexplained successful login near the attack window as a potential
    credential incident and follow `docs/INCIDENT_RESPONSE.md`.
+
+## Cross-site mutation attempts
+
+1. Confirm the increase is the bounded `fetch_metadata_rejected/blocked` series
+   and correlate request IDs with redacted application/access logs.
+2. Split attempts by route shape and edge metadata. Do not log or promote raw
+   `Sec-Fetch-Site` values into labels; the decision is already fail-closed.
+3. A burst against `/login` or write routes usually indicates CSRF probing or a
+   malicious embedded form. Contain a clear source pattern at Cloudflare while
+   preserving evidence; do not disable CSRF or the Fetch Metadata firewall.
+4. If a legitimate client is affected, verify whether it incorrectly forges a
+   browser-reserved header. Non-browser clients should omit it, not claim a
+   foreign browser context.
 
 ## Share-link probing or expiry noise
 

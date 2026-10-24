@@ -103,6 +103,18 @@ groups:
           summary: A NuiGraph administrator login succeeded
           runbook: docs/MONITORING.md#authentication-attack
 
+      - alert: NuiGraphCrossSiteMutationSpike
+        expr: |
+          sum(increase(nuigraph_security_events_total{
+            job="nuigraph",event="fetch_metadata_rejected",outcome="blocked"
+          }[10m])) >= 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Repeated cross-site state-changing requests were blocked
+          runbook: docs/MONITORING.md#cross-site-mutation-attempts
+
       - alert: NuiGraphBlockedShareViewSpike
         expr: |
           sum(increase(nuigraph_security_events_total{

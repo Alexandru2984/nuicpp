@@ -146,19 +146,21 @@ admin account for maintenance.
 Summarised here, detailed in [`docs/SECURITY.md`](docs/SECURITY.md).
 
 - Cloudflare-only ingress enforced at nginx; direct-to-origin requests get `403`.
-- Purpose-separated HMAC keys for `HttpOnly`, `SameSite=Lax` sessions, CSRF,
+- Purpose-separated HMAC keys for `HttpOnly`, `SameSite=Strict` sessions, CSRF,
   stable guest ownership and rate-limit pseudonyms; planned signing-key rotation
   transparently re-signs active 8-hour admin and 7-day guest sessions.
 - PBKDF2-SHA256 admin password with constant-time comparison.
 - Per-session ownership by HMAC-derived owner hash; read and edit both checked
   by diagram id on every path that emits diagram content, including duplicate.
-- CSRF tokens bound to the exact session cookie, required on every mutating
-  endpoint.
+- CSRF tokens bound to the exact session cookie on authenticated JSON writes,
+  backed by a central Fetch Metadata firewall that rejects browser mutations
+  unless `Sec-Fetch-Site` identifies the exact application origin.
 - Rate limiting at the edge and in the app, plus atomic per-guest and global
   diagram and logical-byte quotas so concurrent writes cannot grow retained
   user content past the configured ceilings.
 - End-to-end request IDs and redacted structured security events for login,
-  authorization, CSRF, quota, rate-limit, share lifecycle/view and storage failures.
+  authorization, CSRF, cross-site mutation rejection, quota, rate-limit, share
+  lifecycle/view and storage failures.
 - Defensive id parsing, exhaustive input validation, parameterised SQL only,
   no shell execution, no user-controlled filesystem paths.
 - CSP without `unsafe-inline` for scripts or styles, plus the usual header set,

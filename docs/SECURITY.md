@@ -57,7 +57,7 @@ ngs_session = <username>.<unix-expiry>.<HMAC-SHA256(SESSION_SIGNING_SECRET, "use
   edit rights forever.
 - `Secure` is set only when `X-Forwarded-Proto` is `https`. In production it is
   always set; over plain HTTP on localhost it is omitted so the cookie is usable
-  for local testing. `HttpOnly` and `SameSite=Lax` are always set.
+  for local testing. `HttpOnly` and `SameSite=Strict` are always set.
 - Guest usernames are random values minted by `/api/session`. They are not
   user-chosen and cannot collide with `AUTH_USERNAME`, which is what separates
   guest from admin.
@@ -172,8 +172,19 @@ csrf = HMAC-SHA256(CSRF_SECRET, session_cookie_value + ".csrf")
 
 It is bound to the exact session cookie, so a token from one session is useless
 with another. Verification requires a valid session first, then a constant-time
-compare. Because the token lives in a header, `SameSite=Lax` plus the header
-requirement means a cross-site form post cannot mutate anything.
+compare. The session cookie is `SameSite=Strict`, and a token in a custom header
+cannot be supplied by a cross-site form.
+
+A central pre-routing Fetch Metadata firewall adds a separate browser boundary
+in front of login, parsing, authentication, CSRF and rate limiting. `GET`, `HEAD`
+and `OPTIONS` continue through normal routing. For every other method, an
+explicit `Sec-Fetch-Site` value must be `same-origin`; `same-site`, `cross-site`,
+`none` and unknown values receive a no-store `403` before any route side effect.
+The header is browser-controlled and forbidden to page JavaScript. Its absence
+is accepted for compatibility with CLI/API clients, which remain subject to the
+normal session, authorization and CSRF checks. Rejections use only one bounded
+metric label pair and a structured security event—never the attacker-provided
+header value.
 
 Persistent rate-limit bucket keys use `RATE_LIMIT_SECRET`. Rotating it starts new
 pseudonymous identities; old database rows become unreachable and expire within
