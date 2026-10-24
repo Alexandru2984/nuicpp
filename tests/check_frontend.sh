@@ -8,6 +8,8 @@ node --check public/diagram-arrange.js >/dev/null
 node --check public/offline.js >/dev/null
 node --check public/sw.js >/dev/null
 node --check public/nui/bootstrap.js >/dev/null
+node --check nui-frontend/tests/browser.spec.cjs >/dev/null
+node -e 'require("./nui-frontend/node_modules/@axe-core/playwright")' >/dev/null
 grep -q "nuigraph:draft:" public/editor.js
 grep -q "draft-status" public/editor.js
 grep -q 'ASSET_VERSION = "__ASSET_VERSION__"' public/sw.js
@@ -49,6 +51,7 @@ grep -Fq '.sr-only' public/styles.css
 grep -Fq 'textarea:not(:disabled):not([tabindex="-1"])' public/editor.js
 grep -Fq 'overlay.closeDialog = closeShortcuts' public/editor.js
 grep -Fq 'overlay.closeDialog = closeDiff' public/editor.js
+grep -Fq 'expectNoHighImpactAccessibilityViolations' nui-frontend/tests/browser.spec.cjs
 grep -Fq 'nuigraph:mobile-actions:v1' public/editor.js
 grep -Fq 'className = "command-palette-overlay"' public/editor.js
 test "$(grep -Fc 'if (state.current.nodes?.length) zoomToFit();' public/editor.js)" -eq 2

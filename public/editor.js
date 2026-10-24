@@ -652,9 +652,14 @@
       button.disabled = !commandEnabled(command);
       button.classList.toggle("active", command.id === `tool-${state.tool}`);
       button.classList.toggle("has-changes", command.id === "save" && state.dirty);
-      button.setAttribute("aria-label", command.id === "save" && state.dirty
+      let accessibleLabel = command.id === "save" && state.dirty
         ? "Save diagram - unsaved changes"
-        : command.label);
+        : command.label;
+      const visibleLabel = button.textContent.trim();
+      if (visibleLabel && !accessibleLabel.toLowerCase().includes(visibleLabel.toLowerCase())) {
+        accessibleLabel = `${visibleLabel}: ${accessibleLabel}`;
+      }
+      button.setAttribute("aria-label", accessibleLabel);
     });
   }
 
@@ -680,7 +685,7 @@
     };
     if (pinned[0]) appendCommand(pinned[0]);
 
-    const palette = mobileBarButton("Menu", "mobile-command-trigger");
+    const palette = mobileBarButton("Commands", "mobile-command-trigger");
     palette.setAttribute("aria-label", "Commands");
     palette.title = "Open command palette";
     palette.onclick = () => openCommandPalette();
@@ -688,7 +693,7 @@
 
     if (pinned[1]) appendCommand(pinned[1]);
 
-    const properties = mobileBarButton("Inspect");
+    const properties = mobileBarButton("Properties");
     properties.setAttribute("aria-label", "Properties");
     properties.dataset.panel = "properties";
     properties.setAttribute("aria-controls", "mobile-sheet-properties");

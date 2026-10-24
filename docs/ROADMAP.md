@@ -109,6 +109,9 @@ rollback notes where applicable.
   selections, while draft save state is exposed as a separate atomic status.
 - Complete keyboard focus containment and restoration across editor dialogs,
   version diffs and phone sheets, including every native form control type.
+- Pinned axe-core/Playwright accessibility gates for desktop, modal, phone and
+  sheet states, retaining a focused JSON artifact for any serious or critical
+  violation.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -164,8 +167,8 @@ High risk remain open.
   selective restore and duplicate-as-branch.
 - Autosave to the server with visible sync state, offline mutation queue and
   conflict-resolution UI.
-- WCAG 2.2 AA pass: automated rules audit, manual screen-reader review and
-  documented keyboard-only acceptance criteria.
+- WCAG 2.2 AA pass: manual screen-reader review and documented keyboard-only
+  acceptance criteria.
 - Romanian plus English localisation, locale-aware dates and RTL-ready layout.
 - Cross-browser visual and interaction tests at phone, tablet, desktop and
   coarse-pointer breakpoints.

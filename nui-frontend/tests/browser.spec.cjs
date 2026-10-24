@@ -1,5 +1,30 @@
 const { test, expect, devices } = require("@playwright/test");
+const AxeBuilder = require("@axe-core/playwright").default;
 const { defaultBrowserType: _defaultBrowserType, ...pixel5 } = devices["Pixel 5"];
+
+async function expectNoHighImpactAccessibilityViolations(page, testInfo, label) {
+  const results = await new AxeBuilder({ page }).analyze();
+  const violations = results.violations
+    .filter((violation) => violation.impact === "serious" || violation.impact === "critical")
+    .map((violation) => ({
+      id: violation.id,
+      impact: violation.impact,
+      help: violation.help,
+      helpUrl: violation.helpUrl,
+      nodes: violation.nodes.map((node) => ({
+        target: node.target,
+        html: node.html,
+        failureSummary: node.failureSummary
+      }))
+    }));
+  if (violations.length) {
+    await testInfo.attach(`axe-${label}.json`, {
+      body: Buffer.from(JSON.stringify(violations, null, 2)),
+      contentType: "application/json"
+    });
+  }
+  expect(violations, `${label} has serious or critical axe violations`).toEqual([]);
+}
 
 async function installPolicyViolationRecorder(page) {
   await page.addInitScript(() => {
@@ -26,7 +51,7 @@ async function waitForControlledWorker(page) {
 test.describe("desktop security and offline lifecycle", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test("enforces CSP and replaces stale shell caches without caching APIs", async ({ page, context, baseURL }) => {
+  test("enforces CSP and replaces stale shell caches without caching APIs", async ({ page, context, baseURL }, testInfo) => {
     await installPolicyViolationRecorder(page);
 
     // Establish the origin on an endpoint that does not load app.js, then
@@ -54,6 +79,7 @@ test.describe("desktop security and offline lifecycle", () => {
     await expect(editorLiveStatus).toHaveAttribute("aria-live", "polite");
     await expect(page.locator("#canvas")).toHaveAttribute("aria-describedby", "editor-live-status");
     await expect(page.locator("#draft-status")).toHaveAttribute("aria-live", "polite");
+    await expectNoHighImpactAccessibilityViolations(page, testInfo, "desktop-editor");
     await page.emulateMedia({ forcedColors: "active", reducedMotion: "reduce" });
     await page.locator("#canvas").focus();
     const accessibilityMedia = await page.evaluate(() => ({
@@ -111,6 +137,7 @@ test.describe("desktop security and offline lifecycle", () => {
     await page.keyboard.press("Control+k");
     await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Search commands" })).toBeFocused();
+    await expectNoHighImpactAccessibilityViolations(page, testInfo, "command-palette");
     await page.keyboard.press("Escape");
     await expect(title).toBeFocused();
 
@@ -490,7 +517,7 @@ test.describe("desktop security and offline lifecycle", () => {
 test.describe("phone layout", () => {
   test.use(pixel5);
 
-  test("keeps the canvas usable with a customisable touch action bar", async ({ page }) => {
+  test("keeps the canvas usable with a customisable touch action bar", async ({ page }, testInfo) => {
     await installPolicyViolationRecorder(page);
     await page.goto("/", { waitUntil: "networkidle" });
 
@@ -513,12 +540,14 @@ test.describe("phone layout", () => {
     expect(geometry.canvas.width).toBeGreaterThan(300);
     expect(geometry.canvas.height).toBeGreaterThan(400);
     expect(geometry.targets.every((height) => height >= 44)).toBe(true);
+    await expectNoHighImpactAccessibilityViolations(page, testInfo, "mobile-editor");
 
     const diagramsButton = page.getByRole("button", { name: "Diagrams", exact: true });
     await diagramsButton.click();
     await expect(page.locator(".project-panel")).toBeVisible();
     await expect(page.locator(".sheet-scrim")).toBeVisible();
     await expect(page.locator(".project-panel .sheet-close")).toBeFocused();
+    await expectNoHighImpactAccessibilityViolations(page, testInfo, "mobile-diagrams-sheet");
     await page.keyboard.press("Shift+Tab");
     expect(await page.evaluate(() => document.querySelector(".project-panel").contains(document.activeElement))).toBe(true);
     await page.keyboard.press("Escape");

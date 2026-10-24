@@ -48,6 +48,8 @@ admin account for maintenance.
   and draft persistence without adding visual noise or changing layout.
 - Modal dialogs and mobile property/diagram sheets contain keyboard focus,
   close on Escape and restore focus to the control that opened them.
+- Automated axe-core scans gate serious and critical accessibility regressions
+  across desktop, command-dialog, phone and mobile-sheet browser states.
 - Inline node and edge-label editing by double-click, `F2`, `Enter`, command
   palette or a pinned mobile action, with one-step undo and browser-draft
   persistence.

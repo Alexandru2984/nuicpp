@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "source": "static/index.html",
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@playwright/test": "1.64.1",
     "parcel": "^2.9.1",
     "parcel-reporter-static-files-copy": "^1.5.0"
