@@ -917,6 +917,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             "Disallow: /live\n"
             "Disallow: /ready\n"
             "Disallow: /metrics\n"
+            "Disallow: /openapi.json\n"
             "Disallow: /nui/\n"
             "Disallow: /offline.html\n"
             "Sitemap: " + normalizedBaseUrl(cfg_.baseUrl) + "/sitemap.xml\n";
@@ -932,6 +933,10 @@ void Routes::registerRoutes(httplib::Server& server) {
             "</urlset>\n";
         res.set_header("Cache-Control", "public, max-age=3600");
         res.set_content(body, "application/xml; charset=utf-8");
+    });
+    server.Get("/openapi.json", [this](const httplib::Request& req, httplib::Response& res) {
+        res.set_header("X-Robots-Tag", "noindex, nofollow, nosnippet");
+        serveStatic(req, res, cfg_.projectRoot + "/public/openapi.json");
     });
 
     server.Get("/styles.css", [this](const httplib::Request& req, httplib::Response& res) {

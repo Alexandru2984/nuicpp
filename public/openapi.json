@@ -1,0 +1,636 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "NuiGraph Studio API",
+    "version": "1.1.0",
+    "description": "Session-oriented API for private diagrams, templates, version history and capability-based sharing. Start with GET /api/session and retain its HttpOnly cookie. Unsafe requests require the returned CSRF token in X-CSRF-Token. Production HTTPS uses __Host-ngs_session; loopback HTTP development uses ngs_session."
+  },
+  "servers": [{ "url": "/", "description": "Current NuiGraph Studio origin" }],
+  "externalDocs": { "description": "Application documentation", "url": "/docs" },
+  "tags": [
+    { "name": "Session", "description": "Guest or administrator session bootstrap" },
+    { "name": "Diagrams", "description": "Owned diagram lifecycle" },
+    { "name": "Sharing", "description": "Read-only bearer-link lifecycle" },
+    { "name": "Templates", "description": "Curated diagram templates" },
+    { "name": "Versions", "description": "Bounded immutable diagram snapshots" },
+    { "name": "Import and export", "description": "Portable diagram JSON" }
+  ],
+  "security": [
+    { "sessionCookie": [] },
+    { "localSessionCookie": [] }
+  ],
+  "paths": {
+    "/api/session": {
+      "get": {
+        "operationId": "getSession",
+        "summary": "Get or create the current session",
+        "description": "When public access is enabled, an unauthenticated request creates a short-lived guest session and returns its CSRF token.",
+        "tags": ["Session"],
+        "security": [],
+        "responses": {
+          "200": { "$ref": "#/components/responses/SessionResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/diagrams": {
+      "get": {
+        "operationId": "listDiagrams",
+        "summary": "List diagrams visible to the current owner",
+        "tags": ["Diagrams"],
+        "parameters": [
+          { "$ref": "#/components/parameters/Limit" },
+          { "$ref": "#/components/parameters/Offset" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/DiagramListResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      },
+      "post": {
+        "operationId": "createDiagram",
+        "summary": "Create a default or supplied diagram",
+        "tags": ["Diagrams"],
+        "security": [
+          { "sessionCookie": [], "csrfHeader": [] },
+          { "localSessionCookie": [], "csrfHeader": [] }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/OptionalDiagram" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/DiagramCreatedResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/templates": {
+      "get": {
+        "operationId": "listTemplates",
+        "summary": "List curated diagram templates",
+        "tags": ["Templates"],
+        "responses": {
+          "200": { "$ref": "#/components/responses/TemplateListResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/templates/{key}/create": {
+      "parameters": [{ "$ref": "#/components/parameters/TemplateKey" }],
+      "post": {
+        "operationId": "createDiagramFromTemplate",
+        "summary": "Create an owned diagram from a template",
+        "tags": ["Templates", "Diagrams"],
+        "security": [
+          { "sessionCookie": [], "csrfHeader": [] },
+          { "localSessionCookie": [], "csrfHeader": [] }
+        ],
+        "responses": {
+          "201": { "$ref": "#/components/responses/DiagramCreatedResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/diagrams/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/DiagramId" }],
+      "get": {
+        "operationId": "getDiagram",
+        "summary": "Get an owned diagram",
+        "tags": ["Diagrams"],
+        "responses": {
+          "200": { "$ref": "#/components/responses/DiagramResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      },
+      "put": {
+        "operationId": "updateDiagram",
+        "summary": "Conditionally update a diagram",
+        "tags": ["Diagrams"],
+        "security": [
+          { "sessionCookie": [], "csrfHeader": [] },
+          { "localSessionCookie": [], "csrfHeader": [] }
+        ],
+        "parameters": [{ "$ref": "#/components/parameters/IfMatch" }],
+        "requestBody": { "$ref": "#/components/requestBodies/Diagram" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/DiagramResponse" },
+          "412": { "$ref": "#/components/responses/RevisionConflictResponse" },
+          "428": { "$ref": "#/components/responses/PreconditionRequiredResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteDiagram",
+        "summary": "Conditionally delete an owned diagram",
+        "tags": ["Diagrams"],
+        "security": [
+          { "sessionCookie": [], "csrfHeader": [] },
+          { "localSessionCookie": [], "csrfHeader": [] }
+        ],
+        "parameters": [{ "$ref": "#/components/parameters/IfMatch" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/OkResponse" },
+          "412": { "$ref": "#/components/responses/RevisionConflictResponse" },
+          "428": { "$ref": "#/components/responses/PreconditionRequiredResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/diagrams/slug/{slug}": {
+      "parameters": [{ "$ref": "#/components/parameters/ShareSlug" }],
+      "get": {
+        "operationId": "getSharedDiagram",
+        "summary": "Get an active read-only shared diagram",
+        "tags": ["Sharing"],
+        "responses": {
+          "200": { "$ref": "#/components/responses/DiagramResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/diagrams/slug/{slug}/fork": {
+      "parameters": [{ "$ref": "#/components/parameters/ShareSlug" }],
+      "post": {
+        "operationId": "forkSharedDiagram",
+        "summary": "Fork an active shared diagram into the current workspace",
+        "tags": ["Sharing", "Diagrams"],
+        "security": [
+          { "sessionCookie": [], "csrfHeader": [] },
+          { "localSessionCookie": [], "csrfHeader": [] }
+        ],
+        "responses": {
+          "201": { "$ref": "#/components/responses/DiagramCreatedResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/diagrams/{id}/sharing": {
+      "parameters": [{ "$ref": "#/components/parameters/DiagramId" }],
+      "post": {
+        "operationId": "updateDiagramSharing",
+        "summary": "Enable, disable, rotate or expire a share capability",
+        "tags": ["Sharing"],
+        "security": [
+          { "sessionCookie": [], "csrfHeader": [] },
+          { "localSessionCookie": [], "csrfHeader": [] }
+        ],
+        "parameters": [{ "$ref": "#/components/parameters/IfMatch" }],
+        "requestBody": { "$ref": "#/components/requestBodies/Sharing" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/DiagramResponse" },
+          "412": { "$ref": "#/components/responses/RevisionConflictResponse" },
+          "428": { "$ref": "#/components/responses/PreconditionRequiredResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/diagrams/{id}/duplicate": {
+      "parameters": [{ "$ref": "#/components/parameters/DiagramId" }],
+      "post": {
+        "operationId": "duplicateDiagram",
+        "summary": "Duplicate a readable diagram into the current workspace",
+        "tags": ["Diagrams"],
+        "security": [
+          { "sessionCookie": [], "csrfHeader": [] },
+          { "localSessionCookie": [], "csrfHeader": [] }
+        ],
+        "responses": {
+          "201": { "$ref": "#/components/responses/DiagramCreatedResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/diagrams/{id}/versions": {
+      "parameters": [{ "$ref": "#/components/parameters/DiagramId" }],
+      "get": {
+        "operationId": "listDiagramVersions",
+        "summary": "List retained snapshots for a diagram",
+        "tags": ["Versions"],
+        "responses": {
+          "200": { "$ref": "#/components/responses/VersionListResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      },
+      "post": {
+        "operationId": "createDiagramVersion",
+        "summary": "Create a named manual snapshot",
+        "tags": ["Versions"],
+        "security": [
+          { "sessionCookie": [], "csrfHeader": [] },
+          { "localSessionCookie": [], "csrfHeader": [] }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/VersionNote" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/VersionResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/diagrams/{id}/versions/{versionId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/DiagramId" },
+        { "$ref": "#/components/parameters/VersionId" }
+      ],
+      "get": {
+        "operationId": "getDiagramVersion",
+        "summary": "Get the content of one retained snapshot",
+        "tags": ["Versions"],
+        "responses": {
+          "200": { "$ref": "#/components/responses/DiagramSnapshotResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/diagrams/{id}/restore/{versionId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/DiagramId" },
+        { "$ref": "#/components/parameters/VersionId" }
+      ],
+      "post": {
+        "operationId": "restoreDiagramVersion",
+        "summary": "Conditionally restore a retained snapshot",
+        "tags": ["Versions", "Diagrams"],
+        "security": [
+          { "sessionCookie": [], "csrfHeader": [] },
+          { "localSessionCookie": [], "csrfHeader": [] }
+        ],
+        "parameters": [{ "$ref": "#/components/parameters/IfMatch" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/DiagramResponse" },
+          "412": { "$ref": "#/components/responses/RevisionConflictResponse" },
+          "428": { "$ref": "#/components/responses/PreconditionRequiredResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/diagrams/{id}/export.json": {
+      "parameters": [{ "$ref": "#/components/parameters/DiagramId" }],
+      "get": {
+        "operationId": "exportDiagramJson",
+        "summary": "Download portable diagram JSON",
+        "tags": ["Import and export"],
+        "responses": {
+          "200": { "$ref": "#/components/responses/DiagramExportResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/diagrams/import": {
+      "post": {
+        "operationId": "importDiagramJson",
+        "summary": "Import portable diagram JSON",
+        "tags": ["Import and export", "Diagrams"],
+        "security": [
+          { "sessionCookie": [], "csrfHeader": [] },
+          { "localSessionCookie": [], "csrfHeader": [] }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/Diagram" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/DiagramCreatedResponse" },
+          "413": { "$ref": "#/components/responses/ErrorResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-ngs_session",
+        "description": "Signed HttpOnly SameSite=Strict production HTTPS session cookie."
+      },
+      "localSessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "ngs_session",
+        "description": "Signed HttpOnly SameSite=Strict cookie used only on loopback HTTP development and tests."
+      },
+      "csrfHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-CSRF-Token",
+        "description": "Token returned by GET /api/session and bound to the signed session."
+      }
+    },
+    "parameters": {
+      "DiagramId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+      },
+      "VersionId": {
+        "name": "versionId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+      },
+      "ShareSlug": {
+        "name": "slug",
+        "in": "path",
+        "required": true,
+        "description": "Bearer capability from an active share URL.",
+        "schema": { "type": "string", "pattern": "^[A-Za-z0-9-]{1,140}$" }
+      },
+      "TemplateKey": {
+        "name": "key",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "pattern": "^[A-Za-z0-9-]+$" }
+      },
+      "IfMatch": {
+        "name": "If-Match",
+        "in": "header",
+        "required": true,
+        "description": "Strong ETag from the latest diagram response, for example \"diagram-42-r7\".",
+        "schema": { "type": "string", "pattern": "^\\\"diagram-[1-9][0-9]*-r[1-9][0-9]*\\\"$" }
+      },
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 100 }
+      },
+      "Offset": {
+        "name": "offset",
+        "in": "query",
+        "schema": { "type": "integer", "minimum": 0, "maximum": 100000, "default": 0 }
+      }
+    },
+    "requestBodies": {
+      "OptionalDiagram": {
+        "required": false,
+        "description": "Omit the body to create the default starter diagram.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DiagramInput" } } }
+      },
+      "Diagram": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DiagramInput" } } }
+      },
+      "Sharing": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SharingRequest" } } }
+      },
+      "VersionNote": {
+        "required": false,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VersionNote" } } }
+      }
+    },
+    "headers": {
+      "ETag": {
+        "description": "Strong diagram revision validator required by conditional mutations.",
+        "schema": { "type": "string", "example": "\"diagram-42-r7\"" }
+      },
+      "RequestId": {
+        "description": "Normalised or generated request correlation identifier.",
+        "schema": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$" }
+      }
+    },
+    "responses": {
+      "SessionResponse": {
+        "description": "Current session and CSRF token.",
+        "headers": { "X-Request-ID": { "$ref": "#/components/headers/RequestId" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Session" } } }
+      },
+      "DiagramResponse": {
+        "description": "Diagram with its current revision.",
+        "headers": {
+          "ETag": { "$ref": "#/components/headers/ETag" },
+          "X-Request-ID": { "$ref": "#/components/headers/RequestId" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Diagram" } } }
+      },
+      "DiagramCreatedResponse": {
+        "description": "Created diagram.",
+        "headers": {
+          "ETag": { "$ref": "#/components/headers/ETag" },
+          "X-Request-ID": { "$ref": "#/components/headers/RequestId" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Diagram" } } }
+      },
+      "DiagramSnapshotResponse": {
+        "description": "Immutable diagram snapshot content.",
+        "headers": { "X-Request-ID": { "$ref": "#/components/headers/RequestId" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DiagramSnapshot" } } }
+      },
+      "DiagramListResponse": {
+        "description": "Paginated diagram list.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DiagramList" } } }
+      },
+      "TemplateListResponse": {
+        "description": "Curated template list.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TemplateList" } } }
+      },
+      "VersionListResponse": {
+        "description": "Retained version metadata.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VersionList" } } }
+      },
+      "VersionResponse": {
+        "description": "Created version metadata.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Version" } } }
+      },
+      "DiagramExportResponse": {
+        "description": "Portable diagram document.",
+        "headers": {
+          "Content-Disposition": { "schema": { "type": "string", "example": "attachment; filename=\"diagram-42.json\"" } },
+          "X-Request-ID": { "$ref": "#/components/headers/RequestId" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DiagramSnapshot" } } }
+      },
+      "OkResponse": {
+        "description": "Operation completed.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Ok" } } }
+      },
+      "RevisionConflictResponse": {
+        "description": "The supplied ETag is stale.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RevisionConflict" } } }
+      },
+      "PreconditionRequiredResponse": {
+        "description": "If-Match is required.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "ErrorResponse": {
+        "description": "Validation, authorization, throttling, media-type or storage error. Exact status depends on the failure.",
+        "headers": { "X-Request-ID": { "$ref": "#/components/headers/RequestId" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    },
+    "schemas": {
+      "Session": {
+        "type": "object",
+        "required": ["username", "public_access", "csrf_token"],
+        "properties": {
+          "username": { "type": "string" },
+          "public_access": { "type": "boolean" },
+          "csrf_token": { "type": "string", "pattern": "^[0-9a-f]{64}$", "readOnly": true }
+        }
+      },
+      "Node": {
+        "type": "object",
+        "required": ["key", "type", "title", "x", "y", "width", "height", "color", "metadata"],
+        "properties": {
+          "key": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+          "type": { "type": "string", "enum": ["process", "decision", "database", "service", "api", "note", "external", "queue", "cache", "container", "cloud"] },
+          "title": { "type": "string", "maxLength": 160 },
+          "x": { "type": "number", "minimum": -100000, "maximum": 100000 },
+          "y": { "type": "number", "minimum": -100000, "maximum": 100000 },
+          "width": { "type": "number", "minimum": 72, "maximum": 600 },
+          "height": { "type": "number", "minimum": 48, "maximum": 400 },
+          "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+          "metadata": { "type": "object" }
+        }
+      },
+      "Edge": {
+        "type": "object",
+        "required": ["key", "source", "target", "label", "directed", "color", "metadata"],
+        "properties": {
+          "key": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+          "source": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+          "target": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+          "label": { "type": "string", "maxLength": 160 },
+          "directed": { "type": "boolean" },
+          "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+          "metadata": { "type": "object" }
+        }
+      },
+      "DiagramInput": {
+        "type": "object",
+        "required": ["title", "nodes", "edges"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "description": { "type": "string", "maxLength": 1000, "default": "" },
+          "note": { "type": "string", "maxLength": 240 },
+          "nodes": { "type": "array", "items": { "$ref": "#/components/schemas/Node" } },
+          "edges": { "type": "array", "items": { "$ref": "#/components/schemas/Edge" } }
+        }
+      },
+      "DiagramSnapshot": {
+        "allOf": [
+          { "$ref": "#/components/schemas/DiagramInput" },
+          {
+            "type": "object",
+            "required": ["id", "slug", "created_at", "updated_at", "revision", "sharing_enabled", "share_expires_at", "share_expired"],
+            "properties": {
+              "id": { "type": "integer", "format": "int64", "minimum": 1 },
+              "slug": { "type": "string" },
+              "created_at": { "type": "string", "format": "date-time" },
+              "updated_at": { "type": "string", "format": "date-time" },
+              "revision": { "type": "integer", "format": "int64", "minimum": 1 },
+              "sharing_enabled": { "type": "boolean" },
+              "share_expires_at": { "type": ["string", "null"], "format": "date-time" },
+              "share_expired": { "type": "boolean" }
+            }
+          }
+        ]
+      },
+      "Diagram": {
+        "allOf": [
+          { "$ref": "#/components/schemas/DiagramSnapshot" },
+          {
+            "type": "object",
+            "required": ["can_edit", "share_url"],
+            "properties": {
+              "can_edit": { "type": "boolean", "readOnly": true },
+              "share_url": { "type": "string", "readOnly": true }
+            }
+          }
+        ]
+      },
+      "DiagramSummary": {
+        "type": "object",
+        "required": ["id", "title", "slug", "sharing_enabled", "share_expires_at", "share_expired", "description", "created_at", "updated_at", "revision", "node_count", "edge_count"],
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "minimum": 1 },
+          "title": { "type": "string", "maxLength": 120 },
+          "slug": { "type": "string" },
+          "sharing_enabled": { "type": "boolean" },
+          "share_expires_at": { "type": ["string", "null"], "format": "date-time" },
+          "share_expired": { "type": "boolean" },
+          "description": { "type": "string", "maxLength": 1000 },
+          "revision": { "type": "integer", "format": "int64", "minimum": 1 },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "node_count": { "type": "integer", "minimum": 0 },
+          "edge_count": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "DiagramList": {
+        "type": "object",
+        "required": ["diagrams", "total", "limit", "offset", "has_more"],
+        "properties": {
+          "diagrams": { "type": "array", "items": { "$ref": "#/components/schemas/DiagramSummary" } },
+          "total": { "type": "integer", "minimum": 0 },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 200 },
+          "offset": { "type": "integer", "minimum": 0 },
+          "has_more": { "type": "boolean" }
+        }
+      },
+      "Template": {
+        "type": "object",
+        "required": ["key", "title", "description", "category", "node_count", "edge_count"],
+        "properties": {
+          "key": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "category": { "type": "string" },
+          "node_count": { "type": "integer", "minimum": 0 },
+          "edge_count": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "TemplateList": {
+        "type": "object",
+        "required": ["templates"],
+        "properties": { "templates": { "type": "array", "items": { "$ref": "#/components/schemas/Template" } } }
+      },
+      "Version": {
+        "type": "object",
+        "required": ["id", "diagram_id", "version_number", "created_at", "note"],
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "minimum": 1 },
+          "diagram_id": { "type": "integer", "format": "int64", "minimum": 1 },
+          "version_number": { "type": "integer", "minimum": 1 },
+          "created_at": { "type": "string", "format": "date-time" },
+          "note": { "type": "string" }
+        }
+      },
+      "VersionList": {
+        "type": "object",
+        "required": ["versions"],
+        "properties": { "versions": { "type": "array", "items": { "$ref": "#/components/schemas/Version" } } }
+      },
+      "VersionNote": {
+        "type": "object",
+        "properties": { "note": { "type": "string", "maxLength": 240, "default": "manual snapshot" } }
+      },
+      "SharingRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["action"],
+        "properties": {
+          "action": { "type": "string", "enum": ["enable", "disable", "rotate", "set_expiry"] },
+          "expires_in": { "type": ["integer", "null"], "enum": [300, 3600, 86400, 604800, 2592000, null] }
+        }
+      },
+      "Ok": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": { "ok": { "const": true } }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": { "error": { "type": "string" } }
+      },
+      "RevisionConflict": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Error" },
+          {
+            "type": "object",
+            "required": ["current_revision"],
+            "properties": { "current_revision": { "type": "integer", "format": "int64", "minimum": 1 } }
+          }
+        ]
+      }
+    }
+  }
+}

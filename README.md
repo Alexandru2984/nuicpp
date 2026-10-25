@@ -15,6 +15,7 @@ admin account for maintenance.
 - **Supply-chain inventory:** [`docs/SUPPLY_CHAIN.md`](docs/SUPPLY_CHAIN.md)
 - **Delivery roadmap:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - **Deploy runbook:** [`docs/DEPLOY.md`](docs/DEPLOY.md)
+- **OpenAPI 3.1 contract:** [`public/openapi.json`](public/openapi.json)
 
 ## Features
 
@@ -339,6 +340,7 @@ sites, so never restart nginx.
 | `GET` | `/` |
 | `GET` | `/docs` |
 | `GET` | `/robots.txt`, `/sitemap.xml` |
+| `GET` | `/openapi.json` |
 | `GET` | `/d/{slug}` |
 | `GET` | `/api/session` |
 | `GET` | `/api/diagrams` |
@@ -362,6 +364,11 @@ sites, so never restart nginx.
 
 Mutating endpoints require `X-CSRF-Token` from `/api/session`. Template keys:
 `cloud-architecture`, `incident-response`, `data-pipeline`.
+
+The checked-in OpenAPI 3.1 contract documents all 18 API operations, schemas,
+cookie/CSRF security and conditional revision headers. A dependency-free CTest
+gate extracts routes and node types from the C++ sources and fails on drift,
+duplicate operation IDs, unresolved references or incomplete mutation security.
 
 `PUT /api/diagrams/{id}`, `DELETE /api/diagrams/{id}`, sharing changes and
 version restore also require the exact `ETag` from the latest diagram response in `If-Match`. Missing

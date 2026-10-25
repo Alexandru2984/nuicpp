@@ -78,6 +78,7 @@ add_test(NAME nuigraph-prometheus-rules COMMAND bash ${CMAKE_SOURCE_DIR}/tests/c
 add_test(NAME nuigraph-incident-response COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_incident_response.sh)
 add_test(NAME nuigraph-sbom COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_sbom.sh)
 add_test(NAME nuigraph-secret-scan COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_secret_scanner.sh)
+add_test(NAME nuigraph-openapi COMMAND node ${CMAKE_SOURCE_DIR}/tests/check_openapi.cjs)
 add_test(NAME nuigraph-security-smoke COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_security_smoke.sh)
 add_test(NAME nuigraph-api-integration COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_api_integration.sh)
 add_test(NAME nuigraph-rate-limits COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_rate_limits.sh)
@@ -92,6 +93,7 @@ set_tests_properties(
     nuigraph-incident-response
     nuigraph-sbom
     nuigraph-secret-scan
+    nuigraph-openapi
     PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(nuigraph-prometheus-rules PROPERTIES SKIP_RETURN_CODE 77)

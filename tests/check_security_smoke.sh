@@ -601,7 +601,7 @@ if ! grep -q 'NuiGraphRulers' <<<"$rulers_script"; then
 fi
 
 robots="$(curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/robots.txt")"
-for rule in 'Disallow: /api/' 'Disallow: /d/' 'Disallow: /login' 'Disallow: /metrics' 'Sitemap: http://127.0.0.1:'; do
+for rule in 'Disallow: /api/' 'Disallow: /d/' 'Disallow: /login' 'Disallow: /metrics' 'Disallow: /openapi.json' 'Sitemap: http://127.0.0.1:'; do
   if ! grep -q "$rule" <<<"$robots"; then
     echo "expected robots.txt rule: $rule" >&2
     exit 1
@@ -620,6 +620,28 @@ if not any(location and location.endswith("/") for location in locations):
 if not any(location and location.endswith("/docs") for location in locations):
     raise SystemExit("sitemap is missing the documentation URL")
 PY
+
+openapi_headers="$(curl --noproxy '*' -sS -D - -o /dev/null "http://127.0.0.1:${PORT}/openapi.json")"
+for expected in \
+  'content-type: application/json' \
+  'x-robots-tag: noindex, nofollow, nosnippet' \
+  'cache-control: public, no-cache, must-revalidate' \
+  'x-content-type-options: nosniff'
+do
+  if ! grep -Fqi "$expected" <<<"$openapi_headers"; then
+    echo "expected $expected on /openapi.json" >&2
+    exit 1
+  fi
+done
+curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/openapi.json" | node -e '
+  let body = "";
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (chunk) => { body += chunk; });
+  process.stdin.on("end", () => {
+    const spec = JSON.parse(body);
+    if (spec.openapi !== "3.1.0" || !spec.paths["/api/diagrams"]) process.exit(1);
+  });
+'
 
 for private_path in /login /d/not-a-real-share; do
   private_headers="$(curl --noproxy '*' -sS -D - -o /dev/null "http://127.0.0.1:${PORT}${private_path}")"

@@ -255,6 +255,7 @@ std::string renderDocsPage(const std::string& baseUrl, const std::string& assetV
   "edges": [{"key":"edge_1","source":"node_1","target":"node_2","label":"calls","directed":true,"color":"#94a3b8","metadata":{}}]
 }</pre>
     <h2>API</h2>
+    <p><a href="/openapi.json">OpenAPI 3.1 contract (JSON)</a> documents request schemas, session/CSRF requirements, optimistic revision headers and response models.</p>
     <pre>GET /health
 GET /live
 GET /ready

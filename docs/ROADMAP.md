@@ -154,6 +154,10 @@ rollback notes where applicable.
 - A4 landscape print/PDF output fits the graph onto one clean page with safe
   title/description text, hides editor-only state and restores the exact tool,
   selection, focus and viewport through the browser print lifecycle.
+- A served OpenAPI 3.1 contract covers all 18 session, diagram, template,
+  sharing, version and import/export operations with cookie/CSRF and optimistic
+  revision semantics; CTest extracts C++ routes and validator enums to fail on
+  contract drift, unresolved references or incomplete mutation security.
 - Dependency-free, fail-closed working-tree secret scanning in local CTest and
   CI, with provider/generic credential detection, explicit placeholder handling
   and regression tests proving that findings are redacted from logs.
@@ -239,8 +243,7 @@ High risk remain open.
 - Optimistic document revisions first, then WebSocket live collaboration with
   presence, cursors, selections and conflict-safe CRDT/operation history.
 - Comments, mentions, review/approval states and an activity feed.
-- OpenAPI specification, scoped API tokens, idempotency keys, webhooks and an
-  integration playground.
+- Scoped API tokens, idempotency keys, webhooks and an integration playground.
 - Background job queue for heavy imports/exports, thumbnails and cleanup; object
   storage for attachments and generated artifacts.
 - Admin console for usage, storage, abuse investigation, share revocation,
