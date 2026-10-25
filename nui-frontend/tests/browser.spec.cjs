@@ -476,6 +476,41 @@ test.describe("desktop security and offline lifecycle", () => {
       expect(embedSvg.text).not.toMatch(/id="(?:grid-bg|overlay)"|<script\b|<foreignObject\b/i);
       await expect(page.locator("#canvas")).toBeFocused();
 
+      const viewportBeforePresentation = await page.locator("#viewport").getAttribute("transform");
+      const serviceXBeforePresentation = await page.locator('#nodes > g[data-key="node_service"] .node-shape').getAttribute("x");
+      const nodeCountBeforePresentation = await page.locator("#nodes > g").count();
+      await page.keyboard.press("Shift+p");
+      const presentation = page.getByRole("region", { name: "Presentation mode" });
+      await expect(page.locator("body")).toHaveClass(/presentation-mode/);
+      await expect(presentation).toBeVisible();
+      await expect(presentation.getByRole("button", { name: "Exit" })).toBeFocused();
+      await expect(page.locator(".topbar")).toBeHidden();
+      await expect(page.locator(".project-panel")).toBeHidden();
+      await expect(page.locator(".toolbox")).toBeHidden();
+      await expect(page.locator(".properties")).toBeHidden();
+      const presentationGeometry = await page.evaluate(() => ({
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        canvas: document.querySelector("#canvas").getBoundingClientRect().toJSON()
+      }));
+      expect(presentationGeometry.canvas.width).toBeGreaterThanOrEqual(presentationGeometry.viewportWidth - 1);
+      expect(presentationGeometry.canvas.height).toBeGreaterThanOrEqual(presentationGeometry.viewportHeight - 1);
+      await page.keyboard.press("ArrowRight");
+      await page.keyboard.press("Delete");
+      await expect(page.locator("#nodes > g")).toHaveCount(nodeCountBeforePresentation);
+      await expect(page.locator('#nodes > g[data-key="node_service"] .node-shape')).toHaveAttribute("x", serviceXBeforePresentation);
+      await presentation.getByRole("button", { name: "Fit" }).click();
+      await presentation.getByRole("button", { name: "100%" }).click();
+      await expect(page.locator("#zoom-label")).toHaveText("100%");
+      await expectNoHighImpactAccessibilityViolations(page, testInfo, "presentation-mode");
+      await page.keyboard.press("Escape");
+      await expect(page.locator("body")).not.toHaveClass(/presentation-mode/);
+      await expect(presentation).toBeHidden();
+      await expect(page.locator(".topbar")).toBeVisible();
+      await expect(page.locator("#viewport")).toHaveAttribute("transform", viewportBeforePresentation);
+      await expect(page.locator('#nodes > g[data-key="node_service"]')).toHaveClass(/selected/);
+      await expect(page.locator("#canvas")).toBeFocused();
+
       const lockedServiceGroup = page.locator('#nodes > g[data-key="node_service"]');
       const lockedServiceShape = lockedServiceGroup.locator(".node-shape");
       const lockedServiceX = await lockedServiceShape.getAttribute("x");
@@ -899,6 +934,7 @@ test.describe("phone layout", () => {
     await expect(customizer.getByLabel("Select sink nodes", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Duplicate selected nodes", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Cut selected nodes", { exact: true })).toBeVisible();
+    await expect(customizer.getByLabel("Enter presentation mode", { exact: true })).toBeVisible();
     await customizer.getByLabel("Add node", { exact: true }).uncheck();
     await customizer.getByLabel("Actual size (100%)", { exact: true }).check();
     await customizer.getByRole("button", { name: "Apply", exact: true }).click();
@@ -912,6 +948,31 @@ test.describe("phone layout", () => {
     await page.reload({ waitUntil: "networkidle" });
     await expect(page.getByRole("button", { name: "Actual size (100%)", exact: true })).toBeVisible();
     await expect(page.locator(".mobile-action-bar button")).toHaveCount(5);
+
+    await page.getByRole("button", { name: "Commands", exact: true }).click();
+    const samplePalette = page.getByRole("dialog", { name: "Command palette" });
+    await samplePalette.getByRole("combobox", { name: "Search commands" }).fill("create from cloud template");
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#nodes > g").first()).toBeVisible();
+    await page.getByRole("button", { name: "Commands", exact: true }).click();
+    const presentationPalette = page.getByRole("dialog", { name: "Command palette" });
+    await presentationPalette.getByRole("combobox", { name: "Search commands" }).fill("enter presentation mode");
+    await page.keyboard.press("Enter");
+    const phonePresentation = page.getByRole("region", { name: "Presentation mode" });
+    await expect(phonePresentation).toBeVisible();
+    await expect(page.locator(".mobile-action-bar")).toBeHidden();
+    const phonePresentationGeometry = await page.locator("#canvas").evaluate((element) => ({
+      width: element.getBoundingClientRect().width,
+      height: element.getBoundingClientRect().height,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight
+    }));
+    expect(phonePresentationGeometry.width).toBeGreaterThanOrEqual(phonePresentationGeometry.viewportWidth - 1);
+    expect(phonePresentationGeometry.height).toBeGreaterThanOrEqual(phonePresentationGeometry.viewportHeight - 1);
+    await expectNoHighImpactAccessibilityViolations(page, testInfo, "mobile-presentation-mode");
+    await phonePresentation.getByRole("button", { name: "Exit" }).click();
+    await expect(phonePresentation).toBeHidden();
+    await expect(page.locator(".mobile-action-bar")).toBeVisible();
 
     expect(await page.evaluate(() => globalThis.__nuigraphPolicyViolations)).toEqual([]);
   });

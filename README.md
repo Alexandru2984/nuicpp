@@ -94,6 +94,9 @@ admin account for maintenance.
   zoom indicator, `Shift+1`, the command palette or a pinned mobile action.
 - Frame Selection (`Shift+2`, command palette or mobile action) centres and
   scales a selected node set or both endpoints of a selected edge.
+- Presentation Mode (`Shift+P`, command palette or mobile action) expands the
+  canvas across the viewport with compact Fit/100%/Exit controls, blocks graph
+  edits while presenting, and restores the previous tool, selection and view.
 - Diagram search filter over the sidebar list.
 - Light and dark themes, remembered per browser.
 - System forced-colour/high-contrast support preserves node, edge, selection,

@@ -1010,6 +1010,83 @@ body.dirty .draft-status { color: var(--warn); }
   .app-title h1 { display: none; }
 }
 
+/* -------------------------------------------------------- presentation --- */
+
+.presentation-controls { display: none; }
+
+body.presentation-mode #app {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "canvas";
+}
+
+body.presentation-mode .topbar,
+body.presentation-mode .project-panel,
+body.presentation-mode .toolbox,
+body.presentation-mode .properties,
+body.presentation-mode .mobile-action-bar,
+body.presentation-mode .canvas-rulers,
+body.presentation-mode .minimap,
+body.presentation-mode .inline-label-editor,
+body.presentation-mode .sheet-scrim {
+  display: none !important;
+}
+
+body.presentation-mode .canvas-wrap { grid-area: canvas; }
+body.presentation-mode #canvas { cursor: grab; }
+body.presentation-mode #canvas:active { cursor: grabbing; }
+body.presentation-mode #nodes > g,
+body.presentation-mode #edges > g,
+body.presentation-mode #overlay { pointer-events: none; }
+
+body.presentation-mode .presentation-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  position: fixed;
+  top: max(14px, env(safe-area-inset-top));
+  left: 50%;
+  z-index: 60;
+  width: min(760px, calc(100vw - 28px));
+  min-width: 0;
+  padding: 8px 9px 8px 16px;
+  transform: translateX(-50%);
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+  box-shadow: var(--shadow-lift);
+  backdrop-filter: blur(16px);
+}
+
+.presentation-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.presentation-title,
+.presentation-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.presentation-title { color: var(--text-strong); font-size: 14px; }
+.presentation-description { color: var(--muted); font-size: 11px; }
+.presentation-actions { display: flex; gap: 6px; }
+.presentation-actions button { min-height: var(--tap); }
+.presentation-exit { border-color: var(--accent); }
+
+@media (max-width: 540px) {
+  body.presentation-mode .presentation-controls {
+    gap: 8px;
+    padding-left: 12px;
+  }
+  .presentation-description { display: none; }
+  .presentation-actions button { padding-inline: 9px; }
+}
+
 /* Respect a reduced-motion preference: keep the state changes, drop the
    movement. */
 @media (prefers-reduced-motion: reduce) {

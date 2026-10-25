@@ -148,6 +148,9 @@ rollback notes where applicable.
   cropped PNG/SVG selection export share a self-contained preparation path,
   strip editor-only UI and unsafe external references, add accessible vector
   metadata, sanitise filenames and reject rasters above 8192 px or 40 megapixels.
+- Responsive presentation mode replaces the editor chrome with a full-viewport
+  pan/zoom canvas and compact accessible controls, blocks accidental graph
+  edits, then restores the prior tool, selection and viewport on exit.
 - Dependency-free, fail-closed working-tree secret scanning in local CTest and
   CI, with provider/generic credential detection, explicit placeholder handling
   and regression tests proving that findings are redacted from logs.
@@ -252,8 +255,8 @@ High risk remain open.
   configurable rule sets and CI/SARIF report export.
 - Diagram-as-code round trips, Git sync and reviewable semantic diffs.
 - Template marketplace with signed/curated templates and organisation libraries.
-- Presentation mode, guided walkthroughs, comments-to-tasks and share analytics
-  that preserve visitor privacy.
+- Guided walkthroughs, comments-to-tasks and share analytics that preserve
+  visitor privacy.
 - Pluggable layout engines, large-graph virtualisation and server-side rendering
   for previews/social cards.
 - Optional AI assistance only behind explicit consent: describe-to-diagram,

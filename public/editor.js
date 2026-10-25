@@ -71,7 +71,13 @@
     marquee: null,
     resizing: null,
     guides: [],
-    filter: ""
+    filter: "",
+    presenting: false,
+    presentationPreviousTool: "select",
+    presentationPreviousFocus: null,
+    presentationPreviousSelection: null,
+    presentationPreviousEdgeSource: null,
+    presentationPreviousViewport: null
   };
 
   const el = (id) => document.getElementById(id);
@@ -83,6 +89,7 @@
   let horizontalRuler = null;
   let verticalRuler = null;
   let rulerResizeObserver = null;
+  let presentationControls = null;
   // A selected canvas object needs a real keyboard focus target before Enter
   // can be a safe, predictable editing shortcut.
   canvas.tabIndex = 0;
@@ -403,6 +410,7 @@
       { id: "rulers", label: "Toggle canvas rulers", shortLabel: "Rulers", category: "View", keywords: "coordinates measurement axes guides", mobile: true, active: () => state.rulers, run: toggleCanvasRulers },
       { id: "frame-selection", label: "Frame selection", shortLabel: "Frame", category: "View", keywords: "zoom center focus selected nodes edge", shortcut: "Shift + 2", mobile: true, enabled: () => selectedFrameNodes().length > 0, run: frameSelection },
       { id: "fit", label: "Zoom to fit", shortLabel: "Fit", category: "View", keywords: "frame center canvas", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: zoomToFit },
+      { id: "presentation", label: state.presenting ? "Exit presentation mode" : "Enter presentation mode", shortLabel: state.presenting ? "Exit" : "Present", category: "View", keywords: "focus fullscreen clean canvas slideshow", shortcut: "Shift + P", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), active: () => state.presenting, run: togglePresentationMode },
       { id: "tool-select", label: "Use select tool", shortLabel: "Select", category: "Tools", keywords: "pointer", mobile: true, run: () => triggerTool("select") },
       { id: "tool-pan", label: "Use pan tool", shortLabel: "Pan", category: "Tools", keywords: "move canvas hand", mobile: true, run: () => triggerTool("pan") },
       { id: "tool-node", label: "Add node", shortLabel: "Node", category: "Tools", keywords: "create shape", mobile: true, enabled: () => Boolean(state.current) && !state.readOnly, run: () => triggerTool("node") },
@@ -1355,6 +1363,7 @@
     ["F2 / Enter", "Edit selected node or edge label"],
     ["Shift + 1", "Reset canvas zoom to actual size (100%)"],
     ["Shift + 2", "Frame the current selection"],
+    ["Shift + P", "Enter or exit presentation mode"],
     ["Ctrl / Cmd + S", "Save diagram"],
     ["Ctrl / Cmd + Z", "Undo"],
     ["Ctrl / Cmd + Y", "Redo"],
@@ -1879,6 +1888,111 @@
     zoomAtViewportCenter(1);
   }
 
+  function ensurePresentationControls() {
+    if (presentationControls) return presentationControls;
+    const controls = document.createElement("section");
+    controls.className = "presentation-controls";
+    controls.setAttribute("role", "region");
+    controls.setAttribute("aria-label", "Presentation mode");
+    controls.hidden = true;
+
+    const copy = document.createElement("div");
+    copy.className = "presentation-copy";
+    const title = document.createElement("strong");
+    title.className = "presentation-title";
+    const description = document.createElement("span");
+    description.className = "presentation-description";
+    copy.append(title, description);
+
+    const actions = document.createElement("div");
+    actions.className = "presentation-actions";
+    const fit = document.createElement("button");
+    fit.type = "button";
+    fit.textContent = "Fit";
+    fit.title = "Fit diagram to presentation canvas";
+    fit.onclick = zoomToFit;
+    const actual = document.createElement("button");
+    actual.type = "button";
+    actual.textContent = "100%";
+    actual.title = "Show diagram at actual size";
+    actual.onclick = resetZoom;
+    const exit = document.createElement("button");
+    exit.type = "button";
+    exit.className = "presentation-exit";
+    exit.textContent = "Exit";
+    exit.title = "Exit presentation mode (Esc)";
+    exit.setAttribute("aria-keyshortcuts", "Escape");
+    exit.onclick = () => togglePresentationMode(false);
+    actions.append(fit, actual, exit);
+    controls.append(copy, actions);
+    controls.copyTitle = title;
+    controls.copyDescription = description;
+    controls.exitButton = exit;
+    document.body.appendChild(controls);
+    presentationControls = controls;
+    return controls;
+  }
+
+  function togglePresentationMode(force) {
+    const enter = typeof force === "boolean" ? force : !state.presenting;
+    if (enter === state.presenting || (enter && !state.current?.nodes?.length)) return;
+    const controls = ensurePresentationControls();
+    if (enter) {
+      state.presentationPreviousFocus = document.activeElement;
+      state.presentationPreviousTool = state.tool;
+      state.presentationPreviousSelection = state.selected
+        ? { ...state.selected, keys: state.selected.keys ? [...state.selected.keys] : undefined }
+        : null;
+      state.presentationPreviousEdgeSource = state.edgeSource;
+      state.presentationPreviousViewport = {
+        zoom: state.zoom,
+        pan: { ...state.pan }
+      };
+      state.presenting = true;
+      state.selected = null;
+      state.edgeSource = null;
+      state.dragging = null;
+      state.resizing = null;
+      state.marquee = null;
+      state.guides = [];
+      cancelLongPress();
+      sheetControls.closeAll(false);
+      document.querySelector(".inline-label-editor")?.remove();
+      document.body.classList.add("presentation-mode");
+      controls.copyTitle.textContent = state.current.title || "Untitled diagram";
+      controls.copyDescription.textContent = state.current.description || "Diagram presentation";
+      controls.hidden = false;
+      setTool("pan");
+      editorLiveStatus.textContent = "Presentation mode active. Press Escape to return to the editor.";
+      window.requestAnimationFrame(() => {
+        zoomToFit();
+        controls.exitButton.focus();
+      });
+    } else {
+      state.presenting = false;
+      document.body.classList.remove("presentation-mode");
+      controls.hidden = true;
+      state.selected = state.presentationPreviousSelection;
+      state.edgeSource = state.presentationPreviousEdgeSource;
+      if (state.presentationPreviousViewport) {
+        state.zoom = state.presentationPreviousViewport.zoom;
+        state.pan = { ...state.presentationPreviousViewport.pan };
+      }
+      state.presentationPreviousSelection = null;
+      state.presentationPreviousEdgeSource = null;
+      state.presentationPreviousViewport = null;
+      setTool(state.presentationPreviousTool || "select");
+      editorLiveStatus.textContent = "Presentation mode closed.";
+      const returnFocus = state.presentationPreviousFocus;
+      state.presentationPreviousFocus = null;
+      window.requestAnimationFrame(() => {
+        render();
+        if (returnFocus?.isConnected && returnFocus.offsetParent !== null) returnFocus.focus();
+        else canvas.focus({ preventScroll: true });
+      });
+    }
+  }
+
   function frameNodes(nodes, maximumZoom) {
     if (!nodes.length) return;
     const rect = canvas.getBoundingClientRect();
@@ -1889,11 +2003,11 @@
     const width = Math.max(1, maxX - minX);
     const height = Math.max(1, maxY - minY);
     const mobile = window.matchMedia("(max-width: 760px)").matches;
-    const rulerInset = state.rulers ? RULER_SIZE : 0;
-    const horizontalPadding = mobile ? 28 : 64;
+    const rulerInset = state.rulers && !state.presenting ? RULER_SIZE : 0;
+    const horizontalPadding = state.presenting ? 32 : mobile ? 28 : 64;
     const leftPadding = horizontalPadding + rulerInset;
-    const topPadding = (mobile ? 28 : 64) + rulerInset;
-    const bottomPadding = mobile ? 84 : 64;
+    const topPadding = (state.presenting ? 92 : mobile ? 28 : 64) + rulerInset;
+    const bottomPadding = state.presenting ? 32 : mobile ? 84 : 64;
     const availableWidth = Math.max(1, rect.width - leftPadding - horizontalPadding);
     const availableHeight = Math.max(1, rect.height - topPadding - bottomPadding);
     state.zoom = Math.min(maximumZoom, clampZoom(Math.min(availableWidth / width, availableHeight / height)));
@@ -2592,7 +2706,7 @@
   }
 
   function beginResize(evt, node, sx, sy) {
-    if (state.readOnly || nodeGeometryLocked(node)) return;
+    if (state.presenting || state.readOnly || nodeGeometryLocked(node)) return;
     // Without this the canvas would also see the press and start a rubber-band
     // underneath the resize.
     evt.stopPropagation();
@@ -3151,6 +3265,7 @@
         "marker-end": edge.directed ? "url(#arrow)" : ""
       }, group);
       group.addEventListener("pointerdown", (evt) => {
+        if (state.presenting) return;
         evt.stopPropagation();
         canvas.focus({ preventScroll: true });
         if (evt.pointerType === "mouse" && evt.detail === 2 && !state.readOnly) {
@@ -3164,7 +3279,7 @@
         render();
       });
       group.addEventListener("dblclick", (evt) => {
-        if (state.readOnly) return;
+        if (state.presenting || state.readOnly) return;
         evt.preventDefault();
         evt.stopPropagation();
         state.selected = { type: "edge", key: edge.key };
@@ -3243,6 +3358,7 @@
       const group = svg("g", { "data-key": node.key }, nodesLayer);
       renderNodeShape(group, node);
       group.addEventListener("pointerdown", (evt) => {
+        if (state.presenting) return;
         evt.stopPropagation();
         canvas.focus({ preventScroll: true });
         if (evt.pointerType === "mouse" && evt.detail === 2 && state.tool === "select" && !state.readOnly) {
@@ -3326,7 +3442,7 @@
         render();
       });
       group.addEventListener("dblclick", (evt) => {
-        if (state.tool !== "select" || state.readOnly) return;
+        if (state.presenting || state.tool !== "select" || state.readOnly) return;
         evt.preventDefault();
         evt.stopPropagation();
         state.selected = { type: "node", key: node.key };
@@ -4327,6 +4443,13 @@
     }, { passive: false });
 
     window.addEventListener("keydown", (evt) => {
+      if (state.presenting) {
+        if (evt.key === "Escape" || (evt.shiftKey && evt.key.toLowerCase() === "p")) {
+          evt.preventDefault();
+          togglePresentationMode(false);
+        }
+        return;
+      }
       if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "k") {
         evt.preventDefault();
         if (document.querySelector(".command-palette-overlay")) closeDialog(".command-palette-overlay");
@@ -4339,6 +4462,12 @@
         return;
       }
       if (evt.target.matches("input, textarea, select") || evt.target.isContentEditable) return;
+      if (evt.shiftKey && evt.key.toLowerCase() === "p" && !evt.ctrlKey && !evt.metaKey && !evt.altKey &&
+          !document.querySelector('[role="dialog"]') && state.current?.nodes?.length) {
+        evt.preventDefault();
+        togglePresentationMode(true);
+        return;
+      }
       if (evt.shiftKey && evt.code === "Digit1" && !evt.ctrlKey && !evt.metaKey && !evt.altKey &&
           !document.querySelector('[role="dialog"]')) {
         evt.preventDefault();
