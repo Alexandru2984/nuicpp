@@ -85,7 +85,11 @@ Nui::ElementRenderer MainPage::render() {
                     option{value = "service"}("Service"),
                     option{value = "api"}("API"),
                     option{value = "note"}("Note"),
-                    option{value = "external"}("External")
+                    option{value = "external"}("External"),
+                    option{value = "queue"}("Queue"),
+                    option{value = "cache"}("Cache"),
+                    option{value = "container"}("Container"),
+                    option{value = "cloud"}("Cloud")
                 ),
                 select{id = "grid-size", AttributeFactory("aria-label") = "Grid size"}(
                     option{value = "8"}("Grid 8"),

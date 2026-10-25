@@ -14,7 +14,7 @@ Diagram makeCloudArchitecture() {
         {"gateway", "api", "API Gateway", 300, 130, 180, 80, "#60a5fa", {}},
         {"auth", "service", "Auth Service", 570, 40, 180, 80, "#22c55e", {}},
         {"orders", "service", "Orders Service", 570, 170, 180, 80, "#22c55e", {}},
-        {"queue", "process", "Event Queue", 830, 170, 170, 80, "#38bdf8", {}},
+        {"queue", "queue", "Event Queue", 830, 170, 170, 80, "#f97316", {}},
         {"db", "database", "PostgreSQL", 830, 40, 170, 90, "#a78bfa", {}},
         {"decision", "decision", "Fraud Check", 1090, 150, 160, 110, "#f59e0b", {}},
         {"note", "note", "Versioned diagrams stored in PostgreSQL", 1030, 20, 260, 90, "#fde047", {}}

@@ -8,7 +8,10 @@
   }
 
   const svgNS = "http://www.w3.org/2000/svg";
-  const nodeTypes = ["process", "decision", "database", "service", "api", "note", "external"];
+  const nodeTypes = [
+    "process", "decision", "database", "service", "api", "note", "external",
+    "queue", "cache", "container", "cloud"
+  ];
   const GRID_SIZES = [8, 16, 32, 64];
   const GRID_SIZE_STORAGE = "nuigraph:grid-size:v1";
   const RULER_STORAGE = "nuigraph:canvas-rulers:v1";
@@ -20,7 +23,16 @@
     service: "#22c55e",
     api: "#60a5fa",
     note: "#fde047",
-    external: "#fb7185"
+    external: "#fb7185",
+    queue: "#f97316",
+    cache: "#14b8a6",
+    container: "#818cf8",
+    cloud: "#7dd3fc"
+  };
+  const DEFAULT_NODE_SIZES = {
+    decision: { width: 150, height: 96 },
+    container: { width: 190, height: 90 },
+    cloud: { width: 190, height: 100 }
   };
 
   const state = {
@@ -2637,7 +2649,7 @@
         { key: "gateway", type: "api", title: "API Gateway", x: 300, y: 130, width: 180, height: 80, color: "#60a5fa", metadata: {} },
         { key: "auth", type: "service", title: "Auth Service", x: 570, y: 40, width: 180, height: 80, color: "#22c55e", metadata: {} },
         { key: "orders", type: "service", title: "Orders Service", x: 570, y: 170, width: 180, height: 80, color: "#22c55e", metadata: {} },
-        { key: "queue", type: "process", title: "Event Queue", x: 830, y: 170, width: 170, height: 80, color: "#38bdf8", metadata: {} },
+        { key: "queue", type: "queue", title: "Event Queue", x: 830, y: 170, width: 170, height: 80, color: "#f97316", metadata: {} },
         { key: "db", type: "database", title: "PostgreSQL", x: 830, y: 40, width: 170, height: 90, color: "#a78bfa", metadata: {} },
         { key: "decision", type: "decision", title: "Fraud Check", x: 1090, y: 150, width: 160, height: 110, color: "#f59e0b", metadata: {} },
         { key: "note", type: "note", title: "Versioned diagrams stored in PostgreSQL", x: 1030, y: 20, width: 260, height: 90, color: "#fde047", metadata: {} }
@@ -2713,7 +2725,11 @@
     external: (t) => `[/${t}/]`,
     note: (t) => `>${t}]`,
     api: (t) => `([${t}])`,
-    service: (t) => `[[${t}]]`
+    service: (t) => `[[${t}]]`,
+    queue: (t) => `([${t}])`,
+    cache: (t) => `[(${t})]`,
+    container: (t) => `[[${t}]]`,
+    cloud: (t) => `([${t}])`
   };
 
   function mermaidLabel(text) {
@@ -3043,20 +3059,40 @@
     const accessibleTitle = svg("title", {}, group);
     accessibleTitle.textContent = `${node.title || "Untitled node"}${locked ? ", geometry locked" : ""}`;
     const fill = node.color || colors[node.type] || colors.process;
+    group.setAttribute("data-node-type", node.type);
     if (node.type === "decision") {
       const points = `${node.x + node.width / 2},${node.y} ${node.x + node.width},${node.y + node.height / 2} ${node.x + node.width / 2},${node.y + node.height} ${node.x},${node.y + node.height / 2}`;
-      svg("polygon", { points, fill, stroke: "rgba(0,0,0,.32)", "stroke-width": 1.5, class: "node-shape node-outline" }, group);
+      svg("polygon", { points, fill, stroke: "rgba(0,0,0,.32)", "stroke-width": 1.5, class: "node-shape node-outline node-shape-decision" }, group);
     } else if (node.type === "database") {
-      svg("rect", { x: node.x, y: node.y + 10, width: node.width, height: node.height - 20, rx: 8, fill, stroke: "rgba(0,0,0,.32)", "stroke-width": 1.5, class: "node-shape node-outline" }, group);
+      svg("rect", { x: node.x, y: node.y + 10, width: node.width, height: node.height - 20, rx: 8, fill, stroke: "rgba(0,0,0,.32)", "stroke-width": 1.5, class: "node-shape node-outline node-shape-database" }, group);
       svg("ellipse", { cx: node.x + node.width / 2, cy: node.y + 12, rx: node.width / 2, ry: 13, fill, stroke: "rgba(0,0,0,.32)", "stroke-width": 1.5 }, group);
       svg("path", { d: `M ${node.x} ${node.y + node.height - 12} Q ${node.x + node.width / 2} ${node.y + node.height + 12} ${node.x + node.width} ${node.y + node.height - 12}`, fill: "none", stroke: "rgba(0,0,0,.26)", "stroke-width": 1.5 }, group);
     } else if (node.type === "note") {
       const x = node.x, y = node.y, w = node.width, h = node.height;
-      svg("path", { d: `M ${x} ${y} H ${x + w - 20} L ${x + w} ${y + 20} V ${y + h} H ${x} Z`, fill, stroke: "rgba(0,0,0,.32)", "stroke-width": 1.5, class: "node-shape node-outline" }, group);
+      svg("path", { d: `M ${x} ${y} H ${x + w - 20} L ${x + w} ${y + 20} V ${y + h} H ${x} Z`, fill, stroke: "rgba(0,0,0,.32)", "stroke-width": 1.5, class: "node-shape node-outline node-shape-note" }, group);
       svg("path", { d: `M ${x + w - 20} ${y} V ${y + 20} H ${x + w}`, fill: "rgba(255,255,255,.28)" }, group);
+    } else if (node.type === "queue") {
+      const x = node.x, y = node.y, w = node.width, h = node.height;
+      svg("rect", { x, y, width: w, height: h, rx: h / 2, fill, stroke: "rgba(0,0,0,.32)", "stroke-width": 1.5, class: "node-shape node-outline node-shape-queue" }, group);
+      svg("path", { d: `M ${x + 22} ${y + 9} V ${y + h - 9} M ${x + w - 22} ${y + 9} V ${y + h - 9}`, class: "node-shape-detail", fill: "none", stroke: "rgba(0,0,0,.25)", "stroke-width": 1.5 }, group);
+    } else if (node.type === "cache") {
+      const x = node.x, y = node.y, w = node.width, h = node.height;
+      svg("path", { d: `M ${x + 12} ${y} H ${x + w - 12} L ${x + w} ${y + 12} V ${y + h - 12} L ${x + w - 12} ${y + h} H ${x + 12} L ${x} ${y + h - 12} V ${y + 12} Z`, fill, stroke: "rgba(0,0,0,.32)", "stroke-width": 1.5, class: "node-shape node-outline node-shape-cache" }, group);
+      svg("path", { d: `M ${x + 12} ${y + 18} H ${x + 32} M ${x + 12} ${y + h - 18} H ${x + 32} M ${x + w - 32} ${y + 18} H ${x + w - 12} M ${x + w - 32} ${y + h - 18} H ${x + w - 12}`, class: "node-shape-detail", fill: "none", stroke: "rgba(0,0,0,.25)", "stroke-width": 2 }, group);
+    } else if (node.type === "container") {
+      const x = node.x, y = node.y, w = node.width, h = node.height;
+      svg("rect", { x, y, width: w, height: h, rx: 7, fill, stroke: "rgba(0,0,0,.32)", "stroke-width": 1.5, class: "node-shape node-outline node-shape-container" }, group);
+      svg("path", { d: `M ${x} ${y + 22} H ${x + w}`, class: "node-shape-detail", fill: "none", stroke: "rgba(0,0,0,.25)", "stroke-width": 1.5 }, group);
+      for (let index = 0; index < 3; index += 1) {
+        svg("circle", { cx: x + w - 12 - index * 10, cy: y + 11, r: 2.5, class: "node-shape-detail", fill: "rgba(0,0,0,.28)" }, group);
+      }
+    } else if (node.type === "cloud") {
+      const x = node.x, y = node.y, w = node.width, h = node.height;
+      const d = `M ${x + w * 0.2} ${y + h * 0.8} C ${x + w * 0.08} ${y + h * 0.8}, ${x + w * 0.03} ${y + h * 0.68}, ${x + w * 0.08} ${y + h * 0.55} C ${x + w * 0.12} ${y + h * 0.43}, ${x + w * 0.22} ${y + h * 0.38}, ${x + w * 0.34} ${y + h * 0.4} C ${x + w * 0.41} ${y + h * 0.16}, ${x + w * 0.7} ${y + h * 0.12}, ${x + w * 0.78} ${y + h * 0.38} C ${x + w * 0.94} ${y + h * 0.36}, ${x + w} ${y + h * 0.5}, ${x + w * 0.96} ${y + h * 0.63} C ${x + w * 0.93} ${y + h * 0.75}, ${x + w * 0.84} ${y + h * 0.8}, ${x + w * 0.72} ${y + h * 0.8} Z`;
+      svg("path", { d, fill, stroke: "rgba(0,0,0,.32)", "stroke-width": 1.5, class: "node-shape node-outline node-shape-cloud" }, group);
     } else {
       const radius = node.type === "process" ? 14 : 7;
-      svg("rect", { x: node.x, y: node.y, width: node.width, height: node.height, rx: radius, fill, stroke: "rgba(0,0,0,.32)", "stroke-width": 1.5, class: "node-shape node-outline" }, group);
+      svg("rect", { x: node.x, y: node.y, width: node.width, height: node.height, rx: radius, fill, stroke: "rgba(0,0,0,.32)", "stroke-width": 1.5, class: `node-shape node-outline node-shape-${node.type}` }, group);
     }
     svg("text", { x: node.x + node.width / 2, y: node.y + node.height / 2 - 6, class: "node-title" }, group).textContent = shortText(node.title);
     svg("text", { x: node.x + node.width / 2, y: node.y + node.height / 2 + 16, class: "node-subtitle" }, group).textContent = node.type;
@@ -3684,7 +3720,7 @@
     if (!state.current || state.readOnly) return;
     pushHistory();
     const type = el("node-type").value;
-    const size = type === "decision" ? { width: 150, height: 96 } : { width: 170, height: 82 };
+    const size = DEFAULT_NODE_SIZES[type] || { width: 170, height: 82 };
     state.current.nodes.push({
       key: `node_${Date.now()}`,
       type,

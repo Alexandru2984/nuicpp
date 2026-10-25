@@ -158,6 +158,10 @@ std::string renderEditorPage(const std::string& username, const std::string& bas
         <option value="api">API</option>
         <option value="note">Note</option>
         <option value="external">External</option>
+        <option value="queue">Queue</option>
+        <option value="cache">Cache</option>
+        <option value="container">Container</option>
+        <option value="cloud">Cloud</option>
       </select>
       <select id="grid-size" aria-label="Grid size">
         <option value="8">Grid 8</option>
@@ -240,7 +244,7 @@ std::string renderDocsPage(const std::string& baseUrl, const std::string& assetV
     <h2>Canvas Controls</h2>
     <p>Select nodes and edges with the Select tool. Shift-click nodes for basic multi-select, or drag on empty canvas to rubber-band everything the band touches; hold Shift while dragging to add to the current selection instead of replacing it. Drag nodes to move them; edges and centres latch onto nearby nodes and a guide line shows what lined up. Choose an 8, 16, 32 or 64 pixel grid to change both the visual spacing and snap interval. Adaptive coordinate rulers follow pan and zoom; toggle them from Commands or a pinned mobile action. Arrow keys move selected nodes by one grid step and Shift+Arrow moves five; key repeat is grouped into one undo. Multi-node selections can align left, centre, right, top, middle or bottom, and three or more nodes can distribute equal centre spacing through the command palette. The multi-selection inspector summarises type, colour and bounds, then applies shared type, colour or size changes as one undoable edit. Press Shift+1 for actual size (100%) or Shift+2 to frame the selected nodes or both endpoints of a selected edge. A single selected node gets eight resize handles; the opposite edge stays anchored and sizes are held between 72x48 and 600x400, the same range the server enforces. Double-click a node or edge, or select it and press F2 or Enter, to edit its label directly on the canvas; the same action can be pinned on mobile. Use the Node tool to create nodes, Edge to connect two nodes, and Pan or middle mouse drag to move the canvas. Delete removes the selected object. Press / to search nodes by title, type or key and centre a result. Ctrl+K (or Cmd+K) opens the searchable command palette; Ctrl+S saves, Ctrl+C/Ctrl+V copy and paste selected nodes, Ctrl+Z/Ctrl+Y undo and redo, and Esc closes transient UI or clears selection. Actual size, Zoom to fit, Snap, Layout, SVG, PNG, Mermaid and Sample are available from the palette. Diagram Review checks structure locally in the browser for orphan nodes, invalid or duplicate edges, missing titles or labels, self-loops and directed cycles; Focus centres the affected object. On phones a compact bottom bar keeps the canvas large; choose Customize mobile action bar from the palette to pin up to two preferred actions. Unsaved browser drafts are stored locally and can be restored when reopening the same diagram.</p>
     <h2>Node Types</h2>
-    <p>Supported types: process, decision, database, service, api, note, external. Unknown imported types are mapped to note.</p>
+    <p>Supported types: process, decision, database, service, api, note, external, queue, cache, container, and cloud. Unknown imported types are mapped to note.</p>
     <h2>Edges</h2>
     <p>Edges may be directed or undirected, labeled, and colored. Validation rejects edges that reference missing nodes.</p>
     <h2>JSON Format</h2>

@@ -614,7 +614,10 @@ void testAllNodeTypesAccepted() {
     auto cfg = testConfig();
     cfg.maxNodesPerDiagram = 100;
     DiagramValidator validator(cfg);
-    std::vector<std::string> types = {"process", "decision", "database", "service", "api", "note", "external"};
+    std::vector<std::string> types = {
+        "process", "decision", "database", "service", "api", "note", "external",
+        "queue", "cache", "container", "cloud"
+    };
     for (const auto& t : types) {
         auto d = validDiagram();
         d.nodes[0].type = t;

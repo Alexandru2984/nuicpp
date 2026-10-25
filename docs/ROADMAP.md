@@ -142,6 +142,8 @@ rollback notes where applicable.
 - Persistent per-node geometry locks with mixed-selection semantics across
   drag, resize, nudge, batch sizing, arrangement and auto-layout, plus visible
   high-contrast state and screen-reader announcements.
+- Queue, cache, container and cloud node types are validated end to end, render
+  as scalable/high-contrast SVG shapes and retain safe Mermaid representations.
 - Dependency-free, fail-closed working-tree secret scanning in local CTest and
   CI, with provider/generic credential detection, explicit placeholder handling
   and regression tests proving that findings are redacted from logs.
@@ -208,7 +210,7 @@ High risk remain open.
   collision avoidance.
 - Groups, frames, layers, lock/hide controls, reusable components and multiple
   pages per document.
-- Expanded shapes: actor, queue, cache, container, document, cloud/network,
+- Continue the shape library with actor, document, network,
   Kubernetes/AWS/Azure/GCP libraries and custom SVG icons with safe sanitisation.
 - Rich text/Markdown notes, links, attachments and accessible alternative text.
 - Import Mermaid, draw.io and Graphviz; export PDF, transparent PNG, selected

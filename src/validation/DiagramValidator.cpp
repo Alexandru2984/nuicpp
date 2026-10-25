@@ -9,7 +9,8 @@ namespace nuigraph {
 namespace {
 
 const std::unordered_set<std::string> kTypes = {
-    "process", "decision", "database", "service", "api", "note", "external"
+    "process", "decision", "database", "service", "api", "note", "external",
+    "queue", "cache", "container", "cloud"
 };
 
 bool isKey(const std::string& key) {

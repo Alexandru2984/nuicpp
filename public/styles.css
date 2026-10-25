@@ -594,6 +594,7 @@ body.dirty .draft-status { color: var(--warn); }
 /* ---------------------------------------------------------------- canvas -- */
 
 .node-shape { filter: drop-shadow(0 12px 16px rgba(0, 0, 0, .26)); }
+.node-shape-detail { pointer-events: none; }
 
 /* Node fills are saturated in both themes, so their labels stay dark. */
 .node-title {
@@ -1030,6 +1031,11 @@ body.dirty .draft-status { color: var(--warn); }
     fill: Canvas;
     stroke: CanvasText;
     filter: none;
+  }
+
+  .node-shape-detail {
+    fill: CanvasText;
+    stroke: CanvasText;
   }
 
   .node-title,

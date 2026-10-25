@@ -242,6 +242,19 @@ test.describe("desktop security and offline lifecycle", () => {
           color: "#fde047",
           metadata: {}
         });
+        diagram.nodes.push(
+          { key: "node_queue", type: "queue", title: "Job Queue", x: 1080, y: 330, width: 170, height: 82, color: "#f97316", metadata: {} },
+          { key: "node_cache", type: "cache", title: "Edge Cache", x: 1280, y: 330, width: 170, height: 82, color: "#14b8a6", metadata: {} },
+          { key: "node_container", type: "container", title: "Worker Container", x: 1080, y: 460, width: 190, height: 90, color: "#818cf8", metadata: {} },
+          { key: "node_cloud", type: "cloud", title: "Cloud Network", x: 1310, y: 450, width: 190, height: 100, color: "#7dd3fc", metadata: {} }
+        );
+        diagram.edges.push(
+          { key: "edge_start_queue", source: "node_start", target: "node_queue", label: "enqueue", directed: true, color: "#f97316", metadata: {} },
+          { key: "edge_queue_cache", source: "node_queue", target: "node_cache", label: "warm", directed: true, color: "#14b8a6", metadata: {} },
+          { key: "edge_cache_container", source: "node_cache", target: "node_container", label: "dispatch", directed: true, color: "#818cf8", metadata: {} },
+          { key: "edge_container_cloud", source: "node_container", target: "node_cloud", label: "publish", directed: true, color: "#7dd3fc", metadata: {} },
+          { key: "edge_cloud_decision", source: "node_cloud", target: "node_decision", label: "route", directed: true, color: "#94a3b8", metadata: {} }
+        );
         for (const edge of diagram.edges) {
           if (edge.source === decision.key) edge.source = longNodeKey;
           if (edge.target === decision.key) edge.target = longNodeKey;
@@ -274,6 +287,10 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(currentDiagramListItem.locator(".diagram-name")).toHaveText(unsafeDiagramTitle);
       await expect(currentDiagramListItem.locator("img")).toHaveCount(0);
       expect(await page.evaluate(() => globalThis.__diagramListXss)).toBeUndefined();
+      for (const type of ["queue", "cache", "container", "cloud"]) {
+        const shape = page.locator(`#nodes > g[data-node-type="${type}"] .node-shape-${type}`);
+        await expect(shape).toHaveCount(1);
+      }
 
       await page.locator("#share-diagram").focus();
       const diagramNodeCount = await page.locator("#nodes > g").count();

@@ -23,7 +23,8 @@ admin account for maintenance.
 - SVG canvas with grid, pan, zoom, selection, node dragging, and immediate
   updates in the browser.
 - Node types: `process`, `decision`, `database`, `service`, `api`, `note`,
-  `external`. Directed and undirected labelled edges with colours and arrowheads.
+  `external`, `queue`, `cache`, `container`, and `cloud`. Directed and undirected
+  labelled edges with colours and arrowheads.
 - Configurable 8/16/32/64 px visual grid and matching snap spacing, remembered
   locally; simple auto-layout, minimap, copy/paste and undo/redo. Multi-node
   selections can align to six axes or distribute equal centre spacing.
@@ -56,6 +57,9 @@ admin account for maintenance.
   labels and visual properties editable; lock state has an SVG/forced-colour cue.
 - Eight resize handles on a single selected node, honouring the same 72x48 to
   600x400 bounds the server clamps to.
+- Architecture-oriented queue, cache, container and cloud shapes with distinct
+  scalable SVG geometry, server validation, template usage and Mermaid-safe
+  export fallbacks.
 - Alignment guides while dragging: edges and centres latch onto neighbouring
   nodes within 6 screen pixels, and the guide spans every box it lines up.
 - Searchable command palette on `Ctrl/Cmd+K`, including editing, canvas, export,
