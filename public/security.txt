@@ -1,0 +1,5 @@
+Contact: mailto:alex_mihai984@yahoo.com
+Expires: 2027-10-25T23:59:59Z
+Preferred-Languages: ro, en
+Canonical: https://nuicpp.micutu.com/.well-known/security.txt
+Policy: https://github.com/Alexandru2984/nuicpp/blob/main/docs/SECURITY.md

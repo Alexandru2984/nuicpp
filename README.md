@@ -16,6 +16,7 @@ admin account for maintenance.
 - **Delivery roadmap:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - **Deploy runbook:** [`docs/DEPLOY.md`](docs/DEPLOY.md)
 - **OpenAPI 3.1 contract:** [`public/openapi.json`](public/openapi.json)
+- **Vulnerability disclosure:** [`public/security.txt`](public/security.txt)
 
 ## Features
 
@@ -341,6 +342,7 @@ sites, so never restart nginx.
 | `GET` | `/docs` |
 | `GET` | `/robots.txt`, `/sitemap.xml` |
 | `GET` | `/openapi.json` |
+| `GET` | `/.well-known/security.txt` |
 | `GET` | `/d/{slug}` |
 | `GET` | `/api/session` |
 | `GET` | `/api/diagrams` |

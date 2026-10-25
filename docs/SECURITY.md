@@ -15,6 +15,15 @@ limits, and per-session ownership instead.
 
 There is exactly one real account, the admin, defined in `.env`.
 
+## Vulnerability disclosure
+
+Security reports can be sent privately to `alex_mihai984@yahoo.com`. The same
+contact, preferred Romanian/English languages, canonical URL and annual review
+deadline are published in the RFC 9116 file at
+`/.well-known/security.txt`. A CTest gate validates its syntax and begins
+failing 60 days before expiry so the disclosure information is reviewed rather
+than silently becoming stale.
+
 ## Trust boundaries
 
 ```

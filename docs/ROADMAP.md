@@ -158,6 +158,9 @@ rollback notes where applicable.
   sharing, version and import/export operations with cookie/CSRF and optimistic
   revision semantics; CTest extracts C++ routes and validator enums to fail on
   contract drift, unresolved references or incomplete mutation security.
+- RFC 9116 vulnerability disclosure is served from the well-known path with a
+  private contact, canonical policy link and preferred languages; CI validates
+  syntax and forces renewal at least 60 days before the annual expiry.
 - Dependency-free, fail-closed working-tree secret scanning in local CTest and
   CI, with provider/generic credential detection, explicit placeholder handling
   and regression tests proving that findings are redacted from logs.

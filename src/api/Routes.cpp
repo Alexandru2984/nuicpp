@@ -938,6 +938,9 @@ void Routes::registerRoutes(httplib::Server& server) {
         res.set_header("X-Robots-Tag", "noindex, nofollow, nosnippet");
         serveStatic(req, res, cfg_.projectRoot + "/public/openapi.json");
     });
+    server.Get("/.well-known/security.txt", [this](const httplib::Request& req, httplib::Response& res) {
+        serveStatic(req, res, cfg_.projectRoot + "/public/security.txt");
+    });
 
     server.Get("/styles.css", [this](const httplib::Request& req, httplib::Response& res) {
         serveStatic(req, res, cfg_.projectRoot + "/public/styles.css");

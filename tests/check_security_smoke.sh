@@ -643,6 +643,25 @@ curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/openapi.json" | node -e '
   });
 '
 
+security_txt_headers="$(curl --noproxy '*' -sS -D - -o /dev/null "http://127.0.0.1:${PORT}/.well-known/security.txt")"
+for expected in \
+  'content-type: text/plain; charset=utf-8' \
+  'cache-control: public, no-cache, must-revalidate' \
+  'x-content-type-options: nosniff'
+do
+  if ! grep -Fqi "$expected" <<<"$security_txt_headers"; then
+    echo "expected $expected on /.well-known/security.txt" >&2
+    exit 1
+  fi
+done
+security_txt="$(curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/.well-known/security.txt")"
+for field in 'Contact: mailto:' 'Expires: 2027-10-25T23:59:59Z' 'Preferred-Languages: ro, en' 'Canonical: https://nuicpp.micutu.com/.well-known/security.txt'; do
+  if ! grep -Fq "$field" <<<"$security_txt"; then
+    echo "expected RFC 9116 field: $field" >&2
+    exit 1
+  fi
+done
+
 for private_path in /login /d/not-a-real-share; do
   private_headers="$(curl --noproxy '*' -sS -D - -o /dev/null "http://127.0.0.1:${PORT}${private_path}")"
   if ! grep -qi '^x-robots-tag:.*noindex' <<<"$private_headers"; then
