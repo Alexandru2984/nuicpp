@@ -417,6 +417,8 @@
       { id: "import", label: "Import JSON", shortLabel: "Import", category: "Import and export", enabled: () => !state.readOnly, run: () => triggerButton("import-json") },
       { id: "export-json", label: "Export JSON", shortLabel: "JSON", category: "Import and export", enabled: () => Boolean(state.current) && !el("export-json")?.disabled, run: () => triggerButton("export-json") },
       { id: "export-svg", label: "Export SVG", shortLabel: "SVG", category: "Import and export", enabled: () => Boolean(state.current), run: exportSvg },
+      { id: "export-svg-embed", label: "Export embeddable SVG", shortLabel: "SVG embed", category: "Import and export", keywords: "download transparent crop content documentation readme", enabled: () => Boolean(state.current?.nodes?.length), run: () => exportSvg({ contentOnly: true }) },
+      { id: "export-selection-svg", label: "Export selection as SVG", shortLabel: "SVG selection", category: "Import and export", keywords: "download transparent crop selected region vector", mobile: true, enabled: () => selectedFrameNodes().length > 0, run: () => exportSvg({ selectionOnly: true }) },
       { id: "export-png", label: "Export PNG", shortLabel: "PNG", category: "Import and export", enabled: () => Boolean(state.current), run: exportPng },
       { id: "export-png-transparent", label: "Export transparent PNG", shortLabel: "PNG alpha", category: "Import and export", keywords: "download image background alpha", enabled: () => Boolean(state.current), run: () => exportPng({ transparent: true }) },
       { id: "export-selection-png", label: "Export selection as transparent PNG", shortLabel: "PNG selection", category: "Import and export", keywords: "download image crop selected region alpha", mobile: true, enabled: () => selectedFrameNodes().length > 0, run: () => exportPng({ transparent: true, selectionOnly: true }) },
@@ -2689,22 +2691,21 @@
 
   const EXPORT_SVG_CSS = "text{font-family:Inter,Arial,sans-serif}.node-title{fill:#071018;font-weight:700;font-size:14px;text-anchor:middle;dominant-baseline:middle}.node-subtitle{fill:rgba(7,16,24,.72);font-size:10px;text-anchor:middle;dominant-baseline:middle;text-transform:uppercase}.edge-label{fill:#dbeafe;paint-order:stroke;stroke:#0b0f14;stroke-width:4;font-size:12px;text-anchor:middle;dominant-baseline:middle}.edge-path{stroke-width:2.4;fill:none}";
 
-  function selectedExportContent() {
-    const nodes = selectedFrameNodes();
+  function boundedExportContent(nodes, edges) {
     if (!nodes.length) return null;
     const nodeKeys = new Set(nodes.map((node) => node.key));
-    const edgeKeys = new Set(
-      state.selected?.type === "edge"
-        ? [state.selected.key]
-        : state.current.edges
-          .filter((edge) => nodeKeys.has(edge.source) && nodeKeys.has(edge.target))
-          .map((edge) => edge.key)
-    );
+    const edgeKeys = new Set(edges.map((edge) => edge.key));
     const padding = 32;
-    const minX = Math.min(...nodes.map((node) => node.x));
-    const minY = Math.min(...nodes.map((node) => node.y));
-    const maxX = Math.max(...nodes.map((node) => node.x + node.width));
-    const maxY = Math.max(...nodes.map((node) => node.y + node.height));
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const node of nodes) {
+      minX = Math.min(minX, node.x);
+      minY = Math.min(minY, node.y);
+      maxX = Math.max(maxX, node.x + node.width);
+      maxY = Math.max(maxY, node.y + node.height);
+    }
     return {
       nodeKeys,
       edgeKeys,
@@ -2716,48 +2717,96 @@
     };
   }
 
-  function prepareSvgExport({ transparent = false, selectionOnly = false } = {}) {
+  function selectedExportContent() {
+    const nodes = selectedFrameNodes();
+    if (!nodes.length) return null;
+    const nodeKeys = new Set(nodes.map((node) => node.key));
+    const edges = state.selected?.type === "edge"
+      ? state.current.edges.filter((edge) => edge.key === state.selected.key)
+      : state.current.edges.filter((edge) => nodeKeys.has(edge.source) && nodeKeys.has(edge.target));
+    return boundedExportContent(nodes, edges);
+  }
+
+  function diagramExportContent() {
+    return boundedExportContent(state.current?.nodes || [], state.current?.edges || []);
+  }
+
+  function makeSvgSafeToEmbed(clone) {
+    clone.querySelector("#overlay")?.remove();
+    clone.querySelectorAll(".node-lock-badge").forEach((node) => node.remove());
+    clone.querySelectorAll("script, foreignObject").forEach((node) => node.remove());
+    const sanitizeElement = (node) => {
+      node.removeAttribute("tabindex");
+      node.removeAttribute("focusable");
+      for (const attribute of [...node.attributes]) {
+        const name = attribute.name.toLowerCase();
+        if (name.startsWith("on") || name === "src" ||
+            ((name === "href" || name === "xlink:href") && !attribute.value.startsWith("#"))) {
+          node.removeAttribute(attribute.name);
+        }
+      }
+    };
+    sanitizeElement(clone);
+    clone.querySelectorAll("*").forEach(sanitizeElement);
+    clone.setAttribute("role", "img");
+    clone.setAttribute("aria-label", state.current?.title || "Diagram");
+    const title = document.createElementNS(svgNS, "title");
+    title.textContent = state.current?.title || "Diagram";
+    const description = document.createElementNS(svgNS, "desc");
+    description.textContent = state.current?.description || "Diagram exported from NuiGraph Studio.";
+    clone.prepend(description);
+    clone.prepend(title);
+  }
+
+  function prepareSvgExport({ transparent = false, selectionOnly = false, contentOnly = false } = {}) {
     if (!state.current) return null;
     const clone = canvas.cloneNode(true);
     clone.setAttribute("xmlns", svgNS);
-    clone.querySelector("#overlay")?.replaceChildren();
     clone.querySelectorAll(".selected, .edge-selected").forEach((node) => {
       node.classList.remove("selected", "edge-selected");
     });
 
     let width = canvas.clientWidth || 1200;
     let height = canvas.clientHeight || 800;
-    if (selectionOnly) {
-      const selection = selectedExportContent();
-      if (!selection) return null;
+    const content = selectionOnly ? selectedExportContent() : contentOnly ? diagramExportContent() : null;
+    if (selectionOnly || contentOnly) {
+      if (!content) return null;
       clone.querySelectorAll("#nodes > g").forEach((node) => {
-        if (!selection.nodeKeys.has(node.dataset.key)) node.remove();
+        if (!content.nodeKeys.has(node.dataset.key)) node.remove();
       });
       clone.querySelectorAll("#edges > g").forEach((edge) => {
-        if (!selection.edgeKeys.has(edge.dataset.key)) edge.remove();
+        if (!content.edgeKeys.has(edge.dataset.key)) edge.remove();
       });
       clone.querySelector("#viewport")?.setAttribute(
         "transform",
-        `translate(${selection.padding - selection.minX} ${selection.padding - selection.minY}) scale(1)`
+        `translate(${content.padding - content.minX} ${content.padding - content.minY}) scale(1)`
       );
-      width = selection.width;
-      height = selection.height;
+      width = content.width;
+      height = content.height;
     }
-    if (transparent || selectionOnly) clone.querySelector("#grid-bg")?.remove();
+    if (transparent || selectionOnly || contentOnly) clone.querySelector("#grid-bg")?.remove();
     clone.setAttribute("width", width);
     clone.setAttribute("height", height);
     clone.setAttribute("viewBox", `0 0 ${width} ${height}`);
     const style = document.createElementNS(svgNS, "style");
     style.textContent = EXPORT_SVG_CSS;
     clone.insertBefore(style, clone.firstChild);
+    makeSvgSafeToEmbed(clone);
     return { clone, width, height };
   }
 
-  function exportSvg() {
-    const prepared = prepareSvgExport();
-    if (!prepared) return;
+  function exportSvg(options = {}) {
+    const selectionOnly = options?.selectionOnly === true;
+    const contentOnly = options?.contentOnly === true;
+    const prepared = prepareSvgExport({ selectionOnly, contentOnly });
+    if (!prepared) {
+      if (selectionOnly) toast("Select a node or edge before exporting a selection.", "error");
+      else if (contentOnly) toast("Add a node before exporting diagram content.", "error");
+      return;
+    }
     const text = new XMLSerializer().serializeToString(prepared.clone);
-    downloadBlob(new Blob([text], { type: "image/svg+xml" }), `${exportBaseName()}.svg`);
+    const suffix = selectionOnly ? ".selection" : contentOnly ? ".embed" : "";
+    downloadBlob(new Blob([text], { type: "image/svg+xml" }), `${exportBaseName()}${suffix}.svg`);
   }
 
   function exportPng(options = {}) {

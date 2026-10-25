@@ -108,9 +108,12 @@ admin account for maintenance.
   Retention is bounded by `MAX_VERSIONS_PER_DIAGRAM`.
 - Optimistic revisions with strong ETags: stale saves/restores are rejected and
   the browser keeps the losing tab's draft for recovery.
-- Export to JSON, self-contained SVG, opaque or transparent PNG, a tightly
-  cropped transparent PNG of the current node/edge selection, and Mermaid.
-  Raster exports are bounded to 8192 px per side and 40 megapixels.
+- Export to JSON, viewport SVG, transparent content-cropped embeddable SVG,
+  selection-cropped SVG, opaque or transparent PNG, a tightly cropped
+  transparent PNG of the current node/edge selection, and Mermaid. Generated
+  SVGs are self-contained, accessible images stripped of editor-only controls
+  and unsafe external references. Raster exports are bounded to 8192 px per
+  side and 40 megapixels.
 - Template gallery: architecture, incident-response, and data-pipeline diagrams.
 - Private-by-default diagrams with explicit read-only sharing at `/d/{slug}`,
   128-bit capabilities, allowlisted 5-minute to 30-day expiry, immediate

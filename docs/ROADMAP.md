@@ -144,9 +144,10 @@ rollback notes where applicable.
   high-contrast state and screen-reader announcements.
 - Queue, cache, container and cloud node types are validated end to end, render
   as scalable/high-contrast SVG shapes and retain safe Mermaid representations.
-- Transparent full-canvas PNG and tightly cropped transparent selection export
-  share a self-contained SVG preparation path, strip editor-only selection UI,
-  sanitise filenames and reject rasters above 8192 px or 40 megapixels.
+- Transparent full-canvas PNG, content-cropped embeddable SVG and tightly
+  cropped PNG/SVG selection export share a self-contained preparation path,
+  strip editor-only UI and unsafe external references, add accessible vector
+  metadata, sanitise filenames and reject rasters above 8192 px or 40 megapixels.
 - Dependency-free, fail-closed working-tree secret scanning in local CTest and
   CI, with provider/generic credential detection, explicit placeholder handling
   and regression tests proving that findings are redacted from logs.
@@ -216,8 +217,7 @@ High risk remain open.
 - Continue the shape library with actor, document, network,
   Kubernetes/AWS/Azure/GCP libraries and custom SVG icons with safe sanitisation.
 - Rich text/Markdown notes, links, attachments and accessible alternative text.
-- Import Mermaid, draw.io and Graphviz; export PDF, embeddable SVG and print
-  layouts.
+- Import Mermaid, draw.io and Graphviz; export PDF and print layouts.
 - Better history: named releases, visual canvas diff, compare any two versions,
   selective restore and duplicate-as-branch.
 - Autosave to the server with visible sync state, offline mutation queue and

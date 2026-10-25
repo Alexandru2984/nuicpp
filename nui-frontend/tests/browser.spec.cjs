@@ -36,6 +36,20 @@ async function inspectPng(download) {
   return { width, height, topLeftAlpha: pixels[4] };
 }
 
+async function inspectSvg(download) {
+  const path = await download.path();
+  if (!path) throw new Error("Playwright did not retain the SVG download");
+  const text = await readFile(path, "utf8");
+  const root = text.match(/^<svg\b[^>]*>/)?.[0];
+  if (!root) throw new Error("download is not an SVG document");
+  const width = Number(root.match(/\bwidth="([0-9.]+)"/)?.[1]);
+  const height = Number(root.match(/\bheight="([0-9.]+)"/)?.[1]);
+  if (!Number.isFinite(width) || !Number.isFinite(height)) {
+    throw new Error("SVG export has invalid dimensions");
+  }
+  return { text, width, height };
+}
+
 async function expectNoHighImpactAccessibilityViolations(page, testInfo, label) {
   const results = await new AxeBuilder({ page }).analyze();
   const violations = results.violations
@@ -429,6 +443,37 @@ test.describe("desktop security and offline lifecycle", () => {
       expect(selectionPngDownload.suggestedFilename()).toMatch(/\.selection\.png$/);
       const selectionPng = await inspectPng(selectionPngDownload);
       expect(selectionPng).toEqual({ width: 468, height: 288, topLeftAlpha: 0 });
+      await expect(page.locator("#canvas")).toBeFocused();
+
+      await page.keyboard.press("Control+k");
+      const selectionSvgPalette = page.getByRole("dialog", { name: "Command palette" });
+      await selectionSvgPalette.getByRole("combobox", { name: "Search commands" }).fill("export selection as svg");
+      const selectionSvgDownloadEvent = page.waitForEvent("download");
+      await page.keyboard.press("Enter");
+      const selectionSvgDownload = await selectionSvgDownloadEvent;
+      expect(selectionSvgDownload.suggestedFilename()).toMatch(/\.selection\.svg$/);
+      const selectionSvg = await inspectSvg(selectionSvgDownload);
+      expect({ width: selectionSvg.width, height: selectionSvg.height }).toEqual({ width: 234, height: 144 });
+      expect(selectionSvg.text).toContain('role="img"');
+      expect(selectionSvg.text).toContain("<title>");
+      expect(selectionSvg.text).toContain("<desc>");
+      expect(selectionSvg.text).toContain('data-key="node_service"');
+      expect(selectionSvg.text).not.toMatch(/<img\b|<script\b|<foreignObject\b/i);
+      expect(selectionSvg.text).not.toMatch(/id="(?:grid-bg|overlay)"|\b(?:src|href)="(?!#)/i);
+      expect(selectionSvg.text).not.toMatch(/\b(?:selected|edge-selected|node-lock-badge)\b/);
+
+      await page.keyboard.press("Control+k");
+      const embedSvgPalette = page.getByRole("dialog", { name: "Command palette" });
+      await embedSvgPalette.getByRole("combobox", { name: "Search commands" }).fill("export embeddable svg");
+      const embedSvgDownloadEvent = page.waitForEvent("download");
+      await page.keyboard.press("Enter");
+      const embedSvgDownload = await embedSvgDownloadEvent;
+      expect(embedSvgDownload.suggestedFilename()).toMatch(/\.embed\.svg$/);
+      const embedSvg = await inspectSvg(embedSvgDownload);
+      expect(embedSvg.width).toBeGreaterThan(selectionSvg.width);
+      expect(embedSvg.height).toBeGreaterThan(selectionSvg.height);
+      expect(embedSvg.text).toContain('data-key="node_service"');
+      expect(embedSvg.text).not.toMatch(/id="(?:grid-bg|overlay)"|<script\b|<foreignObject\b/i);
       await expect(page.locator("#canvas")).toBeFocused();
 
       const lockedServiceGroup = page.locator('#nodes > g[data-key="node_service"]');
