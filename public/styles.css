@@ -1425,6 +1425,13 @@ body.presentation-mode .presentation-controls {
 
 .diagram-review h2 + p { margin: 4px 0 0; }
 
+.review-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
 .review-summary {
   display: flex;
   flex-wrap: wrap;
@@ -1535,6 +1542,7 @@ button.primary {
   }
 
   .command-item { min-height: var(--tap); }
+  .diagram-review .command-palette-head { align-items: flex-start; flex-wrap: wrap; }
   .review-finding { align-items: flex-start; }
   .sharing-actions { display: grid; }
 }

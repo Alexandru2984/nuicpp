@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { analyzeDiagram } = require("../public/diagram-review.js");
+const { analyzeDiagram, createSarifReport } = require("../public/diagram-review.js");
 
 const clean = {
   title: "Clean",
@@ -48,6 +48,33 @@ assert.equal(result.summary.error, 1);
 assert(result.summary.warning >= 4);
 assert.equal(result.summary.info, 1);
 assert.equal(JSON.stringify(problematic), before, "review must not mutate the diagram");
+
+const sarif = createSarifReport(problematic, { artifactUri: "reports\\architecture\n.json" });
+assert.equal(sarif.version, "2.1.0");
+assert.equal(sarif.$schema, "https://json.schemastore.org/sarif-2.1.0.json");
+assert.equal(sarif.runs.length, 1);
+const run = sarif.runs[0];
+assert.equal(run.tool.driver.name, "NuiGraph Architecture Review");
+assert.equal(run.tool.driver.rules.length, 9);
+assert.equal(run.artifacts[0].location.uri, "reports/architecture.json");
+assert.deepEqual(run.invocations[0].properties.summary, result.summary);
+assert.equal(run.results.length, result.findings.length);
+const sarifRuleIds = new Set(run.tool.driver.rules.map((rule) => rule.id));
+assert.equal(sarifRuleIds.size, run.tool.driver.rules.length, "SARIF rules must be unique");
+for (const finding of run.results) {
+  assert(sarifRuleIds.has(finding.ruleId), `missing SARIF rule metadata for ${finding.ruleId}`);
+  assert.equal(run.tool.driver.rules[finding.ruleIndex].id, finding.ruleId);
+  assert.match(finding.partialFingerprints["nuigraphFinding/v1"], /^v1-[0-9a-f]{8}$/);
+  assert.equal(finding.locations[0].physicalLocation.artifactLocation.index, 0);
+  assert.equal(finding.locations[0].physicalLocation.region.startLine, 1);
+}
+assert.equal(run.results.find((finding) => finding.ruleId === "missing_edge_endpoint").level, "error");
+assert.equal(run.results.find((finding) => finding.ruleId === "missing_edge_label").level, "note");
+assert.equal(JSON.stringify(problematic), before, "SARIF export must not mutate the diagram");
+
+const cleanSarif = createSarifReport(clean);
+assert.equal(cleanSarif.runs[0].results.length, 0);
+assert.equal(cleanSarif.runs[0].artifacts[0].location.uri, "diagram.json");
 
 const empty = analyzeDiagram({ nodes: [], edges: [] });
 assert.equal(empty.summary.error, 1);

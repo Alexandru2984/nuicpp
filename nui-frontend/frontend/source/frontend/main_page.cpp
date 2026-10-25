@@ -52,7 +52,7 @@ Nui::ElementRenderer MainPage::render() {
                     button{id = "export-png", title = "Export PNG"}("PNG"),
                     button{id = "import-json", title = "Import JSON"}("Import"),
                     button{id = "zoom-out", title = "Zoom out"}("-"),
-                    button{id = "zoom-label", title = "Actual size (Shift+1)", AttributeFactory("aria-label") = "Reset zoom to 100%"}("100%"),
+                    button{id = "zoom-label", title = "Actual size (Shift+1)", AttributeFactory("aria-label") = "100% zoom; reset to 100%"}("100%"),
                     button{id = "zoom-in", title = "Zoom in"}("+"),
                     span{id = "draft-status", class_ = "draft-status"}("Saved"),
                     a{href = "/docs"}("Docs"),

@@ -5,6 +5,19 @@
 })(typeof globalThis === "object" ? globalThis : null, () => {
   "use strict";
 
+  const RULE_DEFINITIONS = Object.freeze([
+    { id: "empty_diagram", severity: "error", title: "Diagram is empty", description: "The diagram must contain at least one node." },
+    { id: "duplicate_node_key", severity: "error", title: "Duplicate node key", description: "Every node key must be unique within the diagram." },
+    { id: "missing_node_title", severity: "warning", title: "Missing node title", description: "Every node should have a non-empty human-readable title." },
+    { id: "missing_edge_endpoint", severity: "error", title: "Missing edge endpoint", description: "Every edge endpoint must reference a node in the diagram." },
+    { id: "missing_edge_label", severity: "info", title: "Missing edge label", description: "Edges should describe the relationship or protocol they represent." },
+    { id: "self_loop", severity: "warning", title: "Self-referencing edge", description: "An edge that returns to its source should be intentional and documented." },
+    { id: "duplicate_edge", severity: "warning", title: "Duplicate edge", description: "Equivalent relationships should not be represented more than once." },
+    { id: "orphan_node", severity: "warning", title: "Disconnected node", description: "Every architecture node should participate in at least one relationship." },
+    { id: "directed_cycle", severity: "warning", title: "Directed dependency cycle", description: "Directed dependency cycles should be reviewed for coupling and failure propagation." }
+  ]);
+  const SARIF_LEVEL = Object.freeze({ error: "error", warning: "warning", info: "note" });
+
   function shortName(value, fallback) {
     const text = typeof value === "string" ? value.trim() : "";
     if (!text) return fallback;
@@ -144,5 +157,81 @@
     return { summary, findings };
   }
 
-  return Object.freeze({ analyzeDiagram });
+  function sarifArtifactUri(value) {
+    const input = typeof value === "string" ? value.trim() : "";
+    const withoutControls = input.replace(/[\u0000-\u001f\u007f]/g, "").replaceAll("\\", "/");
+    return withoutControls.slice(0, 2048) || "diagram.json";
+  }
+
+  function findingFingerprint(finding) {
+    const target = finding.target ? `${finding.target.type}:${finding.target.key}` : "diagram";
+    const text = `${finding.code}\u0000${target}\u0000${finding.message}`;
+    let hash = 0x811c9dc5;
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 0x01000193);
+    }
+    return `v1-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+  }
+
+  function createSarifReport(diagram, options = {}) {
+    const analysis = analyzeDiagram(diagram);
+    const artifactUri = sarifArtifactUri(options.artifactUri);
+    const ruleIndexes = new Map(RULE_DEFINITIONS.map((rule, index) => [rule.id, index]));
+    const rules = RULE_DEFINITIONS.map((rule) => ({
+      id: rule.id,
+      name: rule.id,
+      shortDescription: { text: rule.title },
+      fullDescription: { text: rule.description },
+      defaultConfiguration: { level: SARIF_LEVEL[rule.severity] },
+      properties: { tags: ["architecture", "quality"] }
+    }));
+    const results = analysis.findings.map((finding) => {
+      const location = {
+        physicalLocation: {
+          artifactLocation: { uri: artifactUri, index: 0 },
+          region: { startLine: 1 }
+        }
+      };
+      if (finding.target) {
+        location.logicalLocations = [{
+          name: String(finding.target.key),
+          fullyQualifiedName: `${finding.target.type}:${finding.target.key}`,
+          kind: finding.target.type
+        }];
+      }
+      return {
+        ruleId: finding.code,
+        ruleIndex: ruleIndexes.get(finding.code),
+        level: SARIF_LEVEL[finding.severity],
+        message: { text: finding.message },
+        locations: [location],
+        partialFingerprints: { "nuigraphFinding/v1": findingFingerprint(finding) },
+        properties: finding.target ? { target: { ...finding.target } } : {}
+      };
+    });
+
+    return {
+      version: "2.1.0",
+      $schema: "https://json.schemastore.org/sarif-2.1.0.json",
+      runs: [{
+        tool: {
+          driver: {
+            name: "NuiGraph Architecture Review",
+            informationUri: "https://github.com/Alexandru2984/nuicpp",
+            semanticVersion: "1.0.0",
+            rules
+          }
+        },
+        artifacts: [{ location: { uri: artifactUri }, roles: ["analysisTarget"] }],
+        invocations: [{
+          executionSuccessful: true,
+          properties: { summary: { ...analysis.summary } }
+        }],
+        results
+      }]
+    };
+  }
+
+  return Object.freeze({ analyzeDiagram, createSarifReport });
 });

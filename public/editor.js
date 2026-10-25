@@ -407,6 +407,7 @@
       { id: "distribute-vertical", label: "Distribute selected nodes vertically", shortLabel: "Space V", category: "Arrange", keywords: "multi selection equal spacing", mobile: true, enabled: () => canArrangeSelection(3), run: () => arrangeSelection("distribute-vertical") },
       { id: "toggle-geometry-lock", label: "Toggle node geometry lock", shortLabel: "Lock", category: "Arrange", keywords: "position size freeze unlock protect layout", mobile: true, enabled: () => selectedNodeKeys().length > 0 && !state.readOnly, run: toggleSelectedGeometryLock },
       { id: "review", label: "Review diagram quality", shortLabel: "Review", category: "Analyze", keywords: "lint cycle orphan duplicate missing label", mobile: true, enabled: () => Boolean(state.current), run: showDiagramReview },
+      { id: "export-sarif", label: "Export architecture review as SARIF", shortLabel: "SARIF", category: "Analyze", keywords: "lint ci code scanning report download", mobile: true, enabled: () => Boolean(state.current), run: exportSarifReport },
       { id: "select-sources", label: "Select source nodes", shortLabel: "Sources", category: "Analyze", keywords: "entry roots indegree incoming architecture", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: () => selectTerminalNodes("source") },
       { id: "select-sinks", label: "Select sink nodes", shortLabel: "Sinks", category: "Analyze", keywords: "output leaves outdegree outgoing architecture", mobile: true, enabled: () => Boolean(state.current?.nodes?.length), run: () => selectTerminalNodes("sink") },
       { id: "select-neighbours", label: "Select direct neighbors", shortLabel: "Neighbors", category: "Analyze", keywords: "adjacent one hop graph incoming outgoing neighbours expand selection", mobile: true, enabled: () => selectedNodeKeys().length > 0, run: selectNeighbourNodes },
@@ -1302,8 +1303,13 @@
       ? `${review.summary.total} actionable finding${review.summary.total === 1 ? "" : "s"}`
       : "No structural issues found";
     heading.append(title, subtitle);
+    const headActions = document.createElement("div");
+    headActions.className = "review-actions";
+    const exportButton = mobileBarButton("Export SARIF");
+    exportButton.onclick = () => exportSarifReport();
     const closeButton = mobileBarButton("Close");
-    head.append(heading, closeButton);
+    headActions.append(exportButton, closeButton);
+    head.append(heading, headActions);
 
     const summary = document.createElement("div");
     summary.className = "review-summary";
@@ -2898,6 +2904,20 @@
     return raw.replace(/[\\/:*?"<>|%]/g, "-").replace(/\s+/g, " ").trim().slice(0, 120) || "diagram";
   }
 
+  function exportSarifReport() {
+    if (!state.current) return;
+    const builder = globalThis.NuiGraphReview?.createSarifReport;
+    if (typeof builder !== "function") {
+      toast("SARIF export is unavailable; reload the editor assets.", "error");
+      return;
+    }
+    const report = builder(state.current, { artifactUri: `${exportBaseName()}.json` });
+    const count = report.runs[0].results.length;
+    const payload = `${JSON.stringify(report, null, 2)}\n`;
+    downloadBlob(new Blob([payload], { type: "application/sarif+json" }), `${exportBaseName()}.sarif`);
+    toast(`SARIF report exported with ${count} finding${count === 1 ? "" : "s"}.`, "success");
+  }
+
   const EXPORT_SVG_CSS = "text{font-family:Inter,Arial,sans-serif}.node-title{fill:#071018;font-weight:700;font-size:14px;text-anchor:middle;dominant-baseline:middle}.node-subtitle{fill:rgba(7,16,24,.72);font-size:10px;text-anchor:middle;dominant-baseline:middle;text-transform:uppercase}.edge-label{fill:#dbeafe;paint-order:stroke;stroke:#0b0f14;stroke-width:4;font-size:12px;text-anchor:middle;dominant-baseline:middle}.edge-path{stroke-width:2.4;fill:none}";
 
   function boundedExportContent(nodes, edges) {
@@ -3711,7 +3731,10 @@
 
   function render() {
     viewport.setAttribute("transform", `translate(${state.pan.x} ${state.pan.y}) scale(${state.zoom})`);
-    el("zoom-label").textContent = `${Math.round(state.zoom * 100)}%`;
+    const zoomPercent = `${Math.round(state.zoom * 100)}%`;
+    const zoomLabel = el("zoom-label");
+    zoomLabel.textContent = zoomPercent;
+    zoomLabel.setAttribute("aria-label", `${zoomPercent} zoom; reset to 100%`);
     drawCanvasRulers();
     if (state.current) {
       el("diagram-title").value = state.readOnly ? `${state.current.title} (read-only)` : state.current.title;

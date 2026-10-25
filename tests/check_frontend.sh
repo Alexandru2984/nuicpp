@@ -50,6 +50,7 @@ grep -Fq 'applyBatchProperties' public/editor.js
 grep -Fq 'Frame selection' public/editor.js
 grep -Fq 'Actual size (100%)' public/editor.js
 grep -Fq 'function resetZoom()' public/editor.js
+grep -Fq 'zoomLabel.setAttribute("aria-label", `${zoomPercent} zoom; reset to 100%`)' public/editor.js
 grep -Fq 'Enter presentation mode' public/editor.js
 grep -Fq 'function togglePresentationMode(force)' public/editor.js
 grep -Fq 'evt.shiftKey && evt.key.toLowerCase() === "p"' public/editor.js
@@ -60,6 +61,8 @@ grep -Fq 'Export embeddable SVG' public/editor.js
 grep -Fq 'Export selection as SVG' public/editor.js
 grep -Fq 'function makeSvgSafeToEmbed(clone)' public/editor.js
 grep -Fq 'Export transparent PNG' public/editor.js
+grep -Fq 'Export architecture review as SARIF' public/editor.js
+grep -Fq 'application/sarif+json' public/editor.js
 grep -Fq 'Export selection as transparent PNG' public/editor.js
 grep -Fq 'PNG_EXPORT_MAX_PIXELS' public/editor.js
 grep -Fq 'Toggle canvas rulers' public/editor.js
@@ -126,6 +129,7 @@ grep -Fq '.node-lock-body' public/styles.css
 grep -Fq '@media (prefers-reduced-motion: reduce)' public/styles.css
 grep -Fq '#canvas:focus-visible' public/styles.css
 node tests/test_diagram_review.cjs
+node tests/test_diagram_review_cli.cjs
 node tests/test_diagram_arrange.cjs
 node tests/test_diagram_selection.cjs
 node tests/test_canvas_rulers.cjs

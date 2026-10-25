@@ -68,8 +68,10 @@ rollback notes where applicable.
   controls at least 44px; Chromium covers focus restoration and customisation.
 - Browser-local architecture review with iterative cycle detection, orphan,
   endpoint, duplicate, self-loop, title and edge-label rules. Findings use safe
-  text rendering and can centre their affected object; unit and Chromium tests
-  cover deep graphs, the shipped asset and the offline cache.
+  text rendering and can centre their affected object. Deterministic SARIF 2.1.0
+  export is available in the responsive editor and a bounded, dependency-free
+  CLI with configurable CI failure thresholds; unit and Chromium tests cover
+  deep graphs, report metadata, exit codes, downloads and the offline cache.
 - Private-by-default link sharing with an explicit accessible management dialog,
   128-bit capability rotation and revocation, optimistic revision checks,
   redacted lifecycle events, private visitor forks and cross-session negative
@@ -260,8 +262,8 @@ High risk remain open.
 
 ## P4 — differentiated product features
 
-- Expand architecture linting with trust-boundary policy, naming conventions,
-  configurable rule sets and CI/SARIF report export.
+- Expand architecture linting with trust-boundary policy, naming conventions
+  and configurable rule sets.
 - Diagram-as-code round trips, Git sync and reviewable semantic diffs.
 - Template marketplace with signed/curated templates and organisation libraries.
 - Guided walkthroughs, comments-to-tasks and share analytics that preserve

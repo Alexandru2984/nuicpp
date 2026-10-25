@@ -126,7 +126,7 @@ std::string renderEditorPage(const std::string& username, const std::string& bas
         <button id="export-png" title="Export PNG">PNG</button>
         <button id="import-json" title="Import JSON">Import</button>
         <button id="zoom-out" title="Zoom out">-</button>
-        <button id="zoom-label" title="Actual size (Shift+1)" aria-label="Reset zoom to 100%">100%</button>
+        <button id="zoom-label" title="Actual size (Shift+1)" aria-label="100% zoom; reset to 100%">100%</button>
         <button id="zoom-in" title="Zoom in">+</button>
         <span id="draft-status" class="draft-status">Saved</span>
         <a href="/docs">Docs</a>

@@ -225,10 +225,13 @@ test.describe("desktop security and offline lifecycle", () => {
     await expect(shortcutsDialog).not.toBeVisible();
     await expect(title).toBeFocused();
 
-    const actualSize = page.getByRole("button", { name: "Reset zoom to 100%" });
+    const actualSize = page.locator("#zoom-label");
     await expect(actualSize).toHaveText("100%");
+    await expect(actualSize).toHaveAttribute("aria-label", "100% zoom; reset to 100%");
     await page.locator("#zoom-out").click();
     await expect(actualSize).not.toHaveText("100%");
+    const zoomedOutText = await actualSize.textContent();
+    await expect(actualSize).toHaveAttribute("aria-label", `${zoomedOutText} zoom; reset to 100%`);
     await actualSize.click();
     await expect(actualSize).toHaveText("100%");
     await page.locator("#zoom-out").click();
@@ -339,6 +342,27 @@ test.describe("desktop security and offline lifecycle", () => {
         const shape = page.locator(`#nodes > g[data-node-type="${type}"] .node-shape-${type}`);
         await expect(shape).toHaveCount(1);
       }
+
+      await page.keyboard.press("Control+k");
+      const reviewPalette = page.getByRole("dialog", { name: "Command palette" });
+      await reviewPalette.getByRole("combobox", { name: "Search commands" }).fill("review diagram quality");
+      await reviewPalette.getByRole("option", { name: /Review diagram quality/ }).click();
+      const reviewDialog = page.getByRole("dialog", { name: "Diagram review" });
+      await expect(reviewDialog).toBeVisible();
+      await expectNoHighImpactAccessibilityViolations(page, testInfo, "diagram-review");
+      const sarifDownloadEvent = page.waitForEvent("download");
+      await reviewDialog.getByRole("button", { name: "Export SARIF" }).click();
+      const sarifDownload = await sarifDownloadEvent;
+      expect(sarifDownload.suggestedFilename()).toMatch(/\.sarif$/);
+      const sarifPath = await sarifDownload.path();
+      expect(sarifPath).not.toBeNull();
+      const sarif = JSON.parse(await readFile(sarifPath, "utf8"));
+      expect(sarif.version).toBe("2.1.0");
+      expect(sarif.runs[0].tool.driver.name).toBe("NuiGraph Architecture Review");
+      expect(Array.isArray(sarif.runs[0].results)).toBe(true);
+      expect(sarif.runs[0].artifacts[0].location.uri).toMatch(/\.json$/);
+      await reviewDialog.getByRole("button", { name: "Close" }).click();
+      await expect(reviewDialog).not.toBeVisible();
 
       await page.locator("#share-diagram").focus();
       const diagramNodeCount = await page.locator("#nodes > g").count();

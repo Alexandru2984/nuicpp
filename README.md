@@ -88,6 +88,7 @@ admin account for maintenance.
 - Browser-local Diagram Review detects empty diagrams, missing titles or labels,
   orphan nodes, invalid or duplicate edges, self-loops and directed cycles, then
   focuses the selected finding without sending diagram content to another service.
+  Reports export as standards-based SARIF 2.1.0 for CI and code-scanning tools.
 - Zoom-to-fit frames the entire graph while reserving room for mobile controls.
 - Adaptive world-coordinate rulers track pan and zoom with bounded 1/2/5 scale
   steps. They default on for larger screens, off on phones, and remember the
@@ -225,6 +226,20 @@ loader or regular (non-symlink) WebAssembly artifact is missing; there is no
 silent fallback that can hide a broken build. Both its source and shipped loader
 start the same review, arrangement and graph-selection engines as the primary
 shell before attaching the shared editor.
+
+## Architecture review in CI
+
+Run the same dependency-free review engine against a JSON export and retain the
+SARIF report as a CI artifact or upload it to a compatible code-scanning tool:
+
+```bash
+node scripts/review_diagram.cjs --fail-on warning diagram.json > review.sarif
+```
+
+The default gate fails only on errors. `--fail-on warning`, `--fail-on info` and
+`--fail-on none` allow stricter advisory gates or report-only jobs. Diagram
+content stays in the local process; malformed input fails closed without being
+echoed into build logs.
 
 ## Build
 
