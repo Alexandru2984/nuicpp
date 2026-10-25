@@ -55,7 +55,7 @@ assert.equal(sarif.$schema, "https://json.schemastore.org/sarif-2.1.0.json");
 assert.equal(sarif.runs.length, 1);
 const run = sarif.runs[0];
 assert.equal(run.tool.driver.name, "NuiGraph Architecture Review");
-assert.equal(run.tool.driver.rules.length, 9);
+assert.equal(run.tool.driver.rules.length, 13);
 assert.equal(run.artifacts[0].location.uri, "reports/architecture.json");
 assert.deepEqual(run.invocations[0].properties.summary, result.summary);
 assert.equal(run.results.length, result.findings.length);
@@ -75,6 +75,29 @@ assert.equal(JSON.stringify(problematic), before, "SARIF export must not mutate 
 const cleanSarif = createSarifReport(clean);
 assert.equal(cleanSarif.runs[0].results.length, 0);
 assert.equal(cleanSarif.runs[0].artifacts[0].location.uri, "diagram.json");
+
+const trustBoundaryReview = analyzeDiagram({
+  nodes: [
+    { key: "browser", type: "external", title: "Browser", metadata: { trust_zone: "internet" } },
+    { key: "database", type: "database", title: "Database", metadata: { trust_zone: "data" } },
+    { key: "worker", type: "service", title: "Worker", metadata: {} }
+  ],
+  edges: [
+    { key: "unsafe", source: "browser", target: "database", label: "", directed: true },
+    { key: "work", source: "database", target: "worker", label: "jobs", directed: true }
+  ]
+});
+const trustBoundaryCodes = new Set(trustBoundaryReview.findings.map((finding) => finding.code));
+for (const code of ["missing_trust_zone", "unlabelled_trust_boundary", "direct_internet_data_flow"]) {
+  assert(trustBoundaryCodes.has(code), `missing trust-boundary finding ${code}`);
+}
+assert.equal(trustBoundaryReview.summary.error, 1);
+
+const invalidTrustZone = analyzeDiagram({
+  nodes: [{ key: "api", type: "api", title: "API", metadata: { trust_zone: "dmz" } }],
+  edges: []
+});
+assert(invalidTrustZone.findings.some((finding) => finding.code === "invalid_trust_zone"));
 
 const empty = analyzeDiagram({ nodes: [], edges: [] });
 assert.equal(empty.summary.error, 1);

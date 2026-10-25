@@ -72,6 +72,10 @@ rollback notes where applicable.
   export is available in the responsive editor and a bounded, dependency-free
   CLI with configurable CI failure thresholds; unit and Chromium tests cover
   deep graphs, report metadata, exit codes, downloads and the offline cache.
+- Server-validated trust zones are editable and visible on architecture nodes;
+  review and SARIF flag invalid/incomplete classifications, unlabelled boundary
+  crossings and direct internet-to-data relationships without guessing zones
+  from user-controlled names. Reference architecture/data templates are zoned.
 - Private-by-default link sharing with an explicit accessible management dialog,
   128-bit capability rotation and revocation, optimistic revision checks,
   redacted lifecycle events, private visitor forks and cross-session negative
@@ -262,8 +266,7 @@ High risk remain open.
 
 ## P4 — differentiated product features
 
-- Expand architecture linting with trust-boundary policy, naming conventions
-  and configurable rule sets.
+- Expand architecture linting with naming conventions and configurable rule sets.
 - Diagram-as-code round trips, Git sync and reviewable semantic diffs.
 - Template marketplace with signed/curated templates and organisation libraries.
 - Guided walkthroughs, comments-to-tasks and share analytics that preserve

@@ -477,7 +477,14 @@
           "width": { "type": "number", "minimum": 72, "maximum": 600 },
           "height": { "type": "number", "minimum": 48, "maximum": 400 },
           "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
-          "metadata": { "type": "object" }
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "geometry_locked": { "type": "boolean" },
+              "trust_zone": { "type": "string", "enum": ["internet", "edge", "application", "data", "management"] }
+            },
+            "additionalProperties": true
+          }
         }
       },
       "Edge": {

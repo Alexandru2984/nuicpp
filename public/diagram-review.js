@@ -14,9 +14,14 @@
     { id: "self_loop", severity: "warning", title: "Self-referencing edge", description: "An edge that returns to its source should be intentional and documented." },
     { id: "duplicate_edge", severity: "warning", title: "Duplicate edge", description: "Equivalent relationships should not be represented more than once." },
     { id: "orphan_node", severity: "warning", title: "Disconnected node", description: "Every architecture node should participate in at least one relationship." },
-    { id: "directed_cycle", severity: "warning", title: "Directed dependency cycle", description: "Directed dependency cycles should be reviewed for coupling and failure propagation." }
+    { id: "directed_cycle", severity: "warning", title: "Directed dependency cycle", description: "Directed dependency cycles should be reviewed for coupling and failure propagation." },
+    { id: "invalid_trust_zone", severity: "error", title: "Invalid trust zone", description: "Trust zones must use one of the supported, server-validated identifiers." },
+    { id: "missing_trust_zone", severity: "warning", title: "Missing trust zone", description: "Every architecture node should be classified once trust-boundary modelling is enabled." },
+    { id: "unlabelled_trust_boundary", severity: "warning", title: "Unlabelled trust-boundary crossing", description: "A relationship crossing trust zones should document its protocol or purpose." },
+    { id: "direct_internet_data_flow", severity: "error", title: "Direct internet-to-data flow", description: "Internet-facing and data-tier nodes should communicate through an explicit mediated tier." }
   ]);
   const SARIF_LEVEL = Object.freeze({ error: "error", warning: "warning", info: "note" });
+  const TRUST_ZONES = new Set(["internet", "edge", "application", "data", "management"]);
 
   function shortName(value, fallback) {
     const text = typeof value === "string" ? value.trim() : "";
@@ -38,6 +43,7 @@
 
     const nodeByKey = new Map();
     const degree = new Map();
+    const trustZoneByKey = new Map();
     for (const [index, node] of nodes.entries()) {
       const hasKey = typeof node?.key === "string" && node.key !== "";
       const key = hasKey ? node.key : `node_at_${index}`;
@@ -50,6 +56,24 @@
       degree.set(key, 0);
       if (typeof node?.title !== "string" || node.title.trim() === "") {
         add("warning", "missing_node_title", `Node "${shortName(key, `#${index + 1}`)}" has no title.`, target);
+      }
+      const trustZone = node?.metadata?.trust_zone;
+      if (trustZone !== undefined) {
+        if (typeof trustZone !== "string" || !TRUST_ZONES.has(trustZone)) {
+          add("error", "invalid_trust_zone", `Node "${shortName(node?.title, key)}" has an invalid trust zone.`, target);
+        } else {
+          trustZoneByKey.set(key, trustZone);
+        }
+      }
+    }
+
+    if (trustZoneByKey.size > 0) {
+      for (const [key, node] of nodeByKey) {
+        if (node?.type === "note" || trustZoneByKey.has(key)) continue;
+        add("warning", "missing_trust_zone", `Node "${shortName(node?.title, key)}" has no trust zone.`, {
+          type: "node",
+          key
+        });
       }
     }
 
@@ -75,6 +99,17 @@
 
       if (typeof edge.label !== "string" || edge.label.trim() === "") {
         add("info", "missing_edge_label", `Edge "${shortName(edgeKey, `#${index + 1}`)}" has no label.`, target);
+      }
+      const sourceZone = trustZoneByKey.get(edge.source);
+      const targetZone = trustZoneByKey.get(edge.target);
+      if (sourceZone && targetZone && sourceZone !== targetZone) {
+        if (typeof edge.label !== "string" || edge.label.trim() === "") {
+          add("warning", "unlabelled_trust_boundary", `Edge "${shortName(edgeKey, `#${index + 1}`)}" crosses ${sourceZone} to ${targetZone} without a label.`, target);
+        }
+        if ((sourceZone === "internet" && targetZone === "data") ||
+            (sourceZone === "data" && targetZone === "internet")) {
+          add("error", "direct_internet_data_flow", `Edge "${shortName(edgeKey, `#${index + 1}`)}" directly connects internet and data trust zones.`, target);
+        }
       }
       if (edge.source === edge.target) {
         add("warning", "self_loop", `Edge "${shortName(edgeKey, `#${index + 1}`)}" loops back to the same node.`, target);

@@ -13,6 +13,10 @@ const std::unordered_set<std::string> kTypes = {
     "queue", "cache", "container", "cloud"
 };
 
+const std::unordered_set<std::string> kTrustZones = {
+    "internet", "edge", "application", "data", "management"
+};
+
 bool isKey(const std::string& key) {
     static const std::regex pattern("^[A-Za-z0-9_-]{1,64}$");
     return std::regex_match(key, pattern);
@@ -82,6 +86,15 @@ ValidationResult DiagramValidator::validate(Diagram& diagram, bool importMode) c
         }
         if (!node.metadata.is_object()) {
             node.metadata = nlohmann::json::object();
+        }
+        const auto trustZone = node.metadata.find("trust_zone");
+        if (trustZone != node.metadata.end() &&
+            (!trustZone->is_string() || !kTrustZones.contains(trustZone->get<std::string>()))) {
+            result.errors.push_back("invalid trust zone for " + node.key);
+        }
+        const auto geometryLocked = node.metadata.find("geometry_locked");
+        if (geometryLocked != node.metadata.end() && !geometryLocked->is_boolean()) {
+            result.errors.push_back("invalid geometry lock for " + node.key);
         }
     }
 

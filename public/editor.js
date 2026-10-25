@@ -12,6 +12,7 @@
     "process", "decision", "database", "service", "api", "note", "external",
     "queue", "cache", "container", "cloud"
   ];
+  const TRUST_ZONES = ["internet", "edge", "application", "data", "management"];
   const GRID_SIZES = [8, 16, 32, 64];
   const GRID_SIZE_STORAGE = "nuigraph:grid-size:v1";
   const RULER_STORAGE = "nuigraph:canvas-rulers:v1";
@@ -1093,8 +1094,8 @@
         type: "node",
         key: node.key,
         label: node.title || "Untitled node",
-        metadata: `${node.type || "node"} node - ${node.key}${nodeGeometryLocked(node) ? " - geometry locked" : ""}`,
-        search: `${node.title || ""} ${node.type || ""} ${node.key || ""}${nodeGeometryLocked(node) ? " geometry locked" : ""}`
+        metadata: `${node.type || "node"} node - ${node.key}${nodeTrustZone(node) ? ` - ${nodeTrustZone(node)} trust zone` : ""}${nodeGeometryLocked(node) ? " - geometry locked" : ""}`,
+        search: `${node.title || ""} ${node.type || ""} ${node.key || ""} ${nodeTrustZone(node) || ""}${nodeGeometryLocked(node) ? " geometry locked" : ""}`
       })),
       ...edges.map((edge) => {
         const source = nodeName(edge.source);
@@ -2264,6 +2265,11 @@
     return node?.metadata?.geometry_locked === true;
   }
 
+  function nodeTrustZone(node) {
+    const zone = node?.metadata?.trust_zone;
+    return typeof zone === "string" && TRUST_ZONES.includes(zone) ? zone : "";
+  }
+
   function selectedNodeKeys() {
     if (!state.selected) return [];
     if (state.selected.type === "node") return [state.selected.key];
@@ -2867,13 +2873,13 @@
       title: "Sample Cloud Architecture",
       description: "Demo service graph for NuiGraph Studio.",
       nodes: [
-        { key: "client", type: "external", title: "Client Apps", x: 40, y: 130, width: 170, height: 80, color: "#fb7185", metadata: {} },
-        { key: "gateway", type: "api", title: "API Gateway", x: 300, y: 130, width: 180, height: 80, color: "#60a5fa", metadata: {} },
-        { key: "auth", type: "service", title: "Auth Service", x: 570, y: 40, width: 180, height: 80, color: "#22c55e", metadata: {} },
-        { key: "orders", type: "service", title: "Orders Service", x: 570, y: 170, width: 180, height: 80, color: "#22c55e", metadata: {} },
-        { key: "queue", type: "queue", title: "Event Queue", x: 830, y: 170, width: 170, height: 80, color: "#f97316", metadata: {} },
-        { key: "db", type: "database", title: "PostgreSQL", x: 830, y: 40, width: 170, height: 90, color: "#a78bfa", metadata: {} },
-        { key: "decision", type: "decision", title: "Fraud Check", x: 1090, y: 150, width: 160, height: 110, color: "#f59e0b", metadata: {} },
+        { key: "client", type: "external", title: "Client Apps", x: 40, y: 130, width: 170, height: 80, color: "#fb7185", metadata: { trust_zone: "internet" } },
+        { key: "gateway", type: "api", title: "API Gateway", x: 300, y: 130, width: 180, height: 80, color: "#60a5fa", metadata: { trust_zone: "edge" } },
+        { key: "auth", type: "service", title: "Auth Service", x: 570, y: 40, width: 180, height: 80, color: "#22c55e", metadata: { trust_zone: "application" } },
+        { key: "orders", type: "service", title: "Orders Service", x: 570, y: 170, width: 180, height: 80, color: "#22c55e", metadata: { trust_zone: "application" } },
+        { key: "queue", type: "queue", title: "Event Queue", x: 830, y: 170, width: 170, height: 80, color: "#f97316", metadata: { trust_zone: "application" } },
+        { key: "db", type: "database", title: "PostgreSQL", x: 830, y: 40, width: 170, height: 90, color: "#a78bfa", metadata: { trust_zone: "data" } },
+        { key: "decision", type: "decision", title: "Fraud Check", x: 1090, y: 150, width: 160, height: 110, color: "#f59e0b", metadata: { trust_zone: "application" } },
         { key: "note", type: "note", title: "Versioned diagrams stored in PostgreSQL", x: 1030, y: 20, width: 260, height: 90, color: "#fde047", metadata: {} }
       ],
       edges: [
@@ -3424,9 +3430,11 @@
     group.setAttribute("class", [selected ? "selected" : "", locked ? "geometry-locked" : ""].filter(Boolean).join(" "));
     group.setAttribute("data-geometry-locked", String(locked));
     const accessibleTitle = svg("title", {}, group);
-    accessibleTitle.textContent = `${node.title || "Untitled node"}${locked ? ", geometry locked" : ""}`;
+    const trustZone = nodeTrustZone(node);
+    accessibleTitle.textContent = `${node.title || "Untitled node"}${trustZone ? `, ${trustZone} trust zone` : ""}${locked ? ", geometry locked" : ""}`;
     const fill = node.color || colors[node.type] || colors.process;
     group.setAttribute("data-node-type", node.type);
+    if (trustZone) group.setAttribute("data-trust-zone", trustZone);
     if (node.type === "decision") {
       const points = `${node.x + node.width / 2},${node.y} ${node.x + node.width},${node.y + node.height / 2} ${node.x + node.width / 2},${node.y + node.height} ${node.x},${node.y + node.height / 2}`;
       svg("polygon", { points, fill, stroke: "rgba(0,0,0,.32)", "stroke-width": 1.5, class: "node-shape node-outline node-shape-decision" }, group);
@@ -3462,7 +3470,7 @@
       svg("rect", { x: node.x, y: node.y, width: node.width, height: node.height, rx: radius, fill, stroke: "rgba(0,0,0,.32)", "stroke-width": 1.5, class: `node-shape node-outline node-shape-${node.type}` }, group);
     }
     svg("text", { x: node.x + node.width / 2, y: node.y + node.height / 2 - 6, class: "node-title" }, group).textContent = shortText(node.title);
-    svg("text", { x: node.x + node.width / 2, y: node.y + node.height / 2 + 16, class: "node-subtitle" }, group).textContent = node.type;
+    svg("text", { x: node.x + node.width / 2, y: node.y + node.height / 2 + 16, class: "node-subtitle" }, group).textContent = trustZone ? `${node.type} · ${trustZone}` : node.type;
     if (locked) renderGeometryLock(group, node);
   }
 
@@ -3694,11 +3702,13 @@
       nodeProps.classList.remove("hidden");
       el("prop-title").value = node.title;
       el("prop-type").value = node.type;
+      el("prop-trust-zone").value = nodeTrustZone(node);
       el("prop-color").value = node.color;
       el("prop-width").value = Math.round(node.width);
       el("prop-height").value = Math.round(node.height);
       el("prop-width").disabled = state.readOnly || nodeGeometryLocked(node);
       el("prop-height").disabled = state.readOnly || nodeGeometryLocked(node);
+      el("prop-trust-zone").disabled = state.readOnly;
     } else if (state.selected.type === "nodes") {
       const nodes = selectedBatchNodes();
       if (nodes.length < 2) return;
@@ -4396,6 +4406,16 @@
       const node = state.current.nodes.find((n) => n.key === state.selected.key);
       node.type = el("prop-type").value;
       node.color = colors[node.type] || node.color;
+    });
+    bindProperty("prop-trust-zone", () => {
+      const node = state.current.nodes.find((candidate) => candidate.key === state.selected.key);
+      const metadata = node.metadata && typeof node.metadata === "object" && !Array.isArray(node.metadata)
+        ? { ...node.metadata }
+        : {};
+      const zone = el("prop-trust-zone").value;
+      if (TRUST_ZONES.includes(zone)) metadata.trust_zone = zone;
+      else delete metadata.trust_zone;
+      node.metadata = metadata;
     });
     bindProperty("prop-color", () => state.current.nodes.find((n) => n.key === state.selected.key).color = el("prop-color").value);
     const selectedGeometryEditable = () => {

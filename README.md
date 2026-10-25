@@ -89,6 +89,9 @@ admin account for maintenance.
   orphan nodes, invalid or duplicate edges, self-loops and directed cycles, then
   focuses the selected finding without sending diagram content to another service.
   Reports export as standards-based SARIF 2.1.0 for CI and code-scanning tools.
+- Optional internet, edge, application, data and management trust zones are
+  visible on nodes and server-validated. Once enabled, review detects incomplete
+  classification, unlabelled boundary crossings and direct internet/data flows.
 - Zoom-to-fit frames the entire graph while reserving room for mobile controls.
 - Adaptive world-coordinate rulers track pan and zoom with bounded 1/2/5 scale
   steps. They default on for larger screens, off on phones, and remember the

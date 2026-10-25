@@ -125,6 +125,14 @@ Nui::ElementRenderer MainPage::render() {
                 div{id = "node-props", class_ = "prop-block hidden"}(
                     label{}(span{}("Title"), input{id = "prop-title", maxLength = "160"}()),
                     label{}(span{}("Type"), select{id = "prop-type"}()),
+                    label{}(span{}("Trust zone"), select{id = "prop-trust-zone"}(
+                        option{value = ""}("Unspecified"),
+                        option{value = "internet"}("Internet"),
+                        option{value = "edge"}("Edge"),
+                        option{value = "application"}("Application"),
+                        option{value = "data"}("Data"),
+                        option{value = "management"}("Management")
+                    )),
                     label{}(span{}("Color"), input{id = "prop-color", type = "color"}()),
                     label{}(span{}("Width"), input{id = "prop-width", type = "number", min = "72", max = "600"}()),
                     label{}(span{}("Height"), input{id = "prop-height", type = "number", min = "48", max = "400"}())

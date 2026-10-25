@@ -10,13 +10,13 @@ Diagram makeCloudArchitecture() {
     d.title = "Cloud Architecture";
     d.description = "API, services, queue, and PostgreSQL reference map.";
     d.nodes = {
-        {"client", "external", "Client Apps", 40, 130, 170, 80, "#fb7185", {}},
-        {"gateway", "api", "API Gateway", 300, 130, 180, 80, "#60a5fa", {}},
-        {"auth", "service", "Auth Service", 570, 40, 180, 80, "#22c55e", {}},
-        {"orders", "service", "Orders Service", 570, 170, 180, 80, "#22c55e", {}},
-        {"queue", "queue", "Event Queue", 830, 170, 170, 80, "#f97316", {}},
-        {"db", "database", "PostgreSQL", 830, 40, 170, 90, "#a78bfa", {}},
-        {"decision", "decision", "Fraud Check", 1090, 150, 160, 110, "#f59e0b", {}},
+        {"client", "external", "Client Apps", 40, 130, 170, 80, "#fb7185", {{"trust_zone", "internet"}}},
+        {"gateway", "api", "API Gateway", 300, 130, 180, 80, "#60a5fa", {{"trust_zone", "edge"}}},
+        {"auth", "service", "Auth Service", 570, 40, 180, 80, "#22c55e", {{"trust_zone", "application"}}},
+        {"orders", "service", "Orders Service", 570, 170, 180, 80, "#22c55e", {{"trust_zone", "application"}}},
+        {"queue", "queue", "Event Queue", 830, 170, 170, 80, "#f97316", {{"trust_zone", "application"}}},
+        {"db", "database", "PostgreSQL", 830, 40, 170, 90, "#a78bfa", {{"trust_zone", "data"}}},
+        {"decision", "decision", "Fraud Check", 1090, 150, 160, 110, "#f59e0b", {{"trust_zone", "application"}}},
         {"note", "note", "Versioned diagrams stored in PostgreSQL", 1030, 20, 260, 90, "#fde047", {}}
     };
     d.edges = {
@@ -60,14 +60,14 @@ Diagram makeDataPipeline() {
     d.title = "Data Pipeline";
     d.description = "Ingestion, validation, transform, warehouse, API, and BI diagram.";
     d.nodes = {
-        {"sources", "external", "Data Sources", 60, 120, 170, 80, "#fb7185", {}},
-        {"ingest", "api", "Ingestion API", 320, 120, 180, 80, "#60a5fa", {}},
-        {"validate", "decision", "Valid?", 590, 105, 150, 110, "#f59e0b", {}},
-        {"deadletter", "database", "Dead Letter", 590, 270, 170, 90, "#a78bfa", {}},
-        {"transform", "process", "Transform Jobs", 830, 120, 190, 80, "#38bdf8", {}},
-        {"warehouse", "database", "Warehouse", 1100, 120, 180, 90, "#a78bfa", {}},
-        {"analytics", "service", "Analytics API", 1370, 120, 180, 80, "#22c55e", {}},
-        {"bi", "external", "BI / Reports", 1620, 120, 170, 80, "#fb7185", {}}
+        {"sources", "external", "Data Sources", 60, 120, 170, 80, "#fb7185", {{"trust_zone", "internet"}}},
+        {"ingest", "api", "Ingestion API", 320, 120, 180, 80, "#60a5fa", {{"trust_zone", "edge"}}},
+        {"validate", "decision", "Valid?", 590, 105, 150, 110, "#f59e0b", {{"trust_zone", "application"}}},
+        {"deadletter", "database", "Dead Letter", 590, 270, 170, 90, "#a78bfa", {{"trust_zone", "data"}}},
+        {"transform", "process", "Transform Jobs", 830, 120, 190, 80, "#38bdf8", {{"trust_zone", "application"}}},
+        {"warehouse", "database", "Warehouse", 1100, 120, 180, 90, "#a78bfa", {{"trust_zone", "data"}}},
+        {"analytics", "service", "Analytics API", 1370, 120, 180, 80, "#22c55e", {{"trust_zone", "application"}}},
+        {"bi", "external", "BI / Reports", 1620, 120, 170, 80, "#fb7185", {{"trust_zone", "internet"}}}
     };
     d.edges = {
         {"e_sources_ingest", "sources", "ingest", "batch/webhook", true, "#94a3b8", {}},

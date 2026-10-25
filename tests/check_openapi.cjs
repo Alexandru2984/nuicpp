@@ -96,6 +96,11 @@ assert.ok(typeBlock, "could not locate validator node types");
 const expectedTypes = [...typeBlock[1].matchAll(/"([a-z]+)"/g)].map((match) => match[1]).sort();
 assert.deepEqual([...spec.components.schemas.Node.properties.type.enum].sort(), expectedTypes,
   "OpenAPI node types drifted from DiagramValidator");
+const trustZoneBlock = validatorSource.match(/const std::unordered_set<std::string> kTrustZones = \{([\s\S]*?)\};/);
+assert.ok(trustZoneBlock, "could not locate validator trust zones");
+const expectedTrustZones = [...trustZoneBlock[1].matchAll(/"([a-z]+)"/g)].map((match) => match[1]).sort();
+assert.deepEqual([...spec.components.schemas.Node.properties.metadata.properties.trust_zone.enum].sort(), expectedTrustZones,
+  "OpenAPI trust zones drifted from DiagramValidator");
 assert.equal(spec.components.schemas.DiagramInput.properties.title.maxLength, 120);
 assert.equal(spec.components.schemas.DiagramInput.properties.description.maxLength, 1000);
 assert.equal(spec.components.schemas.Node.properties.title.maxLength, 160);

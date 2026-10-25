@@ -299,6 +299,17 @@ test.describe("desktop security and offline lifecycle", () => {
           { key: "node_container", type: "container", title: "Worker Container", x: 1080, y: 460, width: 190, height: 90, color: "#818cf8", metadata: {} },
           { key: "node_cloud", type: "cloud", title: "Cloud Network", x: 1310, y: 450, width: 190, height: 100, color: "#7dd3fc", metadata: {} }
         );
+        const trustZones = {
+          node_start: "internet",
+          node_decision: "application",
+          node_service: "data",
+          node_queue: "application",
+          node_cache: "edge",
+          node_container: "application"
+        };
+        for (const node of diagram.nodes) {
+          if (trustZones[node.key]) node.metadata = { ...node.metadata, trust_zone: trustZones[node.key] };
+        }
         diagram.edges.push(
           { key: "edge_start_queue", source: "node_start", target: "node_queue", label: "enqueue", directed: true, color: "#f97316", metadata: {} },
           { key: "edge_queue_cache", source: "node_queue", target: "node_cache", label: "warm", directed: true, color: "#14b8a6", metadata: {} },
@@ -349,6 +360,7 @@ test.describe("desktop security and offline lifecycle", () => {
       await reviewPalette.getByRole("option", { name: /Review diagram quality/ }).click();
       const reviewDialog = page.getByRole("dialog", { name: "Diagram review" });
       await expect(reviewDialog).toBeVisible();
+      await expect(reviewDialog.getByText("missing trust zone", { exact: true })).toBeVisible();
       await expectNoHighImpactAccessibilityViolations(page, testInfo, "diagram-review");
       const sarifDownloadEvent = page.waitForEvent("download");
       await reviewDialog.getByRole("button", { name: "Export SARIF" }).click();
@@ -363,6 +375,17 @@ test.describe("desktop security and offline lifecycle", () => {
       expect(sarif.runs[0].artifacts[0].location.uri).toMatch(/\.json$/);
       await reviewDialog.getByRole("button", { name: "Close" }).click();
       await expect(reviewDialog).not.toBeVisible();
+
+      const serviceNode = page.locator('#nodes > g[data-key="node_service"]');
+      await expect(serviceNode).toHaveAttribute("data-trust-zone", "data");
+      await expect(serviceNode.locator(".node-subtitle")).toHaveText("service · data");
+      await serviceNode.locator(".node-shape").click();
+      await expect(page.locator("#prop-trust-zone")).toHaveValue("data");
+      await page.locator("#prop-trust-zone").selectOption("management");
+      await expect(serviceNode).toHaveAttribute("data-trust-zone", "management");
+      await expect(serviceNode.locator(".node-subtitle")).toHaveText("service · management");
+      await page.keyboard.press("Control+z");
+      await expect(serviceNode).toHaveAttribute("data-trust-zone", "data");
 
       await page.locator("#share-diagram").focus();
       const diagramNodeCount = await page.locator("#nodes > g").count();
@@ -786,8 +809,8 @@ test.describe("desktop security and offline lifecycle", () => {
       await page.locator("#batch-width-enabled").check();
       await page.locator("#batch-width").fill("222");
       await page.locator("#apply-batch-properties").click();
-      await expect(startGroup.locator(".node-subtitle")).toHaveText("api");
-      await expect(serviceGroup.locator(".node-subtitle")).toHaveText("api");
+      await expect(startGroup.locator(".node-subtitle")).toHaveText("api · internet");
+      await expect(serviceGroup.locator(".node-subtitle")).toHaveText("api · data");
       await expect(startShape).toHaveAttribute("fill", "#123456");
       await expect(serviceShape).toHaveAttribute("fill", "#123456");
       await expect(startShape).toHaveAttribute("width", "222");

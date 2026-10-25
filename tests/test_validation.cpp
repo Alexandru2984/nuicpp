@@ -610,6 +610,28 @@ void testNonObjectMetadataNormalized() {
     require(d.edges[0].metadata.is_object(), "int metadata should become object");
 }
 
+void testTrustZoneValidation() {
+    auto cfg = testConfig();
+    DiagramValidator validator(cfg);
+    for (const auto& zone : {"internet", "edge", "application", "data", "management"}) {
+        auto d = validDiagram();
+        d.nodes[0].metadata["trust_zone"] = zone;
+        require(validator.validate(d, false).ok, "known trust zone should pass: " + std::string(zone));
+    }
+
+    auto invalidName = validDiagram();
+    invalidName.nodes[0].metadata["trust_zone"] = "dmz";
+    require(!validator.validate(invalidName, false).ok, "unknown trust zone should fail");
+
+    auto invalidType = validDiagram();
+    invalidType.nodes[0].metadata["trust_zone"] = 42;
+    require(!validator.validate(invalidType, true).ok, "non-string trust zone should fail on import");
+
+    auto invalidLock = validDiagram();
+    invalidLock.nodes[0].metadata["geometry_locked"] = "yes";
+    require(!validator.validate(invalidLock, false).ok, "non-boolean geometry lock should fail");
+}
+
 void testAllNodeTypesAccepted() {
     auto cfg = testConfig();
     cfg.maxNodesPerDiagram = 100;
@@ -938,6 +960,7 @@ int main() {
         testInfiniteCoordinatesClamped();
         testNodeWidthHeightClamping();
         testNonObjectMetadataNormalized();
+        testTrustZoneValidation();
         testAllNodeTypesAccepted();
         // json/utility tests
         testUrlDecodeEdgeCases();
@@ -964,6 +987,6 @@ int main() {
         std::cerr << "test failed: " << e.what() << '\n';
         return EXIT_FAILURE;
     }
-    std::cout << "nuigraph validation tests passed (55 tests)\n";
+    std::cout << "nuigraph validation tests passed (56 tests)\n";
     return EXIT_SUCCESS;
 }
