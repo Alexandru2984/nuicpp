@@ -76,6 +76,10 @@ rollback notes where applicable.
   review and SARIF flag invalid/incomplete classifications, unlabelled boundary
   crossings and direct internet-to-data relationships without guessing zones
   from user-controlled names. Reference architecture/data templates are zoned.
+- Architecture policy-as-code adds optional snake_case, kebab-case and camelCase
+  key rules, explicit rule disabling and per-rule severity overrides. The CLI
+  strictly validates a bounded JSON policy, rejects unknown configuration and
+  emits policy-adjusted SARIF/default exit thresholds without logging content.
 - Private-by-default link sharing with an explicit accessible management dialog,
   128-bit capability rotation and revocation, optimistic revision checks,
   redacted lifecycle events, private visitor forks and cross-session negative
@@ -266,7 +270,6 @@ High risk remain open.
 
 ## P4 — differentiated product features
 
-- Expand architecture linting with naming conventions and configurable rule sets.
 - Diagram-as-code round trips, Git sync and reviewable semantic diffs.
 - Template marketplace with signed/curated templates and organisation libraries.
 - Guided walkthroughs, comments-to-tasks and share analytics that preserve

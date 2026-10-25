@@ -236,13 +236,18 @@ Run the same dependency-free review engine against a JSON export and retain the
 SARIF report as a CI artifact or upload it to a compatible code-scanning tool:
 
 ```bash
-node scripts/review_diagram.cjs --fail-on warning diagram.json > review.sarif
+node scripts/review_diagram.cjs --config docs/review-policy.example.json \
+  --fail-on warning diagram.json > review.sarif
 ```
 
 The default gate fails only on errors. `--fail-on warning`, `--fail-on info` and
 `--fail-on none` allow stricter advisory gates or report-only jobs. Diagram
 content stays in the local process; malformed input fails closed without being
-echoed into build logs.
+echoed into build logs. The optional bounded policy file supports `snake_case`,
+`kebab-case` or `camelCase` key conventions, explicit rule disabling and
+per-rule `error`/`warning`/`info` severity overrides; unknown fields, rule IDs
+and values are rejected rather than ignored. Start from
+[`docs/review-policy.example.json`](docs/review-policy.example.json).
 
 ## Build
 

@@ -1,0 +1,7 @@
+{
+  "naming_convention": "snake_case",
+  "disabled_rules": [],
+  "severity_overrides": {
+    "missing_edge_label": "warning"
+  }
+}

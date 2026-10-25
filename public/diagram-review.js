@@ -18,10 +18,39 @@
     { id: "invalid_trust_zone", severity: "error", title: "Invalid trust zone", description: "Trust zones must use one of the supported, server-validated identifiers." },
     { id: "missing_trust_zone", severity: "warning", title: "Missing trust zone", description: "Every architecture node should be classified once trust-boundary modelling is enabled." },
     { id: "unlabelled_trust_boundary", severity: "warning", title: "Unlabelled trust-boundary crossing", description: "A relationship crossing trust zones should document its protocol or purpose." },
-    { id: "direct_internet_data_flow", severity: "error", title: "Direct internet-to-data flow", description: "Internet-facing and data-tier nodes should communicate through an explicit mediated tier." }
+    { id: "direct_internet_data_flow", severity: "error", title: "Direct internet-to-data flow", description: "Internet-facing and data-tier nodes should communicate through an explicit mediated tier." },
+    { id: "node_key_naming", severity: "warning", title: "Node key naming convention", description: "Node keys should follow the naming convention selected by the review policy." },
+    { id: "edge_key_naming", severity: "warning", title: "Edge key naming convention", description: "Edge keys should follow the naming convention selected by the review policy." }
   ]);
   const SARIF_LEVEL = Object.freeze({ error: "error", warning: "warning", info: "note" });
   const TRUST_ZONES = new Set(["internet", "edge", "application", "data", "management"]);
+  const SEVERITIES = new Set(["error", "warning", "info"]);
+  const RULE_IDS = Object.freeze(RULE_DEFINITIONS.map((rule) => rule.id));
+  const NAMING_CONVENTIONS = Object.freeze({
+    snake_case: /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/,
+    "kebab-case": /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/,
+    camelCase: /^[a-z][A-Za-z0-9]*$/
+  });
+
+  function normalizePolicy(value) {
+    const policy = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    const namingConvention = Object.hasOwn(NAMING_CONVENTIONS, policy.namingConvention)
+      ? policy.namingConvention
+      : "none";
+    const disabledRules = new Set(
+      Array.isArray(policy.disabledRules)
+        ? policy.disabledRules.filter((ruleId) => RULE_IDS.includes(ruleId))
+        : []
+    );
+    const severityOverrides = {};
+    if (policy.severityOverrides && typeof policy.severityOverrides === "object" &&
+        !Array.isArray(policy.severityOverrides)) {
+      for (const [ruleId, severity] of Object.entries(policy.severityOverrides)) {
+        if (RULE_IDS.includes(ruleId) && SEVERITIES.has(severity)) severityOverrides[ruleId] = severity;
+      }
+    }
+    return { namingConvention, disabledRules, severityOverrides };
+  }
 
   function shortName(value, fallback) {
     const text = typeof value === "string" ? value.trim() : "";
@@ -29,12 +58,14 @@
     return text.length > 60 ? `${text.slice(0, 57)}...` : text;
   }
 
-  function analyzeDiagram(diagram) {
+  function analyzeDiagram(diagram, options = {}) {
     const nodes = Array.isArray(diagram?.nodes) ? diagram.nodes : [];
     const edges = Array.isArray(diagram?.edges) ? diagram.edges : [];
     const findings = [];
+    const policy = normalizePolicy(options);
     const add = (severity, code, message, target = null) => {
-      findings.push({ severity, code, message, target });
+      if (policy.disabledRules.has(code)) return;
+      findings.push({ severity: policy.severityOverrides[code] || severity, code, message, target });
     };
 
     if (!nodes.length) {
@@ -56,6 +87,10 @@
       degree.set(key, 0);
       if (typeof node?.title !== "string" || node.title.trim() === "") {
         add("warning", "missing_node_title", `Node "${shortName(key, `#${index + 1}`)}" has no title.`, target);
+      }
+      if (hasKey && policy.namingConvention !== "none" &&
+          !NAMING_CONVENTIONS[policy.namingConvention].test(key)) {
+        add("warning", "node_key_naming", `Node key "${shortName(key, "unknown")}" does not use ${policy.namingConvention}.`, target);
       }
       const trustZone = node?.metadata?.trust_zone;
       if (trustZone !== undefined) {
@@ -84,6 +119,10 @@
       const target = { type: "edge", key: edgeKey };
       const sourceExists = nodeByKey.has(edge?.source);
       const targetExists = nodeByKey.has(edge?.target);
+      if (typeof edge?.key === "string" && edge.key && policy.namingConvention !== "none" &&
+          !NAMING_CONVENTIONS[policy.namingConvention].test(edge.key)) {
+        add("warning", "edge_key_naming", `Edge key "${shortName(edge.key, "unknown")}" does not use ${policy.namingConvention}.`, target);
+      }
       if (!sourceExists || !targetExists) {
         const missing = [!sourceExists ? edge?.source : null, !targetExists ? edge?.target : null]
           .filter((value) => value !== null)
@@ -210,7 +249,8 @@
   }
 
   function createSarifReport(diagram, options = {}) {
-    const analysis = analyzeDiagram(diagram);
+    const policy = normalizePolicy(options.policy);
+    const analysis = analyzeDiagram(diagram, options.policy);
     const artifactUri = sarifArtifactUri(options.artifactUri);
     const ruleIndexes = new Map(RULE_DEFINITIONS.map((rule, index) => [rule.id, index]));
     const rules = RULE_DEFINITIONS.map((rule) => ({
@@ -218,7 +258,11 @@
       name: rule.id,
       shortDescription: { text: rule.title },
       fullDescription: { text: rule.description },
-      defaultConfiguration: { level: SARIF_LEVEL[rule.severity] },
+      defaultConfiguration: {
+        level: policy.disabledRules.has(rule.id)
+          ? "none"
+          : SARIF_LEVEL[policy.severityOverrides[rule.id] || rule.severity]
+      },
       properties: { tags: ["architecture", "quality"] }
     }));
     const results = analysis.findings.map((finding) => {
@@ -268,5 +312,5 @@
     };
   }
 
-  return Object.freeze({ analyzeDiagram, createSarifReport });
+  return Object.freeze({ analyzeDiagram, createSarifReport, ruleIds: RULE_IDS });
 });

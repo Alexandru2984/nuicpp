@@ -55,7 +55,7 @@ assert.equal(sarif.$schema, "https://json.schemastore.org/sarif-2.1.0.json");
 assert.equal(sarif.runs.length, 1);
 const run = sarif.runs[0];
 assert.equal(run.tool.driver.name, "NuiGraph Architecture Review");
-assert.equal(run.tool.driver.rules.length, 13);
+assert.equal(run.tool.driver.rules.length, 15);
 assert.equal(run.artifacts[0].location.uri, "reports/architecture.json");
 assert.deepEqual(run.invocations[0].properties.summary, result.summary);
 assert.equal(run.results.length, result.findings.length);
@@ -98,6 +98,27 @@ const invalidTrustZone = analyzeDiagram({
   edges: []
 });
 assert(invalidTrustZone.findings.some((finding) => finding.code === "invalid_trust_zone"));
+
+const policyDiagram = {
+  nodes: [
+    { key: "Public-API", type: "api", title: "Public API" },
+    { key: "data_store", type: "database", title: "Data Store" }
+  ],
+  edges: [{ key: "API-to-Data", source: "Public-API", target: "data_store", label: "query", directed: true }]
+};
+const policy = {
+  namingConvention: "snake_case",
+  disabledRules: ["edge_key_naming"],
+  severityOverrides: { node_key_naming: "error" }
+};
+const policyReview = analyzeDiagram(policyDiagram, policy);
+assert.equal(policyReview.findings.filter((finding) => finding.code === "node_key_naming").length, 1);
+assert.equal(policyReview.findings.find((finding) => finding.code === "node_key_naming").severity, "error");
+assert(!policyReview.findings.some((finding) => finding.code === "edge_key_naming"));
+const policySarif = createSarifReport(policyDiagram, { policy });
+assert.equal(policySarif.runs[0].results.find((finding) => finding.ruleId === "node_key_naming").level, "error");
+assert.equal(policySarif.runs[0].tool.driver.rules.find((rule) => rule.id === "edge_key_naming")
+  .defaultConfiguration.level, "none");
 
 const empty = analyzeDiagram({ nodes: [], edges: [] });
 assert.equal(empty.summary.error, 1);
