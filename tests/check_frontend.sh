@@ -50,6 +50,9 @@ grep -Fq 'applyBatchProperties' public/editor.js
 grep -Fq 'Frame selection' public/editor.js
 grep -Fq 'Actual size (100%)' public/editor.js
 grep -Fq 'function resetZoom()' public/editor.js
+grep -Fq 'Export transparent PNG' public/editor.js
+grep -Fq 'Export selection as transparent PNG' public/editor.js
+grep -Fq 'PNG_EXPORT_MAX_PIXELS' public/editor.js
 grep -Fq 'Toggle canvas rulers' public/editor.js
 grep -Fq 'function drawCanvasRulers()' public/editor.js
 grep -Fq 'evt.code === "Digit1"' public/editor.js

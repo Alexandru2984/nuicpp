@@ -16,6 +16,9 @@
   const GRID_SIZE_STORAGE = "nuigraph:grid-size:v1";
   const RULER_STORAGE = "nuigraph:canvas-rulers:v1";
   const RULER_SIZE = 24;
+  const PNG_EXPORT_SCALE = 2;
+  const PNG_EXPORT_MAX_SIDE = 8192;
+  const PNG_EXPORT_MAX_PIXELS = 40_000_000;
   const colors = {
     process: "#38bdf8",
     decision: "#f59e0b",
@@ -415,6 +418,8 @@
       { id: "export-json", label: "Export JSON", shortLabel: "JSON", category: "Import and export", enabled: () => Boolean(state.current) && !el("export-json")?.disabled, run: () => triggerButton("export-json") },
       { id: "export-svg", label: "Export SVG", shortLabel: "SVG", category: "Import and export", enabled: () => Boolean(state.current), run: exportSvg },
       { id: "export-png", label: "Export PNG", shortLabel: "PNG", category: "Import and export", enabled: () => Boolean(state.current), run: exportPng },
+      { id: "export-png-transparent", label: "Export transparent PNG", shortLabel: "PNG alpha", category: "Import and export", keywords: "download image background alpha", enabled: () => Boolean(state.current), run: () => exportPng({ transparent: true }) },
+      { id: "export-selection-png", label: "Export selection as transparent PNG", shortLabel: "PNG selection", category: "Import and export", keywords: "download image crop selected region alpha", mobile: true, enabled: () => selectedFrameNodes().length > 0, run: () => exportPng({ transparent: true, selectionOnly: true }) },
       { id: "export-mermaid", label: "Export Mermaid", shortLabel: "Mermaid", category: "Import and export", enabled: () => Boolean(state.current), run: exportMermaid },
       { id: "shortcuts", label: "Show keyboard shortcuts", shortLabel: "Shortcuts", category: "Help", keywords: "help keys", shortcut: "?", run: toggleShortcuts },
       { id: "customize-mobile", label: "Customize mobile action bar", shortLabel: "Customize", category: "View", keywords: "pin bottom buttons", run: openMobileCustomizer }
@@ -2677,44 +2682,127 @@
     URL.revokeObjectURL(url);
   }
 
-  function exportSvg() {
-    if (!state.current) return;
-    const clone = canvas.cloneNode(true);
-    clone.setAttribute("xmlns", svgNS);
-    clone.setAttribute("width", canvas.clientWidth || 1200);
-    clone.setAttribute("height", canvas.clientHeight || 800);
-    const css = `text{font-family:Inter,Arial,sans-serif}.node-title{fill:#071018;font-weight:700;font-size:14px;text-anchor:middle;dominant-baseline:middle}.node-subtitle{fill:rgba(7,16,24,.72);font-size:10px;text-anchor:middle;dominant-baseline:middle;text-transform:uppercase}.edge-label{fill:#dbeafe;paint-order:stroke;stroke:#0b0f14;stroke-width:4;font-size:12px;text-anchor:middle;dominant-baseline:middle}.edge-path{stroke-width:2.4;fill:none}`;
-    const style = document.createElementNS(svgNS, "style");
-    style.textContent = css;
-    clone.insertBefore(style, clone.firstChild);
-    const text = new XMLSerializer().serializeToString(clone);
-    downloadBlob(new Blob([text], { type: "image/svg+xml" }), `${state.current.slug || state.current.title || "diagram"}.svg`);
+  function exportBaseName() {
+    const raw = state.current?.slug || state.current?.title || "diagram";
+    return raw.replace(/[\\/:*?"<>|%]/g, "-").replace(/\s+/g, " ").trim().slice(0, 120) || "diagram";
   }
 
-  function exportPng() {
-    if (!state.current) return;
+  const EXPORT_SVG_CSS = "text{font-family:Inter,Arial,sans-serif}.node-title{fill:#071018;font-weight:700;font-size:14px;text-anchor:middle;dominant-baseline:middle}.node-subtitle{fill:rgba(7,16,24,.72);font-size:10px;text-anchor:middle;dominant-baseline:middle;text-transform:uppercase}.edge-label{fill:#dbeafe;paint-order:stroke;stroke:#0b0f14;stroke-width:4;font-size:12px;text-anchor:middle;dominant-baseline:middle}.edge-path{stroke-width:2.4;fill:none}";
+
+  function selectedExportContent() {
+    const nodes = selectedFrameNodes();
+    if (!nodes.length) return null;
+    const nodeKeys = new Set(nodes.map((node) => node.key));
+    const edgeKeys = new Set(
+      state.selected?.type === "edge"
+        ? [state.selected.key]
+        : state.current.edges
+          .filter((edge) => nodeKeys.has(edge.source) && nodeKeys.has(edge.target))
+          .map((edge) => edge.key)
+    );
+    const padding = 32;
+    const minX = Math.min(...nodes.map((node) => node.x));
+    const minY = Math.min(...nodes.map((node) => node.y));
+    const maxX = Math.max(...nodes.map((node) => node.x + node.width));
+    const maxY = Math.max(...nodes.map((node) => node.y + node.height));
+    return {
+      nodeKeys,
+      edgeKeys,
+      minX,
+      minY,
+      padding,
+      width: Math.max(1, Math.ceil(maxX - minX + padding * 2)),
+      height: Math.max(1, Math.ceil(maxY - minY + padding * 2))
+    };
+  }
+
+  function prepareSvgExport({ transparent = false, selectionOnly = false } = {}) {
+    if (!state.current) return null;
     const clone = canvas.cloneNode(true);
     clone.setAttribute("xmlns", svgNS);
-    const width = canvas.clientWidth || 1200;
-    const height = canvas.clientHeight || 800;
+    clone.querySelector("#overlay")?.replaceChildren();
+    clone.querySelectorAll(".selected, .edge-selected").forEach((node) => {
+      node.classList.remove("selected", "edge-selected");
+    });
+
+    let width = canvas.clientWidth || 1200;
+    let height = canvas.clientHeight || 800;
+    if (selectionOnly) {
+      const selection = selectedExportContent();
+      if (!selection) return null;
+      clone.querySelectorAll("#nodes > g").forEach((node) => {
+        if (!selection.nodeKeys.has(node.dataset.key)) node.remove();
+      });
+      clone.querySelectorAll("#edges > g").forEach((edge) => {
+        if (!selection.edgeKeys.has(edge.dataset.key)) edge.remove();
+      });
+      clone.querySelector("#viewport")?.setAttribute(
+        "transform",
+        `translate(${selection.padding - selection.minX} ${selection.padding - selection.minY}) scale(1)`
+      );
+      width = selection.width;
+      height = selection.height;
+    }
+    if (transparent || selectionOnly) clone.querySelector("#grid-bg")?.remove();
     clone.setAttribute("width", width);
     clone.setAttribute("height", height);
-    const text = new XMLSerializer().serializeToString(clone);
+    clone.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    const style = document.createElementNS(svgNS, "style");
+    style.textContent = EXPORT_SVG_CSS;
+    clone.insertBefore(style, clone.firstChild);
+    return { clone, width, height };
+  }
+
+  function exportSvg() {
+    const prepared = prepareSvgExport();
+    if (!prepared) return;
+    const text = new XMLSerializer().serializeToString(prepared.clone);
+    downloadBlob(new Blob([text], { type: "image/svg+xml" }), `${exportBaseName()}.svg`);
+  }
+
+  function exportPng(options = {}) {
+    const transparent = options?.transparent === true;
+    const selectionOnly = options?.selectionOnly === true;
+    const prepared = prepareSvgExport({ transparent, selectionOnly });
+    if (!prepared) {
+      if (selectionOnly) toast("Select a node or edge before exporting a selection.", "error");
+      return;
+    }
+    const rasterWidth = Math.ceil(prepared.width * PNG_EXPORT_SCALE);
+    const rasterHeight = Math.ceil(prepared.height * PNG_EXPORT_SCALE);
+    const filenameBase = exportBaseName();
+    if (rasterWidth > PNG_EXPORT_MAX_SIDE || rasterHeight > PNG_EXPORT_MAX_SIDE ||
+        rasterWidth * rasterHeight > PNG_EXPORT_MAX_PIXELS) {
+      toast("PNG export is too large. Resize the viewport or select a smaller region.", "error");
+      return;
+    }
+    const text = new XMLSerializer().serializeToString(prepared.clone);
     const img = new Image();
     const url = URL.createObjectURL(new Blob([text], { type: "image/svg+xml" }));
     img.onload = () => {
       const out = document.createElement("canvas");
-      out.width = width * 2;
-      out.height = height * 2;
+      out.width = rasterWidth;
+      out.height = rasterHeight;
       const ctx = out.getContext("2d");
-      ctx.fillStyle = "#090d12";
-      ctx.fillRect(0, 0, out.width, out.height);
-      ctx.scale(2, 2);
+      if (!transparent) {
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--bg-canvas").trim() || "#090d12";
+        ctx.fillRect(0, 0, out.width, out.height);
+      }
+      ctx.scale(PNG_EXPORT_SCALE, PNG_EXPORT_SCALE);
       ctx.drawImage(img, 0, 0);
       URL.revokeObjectURL(url);
       out.toBlob((blob) => {
-        if (blob) downloadBlob(blob, `${state.current.slug || state.current.title || "diagram"}.png`);
+        if (!blob) {
+          toast("PNG export failed in this browser.", "error");
+          return;
+        }
+        const suffix = selectionOnly ? ".selection" : transparent ? ".transparent" : "";
+        downloadBlob(blob, `${filenameBase}${suffix}.png`);
       }, "image/png");
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      toast("PNG export failed while rendering the diagram.", "error");
     };
     img.src = url;
   }

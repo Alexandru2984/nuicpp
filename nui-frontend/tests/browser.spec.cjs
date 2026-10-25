@@ -1,6 +1,40 @@
 const { test, expect, devices } = require("@playwright/test");
 const AxeBuilder = require("@axe-core/playwright").default;
+const { readFile } = require("node:fs/promises");
+const { inflateSync } = require("node:zlib");
 const { defaultBrowserType: _defaultBrowserType, ...pixel5 } = devices["Pixel 5"];
+
+async function inspectPng(download) {
+  const path = await download.path();
+  if (!path) throw new Error("Playwright did not retain the PNG download");
+  const bytes = await readFile(path);
+  if (!bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+    throw new Error("download is not a PNG");
+  }
+  let offset = 8;
+  let width = 0;
+  let height = 0;
+  let colorType = -1;
+  const imageData = [];
+  while (offset + 12 <= bytes.length) {
+    const length = bytes.readUInt32BE(offset);
+    const type = bytes.toString("ascii", offset + 4, offset + 8);
+    const data = bytes.subarray(offset + 8, offset + 8 + length);
+    if (type === "IHDR") {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      colorType = data[9];
+    } else if (type === "IDAT") {
+      imageData.push(data);
+    } else if (type === "IEND") {
+      break;
+    }
+    offset += length + 12;
+  }
+  if (colorType !== 6) throw new Error(`expected RGBA PNG, received color type ${colorType}`);
+  const pixels = inflateSync(Buffer.concat(imageData));
+  return { width, height, topLeftAlpha: pixels[4] };
+}
 
 async function expectNoHighImpactAccessibilityViolations(page, testInfo, label) {
   const results = await new AxeBuilder({ page }).analyze();
@@ -374,6 +408,27 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(page.locator('#nodes > g[data-key="node_service"]')).toHaveClass(/selected/);
       await expect(editorLiveStatus).toContainText(`Node selected: ${unsafeNodeTitle}`);
       await expect(editorLiveStatus.locator("img")).toHaveCount(0);
+      await expect(page.locator("#canvas")).toBeFocused();
+
+      await page.keyboard.press("Control+k");
+      const transparentPalette = page.getByRole("dialog", { name: "Command palette" });
+      await transparentPalette.getByRole("combobox", { name: "Search commands" }).fill("export transparent png");
+      const transparentDownload = page.waitForEvent("download");
+      await page.keyboard.press("Enter");
+      const transparentPng = await inspectPng(await transparentDownload);
+      expect(transparentPng.topLeftAlpha).toBe(0);
+      expect(transparentPng.width).toBeGreaterThan(1000);
+      expect(transparentPng.height).toBeGreaterThan(500);
+
+      await page.keyboard.press("Control+k");
+      const selectionPalette = page.getByRole("dialog", { name: "Command palette" });
+      await selectionPalette.getByRole("combobox", { name: "Search commands" }).fill("export selection as transparent png");
+      const selectionDownload = page.waitForEvent("download");
+      await page.keyboard.press("Enter");
+      const selectionPngDownload = await selectionDownload;
+      expect(selectionPngDownload.suggestedFilename()).toMatch(/\.selection\.png$/);
+      const selectionPng = await inspectPng(selectionPngDownload);
+      expect(selectionPng).toEqual({ width: 468, height: 288, topLeftAlpha: 0 });
       await expect(page.locator("#canvas")).toBeFocused();
 
       const lockedServiceGroup = page.locator('#nodes > g[data-key="node_service"]');
