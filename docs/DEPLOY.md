@@ -351,6 +351,11 @@ counter. Older binaries leave new/updated content estimates stale and can bypass
 the byte ceiling. A rollback may serve reads and deletes, but must deny mutating
 API methods until the quota-aware binary is restored; do not drop the counter or
 its triggers.
+`009_idempotent_creates.sql` adds only a retry ledger with a cascading foreign
+key. An older binary ignores it and remains schema-compatible, but creation
+retries can again produce duplicates while that binary runs. Keep the table: it
+contains only domain-separated HMACs and deleting it is unnecessary for rollback.
+The next hardened release can safely resume using unexpired rows.
 `FRONTEND_SHELL` adds no database state: roll back with the prior binary while
 keeping it at `server`, or restore the previous vhost and release together if a
 Nui-specific CSP was introduced.

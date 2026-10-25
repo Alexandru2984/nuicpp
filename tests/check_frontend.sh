@@ -50,6 +50,8 @@ grep -Fq 'applyBatchProperties' public/editor.js
 grep -Fq 'Frame selection' public/editor.js
 grep -Fq 'Actual size (100%)' public/editor.js
 grep -Fq 'function resetZoom()' public/editor.js
+# This is a literal JavaScript template expression, not shell interpolation.
+# shellcheck disable=SC2016
 grep -Fq 'zoomLabel.setAttribute("aria-label", `${zoomPercent} zoom; reset to 100%`)' public/editor.js
 grep -Fq 'Enter presentation mode' public/editor.js
 grep -Fq 'function togglePresentationMode(force)' public/editor.js
@@ -86,6 +88,9 @@ grep -Fq 'evt.key.toLowerCase() === "x"' public/editor.js
 grep -Fq 'function toggleSelectedGeometryLock()' public/editor.js
 grep -Fq 'metadata.geometry_locked = true' public/editor.js
 grep -Fq 'if (fetchOptions.body !== undefined' public/editor.js
+grep -Fq 'function idempotencyHeaders()' public/editor.js
+grep -Fq 'webCrypto.getRandomValues(new Uint8Array(16))' public/editor.js
+test "$(grep -Fc 'headers: idempotencyHeaders(),' public/editor.js)" -eq 5
 grep -Fq 'id="grid-size"' src/ui/NuiApp.cpp
 grep -Fq 'id = "grid-size"' nui-frontend/frontend/source/frontend/main_page.cpp
 for type in queue cache container cloud; do

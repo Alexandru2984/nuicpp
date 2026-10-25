@@ -599,6 +599,46 @@ bool Routes::ensureCsrf(const httplib::Request& req, httplib::Response& res) {
     return false;
 }
 
+bool Routes::parseIdempotencyRequest(
+    const httplib::Request& req, httplib::Response& res,
+    const std::string& operation, const std::string& requestMaterial,
+    std::optional<IdempotencyRequest>& out) const {
+    const auto count = req.get_header_value_count("Idempotency-Key");
+    if (count == 0) {
+        out.reset();
+        return true;
+    }
+
+    const auto key = req.get_header_value("Idempotency-Key");
+    const auto validKey = key.size() >= 8 && key.size() <= 128 &&
+        std::all_of(key.begin(), key.end(), [](unsigned char c) {
+            return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') ||
+                (c >= 'a' && c <= 'z') || c == '.' || c == '_' || c == ':' || c == '-';
+        });
+    if (count != 1 || !validKey) {
+        logSecurityEvent(req, res, "idempotency_rejected", "blocked");
+        sendJson(res, 400, errorJson("Idempotency-Key must be a single 8-128 character token"));
+        return false;
+    }
+
+    std::string username;
+    if (!verifySession(req, &username)) {
+        // Creation handlers verify CSRF first, so reaching this branch means
+        // the session disappeared between checks and must fail closed.
+        sendJson(res, 401, errorJson("authentication required"));
+        return false;
+    }
+
+    out = IdempotencyRequest{
+        hmacHex(cfg_.ownerHashSecret, "idempotency-principal:v1:" + username),
+        operation,
+        hmacHex(cfg_.ownerHashSecret, "idempotency-key:v1:" + key),
+        hmacHex(cfg_.ownerHashSecret,
+                "idempotency-request:v1:" + operation + ":" + requestMaterial)
+    };
+    return true;
+}
+
 bool Routes::ensureWriteRateLimit(const httplib::Request& req, httplib::Response& res, bool creation) {
     const auto ip = clientIp(req);
     try {
@@ -719,6 +759,11 @@ void Routes::sendStorageError(const httplib::Request& req, httplib::Response& re
         });
         return;
     }
+    if (dynamic_cast<const IdempotencyConflict*>(&e) != nullptr) {
+        logSecurityEvent(req, res, "idempotency_conflict", "blocked");
+        sendJson(res, 409, errorJson(e.what()));
+        return;
+    }
     if (dynamic_cast<const DiagramCapacityExceeded*>(&e) != nullptr) {
         logSecurityEvent(req, res, "global_capacity_exhausted", "blocked");
         sendJson(res, 503, errorJson(e.what()));
@@ -757,6 +802,14 @@ void Routes::sendDiagramJson(const httplib::Request& req, httplib::Response& res
                              int status, const Diagram& diagram) {
     res.set_header("ETag", diagramEtag(diagram));
     sendJson(res, status, diagramResponse(req, diagram));
+}
+
+void Routes::sendCreationResult(const httplib::Request& req, httplib::Response& res,
+                                const DiagramCreationResult& result) {
+    if (result.replayed) {
+        res.set_header("Idempotency-Replayed", "true");
+    }
+    sendDiagramJson(req, res, 201, result.diagram);
 }
 
 void Routes::logSecurityEvent(const httplib::Request& req, const httplib::Response& res,
@@ -1197,10 +1250,14 @@ void Routes::registerRoutes(httplib::Server& server) {
             sendJson(res, 404, errorJson("template not found"));
             return;
         }
+        std::optional<IdempotencyRequest> idempotency;
+        if (!parseIdempotencyRequest(req, res, "template",
+                                     item->key + "\n" + req.body, idempotency)) return;
         try {
-            auto created = storage_.createDiagram(item->diagram, true, ownerHashForRequest(req));
-            metrics_.recordDiagramCreated("template");
-            sendDiagramJson(req, res, 201, created);
+            auto created = storage_.createDiagram(
+                item->diagram, true, ownerHashForRequest(req), idempotency);
+            if (!created.replayed) metrics_.recordDiagramCreated("template");
+            sendCreationResult(req, res, created);
         } catch (const std::exception& e) {
             sendStorageError(req, res, e, 400);
         }
@@ -1210,11 +1267,14 @@ void Routes::registerRoutes(httplib::Server& server) {
         if (!ensureAuthenticated(req, res, false)) return;
         if (!ensureWriteRateLimit(req, res, true)) return;
         if (!ensureCsrf(req, res)) return;
+        std::optional<IdempotencyRequest> idempotency;
+        if (!parseIdempotencyRequest(req, res, "create", req.body, idempotency)) return;
         try {
             Diagram d = req.body.empty() ? defaultDiagram() : diagramFromJson(nlohmann::json::parse(req.body));
-            auto created = storage_.createDiagram(d, false, ownerHashForRequest(req));
-            metrics_.recordDiagramCreated("blank");
-            sendDiagramJson(req, res, 201, created);
+            auto created = storage_.createDiagram(
+                d, false, ownerHashForRequest(req), idempotency);
+            if (!created.replayed) metrics_.recordDiagramCreated("blank");
+            sendCreationResult(req, res, created);
         } catch (const std::exception& e) {
             sendStorageError(req, res, e, 400);
         }
@@ -1256,10 +1316,14 @@ void Routes::registerRoutes(httplib::Server& server) {
             sendJson(res, 400, errorJson("invalid slug"));
             return;
         }
+        std::optional<IdempotencyRequest> idempotency;
+        if (!parseIdempotencyRequest(req, res, "fork",
+                                     slug + "\n" + req.body, idempotency)) return;
         try {
-            const auto copy = storage_.forkDiagramBySlug(slug, ownerHashForRequest(req));
-            metrics_.recordDiagramCreated("fork");
-            sendDiagramJson(req, res, 201, copy);
+            const auto copy = storage_.forkDiagramBySlug(
+                slug, ownerHashForRequest(req), idempotency);
+            if (!copy.replayed) metrics_.recordDiagramCreated("fork");
+            sendCreationResult(req, res, copy);
         } catch (const std::exception& e) {
             sendStorageError(req, res, e, 404);
         }
@@ -1380,10 +1444,13 @@ void Routes::registerRoutes(httplib::Server& server) {
         // Duplicating reads the whole source diagram and hands the caller an owned
         // copy, so it needs the same read check as GET /api/diagrams/{id}.
         if (!ensureCanRead(req, res, id, "diagram")) return;
+        std::optional<IdempotencyRequest> idempotency;
+        if (!parseIdempotencyRequest(req, res, "duplicate",
+                                     std::to_string(id) + "\n" + req.body, idempotency)) return;
         try {
-            auto copy = storage_.duplicateDiagram(id, ownerHashForRequest(req));
-            metrics_.recordDiagramCreated("duplicate");
-            sendDiagramJson(req, res, 201, copy);
+            auto copy = storage_.duplicateDiagram(id, ownerHashForRequest(req), idempotency);
+            if (!copy.replayed) metrics_.recordDiagramCreated("duplicate");
+            sendCreationResult(req, res, copy);
         } catch (const std::exception& e) {
             sendStorageError(req, res, e, 404);
         }
@@ -1479,10 +1546,14 @@ void Routes::registerRoutes(httplib::Server& server) {
             sendJson(res, 413, errorJson("import body too large"));
             return;
         }
+        std::optional<IdempotencyRequest> idempotency;
+        if (!parseIdempotencyRequest(req, res, "import", req.body, idempotency)) return;
         try {
-            auto imported = storage_.createDiagram(diagramFromJson(nlohmann::json::parse(req.body)), true, ownerHashForRequest(req));
-            metrics_.recordDiagramCreated("import");
-            sendDiagramJson(req, res, 201, imported);
+            auto imported = storage_.createDiagram(
+                diagramFromJson(nlohmann::json::parse(req.body)), true,
+                ownerHashForRequest(req), idempotency);
+            if (!imported.replayed) metrics_.recordDiagramCreated("import");
+            sendCreationResult(req, res, imported);
         } catch (const std::exception& e) {
             sendStorageError(req, res, e, 400);
         }

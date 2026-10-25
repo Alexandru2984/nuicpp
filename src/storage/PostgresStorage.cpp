@@ -8,12 +8,23 @@
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace nuigraph {
 namespace {
 
 constexpr long kMaxPersistentRateLimitKeys = 20000;
+const std::vector<std::string> kIdempotentCreateOperations = {
+    "create", "template", "fork", "duplicate", "import"
+};
+
+bool isLowerHex(const std::string& value, std::size_t length) {
+    return value.size() == length &&
+        std::all_of(value.begin(), value.end(), [](unsigned char c) {
+            return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+        });
+}
 
 std::string slugBase(const std::string& title) {
     std::string out;
@@ -484,7 +495,9 @@ void PostgresStorage::enforceLogicalStorageCapacity(
     }
 }
 
-Diagram PostgresStorage::createDiagram(const Diagram& input, bool importMode, const std::string& ownerTokenHash) {
+DiagramCreationResult PostgresStorage::createDiagram(
+    const Diagram& input, bool importMode, const std::string& ownerTokenHash,
+    const std::optional<IdempotencyRequest>& idempotency) {
     Diagram diagram = input;
     auto validation = validator_.validate(diagram, importMode);
     if (!validation.ok) {
@@ -492,6 +505,43 @@ Diagram PostgresStorage::createDiagram(const Diagram& input, bool importMode, co
     }
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
+
+    if (idempotency.has_value()) {
+        const auto& request = *idempotency;
+        if (!isLowerHex(request.principalKey, 64) ||
+            std::find(kIdempotentCreateOperations.begin(), kIdempotentCreateOperations.end(),
+                      request.operation) == kIdempotentCreateOperations.end() ||
+            !isLowerHex(request.keyHash, 64) || !isLowerHex(request.requestHash, 64)) {
+            throw std::invalid_argument("invalid idempotency parameters");
+        }
+
+        const auto lockKey = "nuigraph:idempotency:v1:" + request.principalKey + ":" +
+            request.operation + ":" + request.keyHash;
+        tx.exec("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+                pqxx::params{lockKey});
+        // Expire only this lookup. A request must not turn a hot creation path
+        // into an unbounded cleanup job or contend on unrelated principals.
+        tx.exec(R"SQL(
+            DELETE FROM diagram_idempotency_keys
+            WHERE principal_key=$1 AND operation=$2 AND key_hash=$3
+              AND expires_at <= statement_timestamp()
+        )SQL", pqxx::params{request.principalKey, request.operation, request.keyHash});
+        const auto existing = tx.exec(R"SQL(
+            SELECT request_hash, diagram_id
+            FROM diagram_idempotency_keys
+            WHERE principal_key=$1 AND operation=$2 AND key_hash=$3
+            FOR UPDATE
+        )SQL", pqxx::params{request.principalKey, request.operation, request.keyHash});
+        if (!existing.empty()) {
+            if (rowString(existing[0], "request_hash") != request.requestHash) {
+                throw IdempotencyConflict(
+                    "idempotency key was already used for a different request");
+            }
+            auto replay = getDiagram(tx, existing[0]["diagram_id"].as<long>());
+            tx.commit();
+            return {std::move(replay), true};
+        }
+    }
 
     // Every creation path reaches this method. Serialise the global count and
     // insert in one transaction so parallel requests and fresh guest sessions
@@ -534,8 +584,21 @@ Diagram PostgresStorage::createDiagram(const Diagram& input, bool importMode, co
     replaceNodesAndEdges(tx, id, diagram);
     createVersion(tx, id, "initial snapshot");
     enforceLogicalStorageCapacity(tx, ownerTokenHash);
+    if (idempotency.has_value()) {
+        const auto& request = *idempotency;
+        tx.exec(R"SQL(
+            INSERT INTO diagram_idempotency_keys
+                (principal_key, operation, key_hash, request_hash, diagram_id)
+            VALUES ($1,$2,$3,$4,$5)
+        )SQL", pqxx::params{
+            request.principalKey, request.operation, request.keyHash, request.requestHash, id});
+    }
+    // Re-read through the transaction's existing lease. Under a burst equal to
+    // DB_POOL_SIZE, acquiring a second connection here would deadlock the
+    // winning request against contenders waiting on its advisory lock.
+    auto created = getDiagram(tx, id);
     tx.commit();
-    return getDiagram(id);
+    return {std::move(created), false};
 }
 
 Diagram PostgresStorage::updateDiagram(long id, const Diagram& input, const std::string& note,
@@ -690,22 +753,25 @@ void PostgresStorage::deleteDiagram(long id, long expectedRevision) {
     tx.commit();
 }
 
-Diagram PostgresStorage::duplicateDiagram(long id, const std::string& ownerTokenHash) {
+DiagramCreationResult PostgresStorage::duplicateDiagram(
+    long id, const std::string& ownerTokenHash,
+    const std::optional<IdempotencyRequest>& idempotency) {
     auto source = getDiagram(id);
     source.id = 0;
     source.title += " Copy";
     source.slug.clear();
-    return createDiagram(source, false, ownerTokenHash);
+    return createDiagram(source, false, ownerTokenHash, idempotency);
 }
 
-Diagram PostgresStorage::forkDiagramBySlug(const std::string& slug,
-                                           const std::string& ownerTokenHash) {
+DiagramCreationResult PostgresStorage::forkDiagramBySlug(
+    const std::string& slug, const std::string& ownerTokenHash,
+    const std::optional<IdempotencyRequest>& idempotency) {
     auto source = getDiagramBySlug(slug);
     source.id = 0;
     source.title += " Copy";
     source.slug.clear();
     source.sharingEnabled = false;
-    return createDiagram(source, false, ownerTokenHash);
+    return createDiagram(source, false, ownerTokenHash, idempotency);
 }
 
 std::vector<VersionInfo> PostgresStorage::listVersions(long diagramId) {

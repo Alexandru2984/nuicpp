@@ -3,7 +3,7 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "NuiGraph Studio API",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "description": "Session-oriented API for private diagrams, templates, version history and capability-based sharing. Start with GET /api/session and retain its HttpOnly cookie. Unsafe requests require the returned CSRF token in X-CSRF-Token. Production HTTPS uses __Host-ngs_session; loopback HTTP development uses ngs_session."
   },
   "servers": [{ "url": "/", "description": "Current NuiGraph Studio origin" }],
@@ -56,9 +56,11 @@
           { "sessionCookie": [], "csrfHeader": [] },
           { "localSessionCookie": [], "csrfHeader": [] }
         ],
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
         "requestBody": { "$ref": "#/components/requestBodies/OptionalDiagram" },
         "responses": {
           "201": { "$ref": "#/components/responses/DiagramCreatedResponse" },
+          "409": { "$ref": "#/components/responses/IdempotencyConflictResponse" },
           "default": { "$ref": "#/components/responses/ErrorResponse" }
         }
       }
@@ -84,8 +86,10 @@
           { "sessionCookie": [], "csrfHeader": [] },
           { "localSessionCookie": [], "csrfHeader": [] }
         ],
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
         "responses": {
           "201": { "$ref": "#/components/responses/DiagramCreatedResponse" },
+          "409": { "$ref": "#/components/responses/IdempotencyConflictResponse" },
           "default": { "$ref": "#/components/responses/ErrorResponse" }
         }
       }
@@ -157,8 +161,10 @@
           { "sessionCookie": [], "csrfHeader": [] },
           { "localSessionCookie": [], "csrfHeader": [] }
         ],
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
         "responses": {
           "201": { "$ref": "#/components/responses/DiagramCreatedResponse" },
+          "409": { "$ref": "#/components/responses/IdempotencyConflictResponse" },
           "default": { "$ref": "#/components/responses/ErrorResponse" }
         }
       }
@@ -193,8 +199,10 @@
           { "sessionCookie": [], "csrfHeader": [] },
           { "localSessionCookie": [], "csrfHeader": [] }
         ],
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
         "responses": {
           "201": { "$ref": "#/components/responses/DiagramCreatedResponse" },
+          "409": { "$ref": "#/components/responses/IdempotencyConflictResponse" },
           "default": { "$ref": "#/components/responses/ErrorResponse" }
         }
       }
@@ -283,9 +291,11 @@
           { "sessionCookie": [], "csrfHeader": [] },
           { "localSessionCookie": [], "csrfHeader": [] }
         ],
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
         "requestBody": { "$ref": "#/components/requestBodies/Diagram" },
         "responses": {
           "201": { "$ref": "#/components/responses/DiagramCreatedResponse" },
+          "409": { "$ref": "#/components/responses/IdempotencyConflictResponse" },
           "413": { "$ref": "#/components/responses/ErrorResponse" },
           "default": { "$ref": "#/components/responses/ErrorResponse" }
         }
@@ -346,6 +356,13 @@
         "description": "Strong ETag from the latest diagram response, for example \"diagram-42-r7\".",
         "schema": { "type": "string", "pattern": "^\\\"diagram-[1-9][0-9]*-r[1-9][0-9]*\\\"$" }
       },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "description": "Retry token scoped to the authenticated principal and creation operation. Reuse with the identical request for up to 24 hours returns the original diagram; reuse with different request material returns 409.",
+        "schema": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{8,128}$" }
+      },
       "Limit": {
         "name": "limit",
         "in": "query",
@@ -384,6 +401,10 @@
       "RequestId": {
         "description": "Normalised or generated request correlation identifier.",
         "schema": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$" }
+      },
+      "IdempotencyReplayed": {
+        "description": "Present with value true when this response replays an earlier successful creation.",
+        "schema": { "type": "string", "const": "true" }
       }
     },
     "responses": {
@@ -401,9 +422,10 @@
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Diagram" } } }
       },
       "DiagramCreatedResponse": {
-        "description": "Created diagram.",
+        "description": "Created diagram, or the original successful result of an idempotent retry.",
         "headers": {
           "ETag": { "$ref": "#/components/headers/ETag" },
+          "Idempotency-Replayed": { "$ref": "#/components/headers/IdempotencyReplayed" },
           "X-Request-ID": { "$ref": "#/components/headers/RequestId" }
         },
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Diagram" } } }
@@ -447,6 +469,10 @@
       },
       "PreconditionRequiredResponse": {
         "description": "If-Match is required.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "IdempotencyConflictResponse": {
+        "description": "The idempotency key was already used with different request material for this principal and operation.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
       "ErrorResponse": {

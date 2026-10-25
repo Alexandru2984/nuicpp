@@ -18,6 +18,7 @@ for alert in \
   NuiGraphCrossSiteMutationSpike \
   NuiGraphForeignOriginSpike \
   NuiGraphUnsupportedMediaTypeSpike \
+  NuiGraphIdempotencyMisuseSpike \
   NuiGraphBlockedShareViewSpike \
   NuiGraphRateLimitStorageFailure \
   NuiGraphDiagramCapacityHigh \

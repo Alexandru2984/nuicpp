@@ -5,6 +5,7 @@
 #include "storage/PostgresStorage.hpp"
 
 #include <httplib.h>
+#include <optional>
 #include <string>
 
 namespace nuigraph {
@@ -28,6 +29,10 @@ private:
     std::string csrfTokenForSession(const std::string& session) const;
     bool verifyCsrf(const httplib::Request& req) const;
     bool ensureCsrf(const httplib::Request& req, httplib::Response& res);
+    bool parseIdempotencyRequest(const httplib::Request& req, httplib::Response& res,
+                                 const std::string& operation,
+                                 const std::string& requestMaterial,
+                                 std::optional<IdempotencyRequest>& out) const;
     bool ensureWriteRateLimit(const httplib::Request& req, httplib::Response& res, bool creation);
     bool isAdmin(const httplib::Request& req) const;
     std::string ownerHashForRequest(const httplib::Request& req) const;
@@ -41,6 +46,8 @@ private:
     nlohmann::json diagramResponse(const httplib::Request& req, const Diagram& diagram);
     void sendDiagramJson(const httplib::Request& req, httplib::Response& res,
                          int status, const Diagram& diagram);
+    void sendCreationResult(const httplib::Request& req, httplib::Response& res,
+                            const DiagramCreationResult& result);
     void serveStatic(const httplib::Request& req, httplib::Response& res,
                      const std::string& path, bool noStore = false) const;
     void sendJson(httplib::Response& res, int status, const nlohmann::json& body) const;

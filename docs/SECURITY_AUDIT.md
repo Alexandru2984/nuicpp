@@ -5,7 +5,7 @@
 checked-in nginx/systemd configuration, the running service, and non-sensitive
 production metadata. Diagram content and secret values were not inspected.
 
-**Remediation updates, 2026-10-22 through 2026-10-23:** CI, CodeQL, dependency automation and SEO
+**Remediation updates, 2026-10-22 through 2026-10-26:** CI, CodeQL, dependency automation and SEO
 privacy controls were pushed; their remote CI, CodeQL and secret-scanning checks
 passed. Later hardening remains local until pushed and deployed. The operator
 explicitly deferred offsite backup work, so the corresponding High finding
@@ -64,6 +64,14 @@ Inline node and edge-label editing keeps user-controlled labels in input values 
 `textContent`; it does not parse markup. Browser coverage uses an active-event
 payload and verifies that rename, display and undo never create an HTML element
 or execute the payload.
+All five diagram-creation paths now support PostgreSQL-serialized, 24-hour
+idempotency. The ledger stores independent HMACs for principal, caller token and
+request material rather than raw identities, keys, share slugs or bodies.
+Conflicting reuse and malformed/duplicate headers are bounded security events
+with a validated abuse alert. A live eight-way concurrency regression found and
+fixed a connection-pool exhaustion deadlock, then proved one retained diagram,
+one creation metric and exact replay behavior across blank, template, duplicate,
+import and fork operations.
 
 ## Executive verdict
 
@@ -236,6 +244,7 @@ costs.
 | Origin bypass | Any accepted public-origin request whose TCP peer is not Cloudflare/tunnel | Immediate | VPS operator |
 | Backup failure | Backup timer fails or no verified artifact appears in 26 hours | 30 minutes | VPS operator |
 | Secret/token exposure | Secret scan or bearer token appears in non-redacted application logs | Before merge / 15 minutes runtime | Maintainer |
+| Idempotency misuse | 10 malformed or conflicting key events within 10 minutes for 2 minutes | 12 minutes | VPS operator |
 
 Current MTTD is effectively unbounded for silent disclosure and bounded only by
 manual journal inspection for most other scenarios.
@@ -243,10 +252,11 @@ manual journal inspection for most other scenarios.
 ## Regulatory and vendor scope
 
 Treat GDPR as in scope whenever a diagram contains data about an identifiable
-person or IP-address logs can be linked to a visitor. A controller must assess and,
-where required, notify the supervisory authority within 72 hours after becoming
-aware of a personal-data breach. Preserve evidence and start the clock in the
-incident record; do not wait for perfect certainty.
+person or IP-address logs can be linked to a visitor. A controller must assess
+and, where required by [GDPR Article 33](https://eur-lex.europa.eu/eli/reg/2016/679/ojv),
+notify the supervisory authority within 72 hours after becoming aware of a
+personal-data breach. Preserve evidence and start the clock in the incident
+record; do not wait for perfect certainty.
 
 External dependencies in scope are Cloudflare (DNS, proxy/WAF/tunnel/analytics),
 the VPS/hosting provider, GitHub (source and Nui fetch), Ubuntu package mirrors,

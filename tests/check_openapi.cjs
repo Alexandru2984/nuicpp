@@ -91,6 +91,30 @@ for (const entry of revisionSafe) {
     `${entry} must require If-Match`);
 }
 
+const idempotentCreates = new Set([
+  "POST /api/diagrams",
+  "POST /api/templates/{key}/create",
+  "POST /api/diagrams/slug/{slug}/fork",
+  "POST /api/diagrams/{id}/duplicate",
+  "POST /api/diagrams/import"
+]);
+for (const entry of idempotentCreates) {
+  const [method, route] = entry.split(" ");
+  const operation = spec.paths[route][method.toLowerCase()];
+  const parameters = (operation.parameters || []).map((parameter) =>
+    parameter.$ref ? resolvePointer(parameter.$ref) : parameter);
+  const idempotency = parameters.find((parameter) =>
+    parameter.in === "header" && parameter.name === "Idempotency-Key");
+  assert.ok(idempotency && idempotency.required === false,
+    `${entry} must declare optional Idempotency-Key`);
+  assert.equal(operation.responses?.["409"]?.$ref,
+    "#/components/responses/IdempotencyConflictResponse",
+    `${entry} must document conflicting idempotency-key reuse`);
+}
+assert.equal(spec.components.headers.IdempotencyReplayed.schema.const, "true");
+assert.equal(spec.components.responses.DiagramCreatedResponse.headers["Idempotency-Replayed"].$ref,
+  "#/components/headers/IdempotencyReplayed");
+
 const typeBlock = validatorSource.match(/const std::unordered_set<std::string> kTypes = \{([\s\S]*?)\};/);
 assert.ok(typeBlock, "could not locate validator node types");
 const expectedTypes = [...typeBlock[1].matchAll(/"([a-z]+)"/g)].map((match) => match[1]).sort();

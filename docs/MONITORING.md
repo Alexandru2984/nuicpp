@@ -18,10 +18,11 @@ of rows. Responses are `no-store` and excluded from indexing.
 The bounded security series includes allowed/blocked share views, successful
 enable/disable/rotate/expiry-update lifecycle changes, signing-key and legacy
 cookie upgrades, rejected cross-site mutations, foreign request origins and
-unsupported request media types. Runtime logs use the same outcomes but redact
-capabilities from page and API paths. A sudden blocked-view spike after a planned
-rotation is expected; an unexplained sustained spike should be correlated with
-access logs without recovering or printing the old token.
+unsupported request media types, malformed idempotency headers and conflicting
+idempotency-key reuse. Runtime logs use the same outcomes but redact capabilities
+and idempotency keys. A sudden blocked-view spike after a planned rotation is
+expected; an unexplained sustained spike should be correlated with access logs
+without recovering or printing the old token.
 
 ## Scrape configuration
 
@@ -145,6 +146,18 @@ only when a real artifact timestamp and restore verification signal exist.
 3. Never add raw `Content-Type` values to logs or metrics. A sustained hostile
    pattern is input probing and can be contained at the edge using route and
    source signals already available there.
+
+## Idempotency-key misuse
+
+1. Split `idempotency_rejected/blocked` from `idempotency_conflict/blocked` and
+   correlate only request IDs, route shapes and actor classes. Never recover or
+   log the supplied key or request fingerprint.
+2. Rejections usually mean a client emitted malformed or duplicate headers;
+   conflicts mean it reused one token for different request material. Correct
+   retry middleware to retain a token only for retries of the exact operation.
+3. A distributed or sustained unexplained burst is protocol probing. Contain a
+   clear source pattern at Cloudflare while keeping CSRF, rate limits and the
+   conflict response enabled; idempotency is not an authentication boundary.
 
 ## Share-link probing or expiry noise
 

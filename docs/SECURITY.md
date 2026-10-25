@@ -123,10 +123,11 @@ carry the ID.
 
 Security events cover admin login outcomes, logout, session re-signing,
 authorization/CSRF denials, write/create throttling, quota/capacity exhaustion,
-revision conflicts, share-page views and storage failures. They record actor
-class, redacted route, source IP and outcome, but never usernames, cookies, CSRF
-values, passwords, request bodies or share capabilities. Source IPs are personal
-data; journal and nginx retention/access still need an explicit privacy policy.
+revision and idempotency conflicts, malformed idempotency headers, share-page
+views and storage failures. They record actor class, redacted route, source IP
+and outcome, but never usernames, cookies, idempotency keys, CSRF values,
+passwords, request bodies or share capabilities. Source IPs are personal data;
+journal and nginx retention/access still need an explicit privacy policy.
 
 ## Authorization
 
@@ -230,6 +231,34 @@ reads regardless of an irrelevant request `Content-Type`. The browser client
 sets `application/json` only when it actually supplies a body; this avoids
 misrepresenting bodyless GET and DELETE requests while keeping every parsed
 payload explicit.
+
+## Idempotent creation
+
+Diagram creation, template creation, shared-diagram fork, duplicate and import
+accept one optional `Idempotency-Key`. The browser uses `crypto.randomUUID()` or
+a `crypto.getRandomValues()` 128-bit fallback. The server accepts only one
+8–128-character token from a restricted alphabet; duplicate, malformed or
+control-character-bearing headers receive `400` before storage.
+
+The database primary key scopes a token to both the authenticated principal and
+the creation operation. The principal, supplied token and request fingerprint
+are independently domain-separated HMAC-SHA256 values derived with
+`OWNER_HASH_SECRET`; raw guest identities, idempotency tokens, cookies, bearer
+share slugs and request bodies are never persisted.
+A PostgreSQL transaction advisory lock serializes contenders before quota
+accounting and insertion. Lock order is always idempotency key, then global row
+quota, then owner and logical-byte quota; no path acquires them in reverse. The
+first request creates one diagram and retry row;
+an exact concurrent or later retry returns that same diagram with
+`Idempotency-Replayed: true` without incrementing the creation metric or quota.
+Reuse with different material returns `409`. Records expire after 24 hours and
+cascade away with the result diagram. Cleanup is limited to the requested key,
+so one caller cannot force a broad deletion scan on the hot creation path.
+
+Idempotency is not an abuse-control bypass: authentication, persistent write
+and creation rate limits, CSRF, Origin/Fetch Metadata checks, authorization and
+input validation still execute. The response remains `201` on replay to keep
+the representation stable; clients distinguish it through the response header.
 
 Persistent rate-limit bucket keys use `RATE_LIMIT_SECRET`. Rotating it starts new
 pseudonymous identities; old database rows become unreachable and expire within

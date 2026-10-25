@@ -192,6 +192,11 @@ Summarised here, detailed in [`docs/SECURITY.md`](docs/SECURITY.md).
 - Rate limiting at the edge and in the app, plus atomic per-guest and global
   diagram and logical-byte quotas so concurrent writes cannot grow retained
   user content past the configured ceilings.
+- Persistent 24-hour idempotency for every diagram-creation path. Concurrent
+  retries are serialized in PostgreSQL, exact retries return the original ID,
+  conflicting key reuse returns `409`, and only purpose-specific HMACs—not
+  idempotency tokens, session identities, share slugs or request bodies—reach
+  the retry ledger.
 - End-to-end request IDs and redacted structured security events for login,
   authorization, CSRF, cross-site/origin/media-type rejection, quota,
   rate-limit, share lifecycle/view and storage failures.
@@ -390,8 +395,16 @@ sites, so never restart nginx.
 Mutating endpoints require `X-CSRF-Token` from `/api/session`. Template keys:
 `cloud-architecture`, `incident-response`, `data-pipeline`.
 
+All five diagram-creation endpoints accept an optional `Idempotency-Key` of
+8–128 characters from `A-Z a-z 0-9 . _ : -`. The key is scoped to the
+authenticated principal and operation for 24 hours. Repeating the exact request
+returns `201`, the original diagram and `Idempotency-Replayed: true`; reusing an
+active key with different request material returns `409`. Rate limits still
+apply to retries. The browser generates a fresh 128-bit key for every creation
+action.
+
 The checked-in OpenAPI 3.1 contract documents all 18 API operations, schemas,
-cookie/CSRF security and conditional revision headers. A dependency-free CTest
+cookie/CSRF security, conditional revision headers and retry semantics. A dependency-free CTest
 gate extracts routes and node types from the C++ sources and fails on drift,
 duplicate operation IDs, unresolved references or incomplete mutation security.
 

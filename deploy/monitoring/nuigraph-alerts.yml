@@ -139,6 +139,18 @@ groups:
           summary: Repeated request media-type violations were blocked
           runbook: docs/MONITORING.md#request-contract-rejections
 
+      - alert: NuiGraphIdempotencyMisuseSpike
+        expr: |
+          sum(increase(nuigraph_security_events_total{
+            job="nuigraph",event=~"idempotency_rejected|idempotency_conflict",outcome="blocked"
+          }[10m])) >= 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Repeated malformed or conflicting idempotency keys were blocked
+          runbook: docs/MONITORING.md#idempotency-key-misuse
+
       - alert: NuiGraphBlockedShareViewSpike
         expr: |
           sum(increase(nuigraph_security_events_total{

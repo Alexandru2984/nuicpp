@@ -4,7 +4,7 @@ Order matters: reliability and privacy foundations come before collaboration and
 growth. Each item should ship as a small reviewed commit with tests, migration and
 rollback notes where applicable.
 
-## Completed locally through 2026-10-23
+## Completed locally through 2026-10-26
 
 - GitHub Actions build and all live integration/security suites against a
   disposable PostgreSQL 18 database; ShellCheck, Cppcheck and npm audit run in
@@ -24,6 +24,10 @@ rollback notes where applicable.
   diagrams and retained snapshots. Trigger-maintained accounting covers prune
   and cascade delete, concurrent writers cannot race the limit, and capacity is
   exported with a validated alert.
+- Persistent, race-safe idempotency across blank, template, fork, duplicate and
+  import creation paths, with 24-hour principal/operation scoping, HMAC-only
+  ledger data, conflict detection, browser CSPRNG keys, OpenAPI coverage and a
+  concurrent PostgreSQL regression proving one row and one creation metric.
 - Conditional save, delete and restore with monotonic revisions, strong ETags,
   `428` for missing preconditions, `412` for stale clients and browser-draft
   preservation.

@@ -25,6 +25,23 @@ public:
     using std::runtime_error::runtime_error;
 };
 
+class IdempotencyConflict final : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
+
+struct IdempotencyRequest {
+    std::string principalKey;
+    std::string operation;
+    std::string keyHash;
+    std::string requestHash;
+};
+
+struct DiagramCreationResult {
+    Diagram diagram;
+    bool replayed = false;
+};
+
 class DiagramRevisionConflict final : public std::runtime_error {
 public:
     DiagramRevisionConflict(long currentRevision, const std::string& message)
@@ -65,14 +82,20 @@ public:
     bool consumeRateLimit(const std::string& bucketKey, std::size_t maxRequests,
                           long long windowSeconds);
     void clearRateLimit(const std::string& bucketKey);
-    Diagram createDiagram(const Diagram& input, bool importMode, const std::string& ownerTokenHash = "");
+    DiagramCreationResult createDiagram(
+        const Diagram& input, bool importMode, const std::string& ownerTokenHash = "",
+        const std::optional<IdempotencyRequest>& idempotency = std::nullopt);
     Diagram updateDiagram(long id, const Diagram& input, const std::string& note,
                           bool importMode, long expectedRevision);
     Diagram updateSharing(long id, ShareAction action, long expectedRevision,
                           const ShareExpiry& expiry = {});
     void deleteDiagram(long id, long expectedRevision);
-    Diagram duplicateDiagram(long id, const std::string& ownerTokenHash = "");
-    Diagram forkDiagramBySlug(const std::string& slug, const std::string& ownerTokenHash);
+    DiagramCreationResult duplicateDiagram(
+        long id, const std::string& ownerTokenHash = "",
+        const std::optional<IdempotencyRequest>& idempotency = std::nullopt);
+    DiagramCreationResult forkDiagramBySlug(
+        const std::string& slug, const std::string& ownerTokenHash,
+        const std::optional<IdempotencyRequest>& idempotency = std::nullopt);
     std::vector<VersionInfo> listVersions(long diagramId);
     VersionInfo createVersion(long diagramId, const std::string& note);
     Diagram getVersion(long diagramId, long versionId);

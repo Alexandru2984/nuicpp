@@ -165,6 +165,22 @@
     });
   }
 
+  function idempotencyHeaders() {
+    const webCrypto = globalThis.crypto;
+    if (!webCrypto) {
+      throw new Error("Secure random generation is unavailable; creation was not attempted.");
+    }
+    if (typeof webCrypto.randomUUID === "function") {
+      return { "Idempotency-Key": webCrypto.randomUUID() };
+    }
+    if (typeof webCrypto.getRandomValues !== "function") {
+      throw new Error("Secure random generation is unavailable; creation was not attempted.");
+    }
+    const bytes = webCrypto.getRandomValues(new Uint8Array(16));
+    const token = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    return { "Idempotency-Key": `ngs-${token}` };
+  }
+
   function diagramEtag(diagram) {
     if (!Number.isSafeInteger(diagram?.id) || diagram.id <= 0 ||
         !Number.isSafeInteger(diagram?.revision) || diagram.revision <= 0) {
@@ -3354,6 +3370,7 @@
     try {
       const created = await api(`/api/diagrams/slug/${slug}/fork`, {
         method: "POST",
+        headers: idempotencyHeaders(),
         body: "{}"
       });
       history.replaceState(null, "", "/");
@@ -3972,7 +3989,11 @@
   }
 
   async function newDiagram() {
-    const created = await api("/api/diagrams", { method: "POST", body: "" });
+    const created = await api("/api/diagrams", {
+      method: "POST",
+      headers: idempotencyHeaders(),
+      body: ""
+    });
     await loadDiagrams();
     await openDiagram(created.id);
   }
@@ -3982,7 +4003,11 @@
   }
 
   async function createFromTemplate(key) {
-    const created = await api(`/api/templates/${key}/create`, { method: "POST", body: "{}" });
+    const created = await api(`/api/templates/${key}/create`, {
+      method: "POST",
+      headers: idempotencyHeaders(),
+      body: "{}"
+    });
     await loadDiagrams();
     await openDiagram(created.id);
   }
@@ -4012,7 +4037,11 @@
   }
 
   async function duplicateDiagram(id) {
-    const created = await api(`/api/diagrams/${id}/duplicate`, { method: "POST", body: "{}" });
+    const created = await api(`/api/diagrams/${id}/duplicate`, {
+      method: "POST",
+      headers: idempotencyHeaders(),
+      body: "{}"
+    });
     await loadDiagrams();
     await openDiagram(created.id);
   }
@@ -4387,7 +4416,11 @@
         return;
       }
       const text = await file.text();
-      const created = await api("/api/diagrams/import", { method: "POST", body: text });
+      const created = await api("/api/diagrams/import", {
+        method: "POST",
+        headers: idempotencyHeaders(),
+        body: text
+      });
       await loadDiagrams();
       await openDiagram(created.id);
       evt.target.value = "";

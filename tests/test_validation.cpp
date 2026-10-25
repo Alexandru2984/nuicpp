@@ -437,6 +437,8 @@ void testMetricsStayAggregateAndBounded() {
     metrics.recordSecurityEvent("origin_rejected", "blocked");
     metrics.recordSecurityEvent("unsupported_media_type", "blocked");
     metrics.recordSecurityEvent("session_cookie_upgrade", "succeeded");
+    metrics.recordSecurityEvent("idempotency_rejected", "blocked");
+    metrics.recordSecurityEvent("idempotency_conflict", "blocked");
     metrics.recordSecurityEvent("attacker-controlled-label", "ignored");
     metrics.recordDiagramCreated("import");
     metrics.recordDiagramCreated("attacker-controlled-source");
@@ -475,6 +477,12 @@ void testMetricsStayAggregateAndBounded() {
     require(body.find("event=\"session_cookie_upgrade\",outcome=\"succeeded\"} 1") !=
                 std::string::npos,
             "metrics should count legacy session-cookie upgrades");
+    require(body.find("event=\"idempotency_rejected\",outcome=\"blocked\"} 1") !=
+                std::string::npos,
+            "metrics should count malformed idempotency keys");
+    require(body.find("event=\"idempotency_conflict\",outcome=\"blocked\"} 1") !=
+                std::string::npos,
+            "metrics should count conflicting idempotency-key reuse");
     require(body.find("source=\"import\"} 1") != std::string::npos,
             "metrics should count successful import creations");
     require(body.find("nuigraph_database_size_bytes 4096") != std::string::npos,
