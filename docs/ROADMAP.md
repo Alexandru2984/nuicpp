@@ -151,6 +151,9 @@ rollback notes where applicable.
 - Responsive presentation mode replaces the editor chrome with a full-viewport
   pan/zoom canvas and compact accessible controls, blocks accidental graph
   edits, then restores the prior tool, selection and viewport on exit.
+- A4 landscape print/PDF output fits the graph onto one clean page with safe
+  title/description text, hides editor-only state and restores the exact tool,
+  selection, focus and viewport through the browser print lifecycle.
 - Dependency-free, fail-closed working-tree secret scanning in local CTest and
   CI, with provider/generic credential detection, explicit placeholder handling
   and regression tests proving that findings are redacted from logs.
@@ -220,7 +223,7 @@ High risk remain open.
 - Continue the shape library with actor, document, network,
   Kubernetes/AWS/Azure/GCP libraries and custom SVG icons with safe sanitisation.
 - Rich text/Markdown notes, links, attachments and accessible alternative text.
-- Import Mermaid, draw.io and Graphviz; export PDF and print layouts.
+- Import Mermaid, draw.io and Graphviz; add a direct server-rendered PDF export.
 - Better history: named releases, visual canvas diff, compare any two versions,
   selective restore and duplicate-as-branch.
 - Autosave to the server with visible sync state, offline mutation queue and

@@ -511,6 +511,43 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(page.locator('#nodes > g[data-key="node_service"]')).toHaveClass(/selected/);
       await expect(page.locator("#canvas")).toBeFocused();
 
+      const viewportBeforePrint = await page.locator("#viewport").getAttribute("transform");
+      await page.evaluate(() => {
+        globalThis.__nuigraphPrintCalls = 0;
+        window.print = () => { globalThis.__nuigraphPrintCalls += 1; };
+      });
+      await page.keyboard.press("Control+k");
+      const printPalette = page.getByRole("dialog", { name: "Command palette" });
+      const printSearch = printPalette.getByRole("combobox", { name: "Search commands" });
+      await printSearch.fill("print diagram");
+      await expect(printPalette.getByRole("option", { name: /Print diagram/ })).toBeEnabled();
+      await page.keyboard.press("Control+p");
+      await expect.poll(() => page.evaluate(() => globalThis.__nuigraphPrintCalls)).toBe(1);
+      await expect(page.locator("body")).toHaveClass(/print-mode/);
+      await expect(page.locator(".print-header h1")).toHaveText(/.+/);
+      await page.emulateMedia({ media: "print" });
+      await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+      await expect(page.locator(".print-header")).toBeVisible();
+      await expect(page.locator(".topbar")).toBeHidden();
+      await expect(printPalette).toBeHidden();
+      await expect(page.locator("#grid-bg")).toBeHidden();
+      await expect(page.locator("#overlay")).toBeHidden();
+      const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
+      expect(pdf.subarray(0, 5).toString("ascii")).toBe("%PDF-");
+      expect(pdf.length).toBeGreaterThan(10_000);
+      expect((pdf.toString("latin1").match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
+      await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
+      await page.emulateMedia({ media: "screen" });
+      await expect(page.locator("body")).not.toHaveClass(/print-mode/);
+      await expect(page.locator(".print-header")).toBeHidden();
+      await expect(printPalette).toBeVisible();
+      await expect(printSearch).toBeFocused();
+      await expect(page.locator("#viewport")).toHaveAttribute("transform", viewportBeforePrint);
+      await expect(page.locator('#nodes > g[data-key="node_service"]')).toHaveClass(/selected/);
+      await page.keyboard.press("Escape");
+      await expect(printPalette).toBeHidden();
+      await expect(page.locator("#canvas")).toBeFocused();
+
       const lockedServiceGroup = page.locator('#nodes > g[data-key="node_service"]');
       const lockedServiceShape = lockedServiceGroup.locator(".node-shape");
       const lockedServiceX = await lockedServiceShape.getAttribute("x");

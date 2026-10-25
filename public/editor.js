@@ -77,7 +77,13 @@
     presentationPreviousFocus: null,
     presentationPreviousSelection: null,
     presentationPreviousEdgeSource: null,
-    presentationPreviousViewport: null
+    presentationPreviousViewport: null,
+    printing: false,
+    printPreviousTool: "select",
+    printPreviousFocus: null,
+    printPreviousSelection: null,
+    printPreviousEdgeSource: null,
+    printPreviousViewport: null
   };
 
   const el = (id) => document.getElementById(id);
@@ -90,6 +96,7 @@
   let verticalRuler = null;
   let rulerResizeObserver = null;
   let presentationControls = null;
+  let printHeader = null;
   // A selected canvas object needs a real keyboard focus target before Enter
   // can be a safe, predictable editing shortcut.
   canvas.tabIndex = 0;
@@ -431,6 +438,7 @@
       { id: "export-png-transparent", label: "Export transparent PNG", shortLabel: "PNG alpha", category: "Import and export", keywords: "download image background alpha", enabled: () => Boolean(state.current), run: () => exportPng({ transparent: true }) },
       { id: "export-selection-png", label: "Export selection as transparent PNG", shortLabel: "PNG selection", category: "Import and export", keywords: "download image crop selected region alpha", mobile: true, enabled: () => selectedFrameNodes().length > 0, run: () => exportPng({ transparent: true, selectionOnly: true }) },
       { id: "export-mermaid", label: "Export Mermaid", shortLabel: "Mermaid", category: "Import and export", enabled: () => Boolean(state.current), run: exportMermaid },
+      { id: "print", label: "Print diagram", shortLabel: "Print", category: "Import and export", keywords: "pdf paper landscape output", shortcut: "Ctrl / Cmd + P", enabled: () => Boolean(state.current?.nodes?.length) && !state.presenting && !state.printing, run: printDiagram },
       { id: "shortcuts", label: "Show keyboard shortcuts", shortLabel: "Shortcuts", category: "Help", keywords: "help keys", shortcut: "?", run: toggleShortcuts },
       { id: "customize-mobile", label: "Customize mobile action bar", shortLabel: "Customize", category: "View", keywords: "pin bottom buttons", run: openMobileCustomizer }
     ];
@@ -1372,6 +1380,7 @@
     ["Ctrl / Cmd + V", "Paste"],
     ["Ctrl / Cmd + D", "Duplicate selected nodes"],
     ["Ctrl / Cmd + A", "Select all nodes"],
+    ["Ctrl / Cmd + P", "Print diagram or save as PDF"],
     ["Delete / Backspace", "Delete selection"],
     ["Escape", "Clear selection, close panels"],
     ["Shift + click", "Add to selection"],
@@ -1993,6 +2002,91 @@
     }
   }
 
+  function ensurePrintHeader() {
+    if (printHeader) return printHeader;
+    const header = document.createElement("header");
+    header.className = "print-header";
+    header.hidden = true;
+    const title = document.createElement("h1");
+    const description = document.createElement("p");
+    header.append(title, description);
+    header.copyTitle = title;
+    header.copyDescription = description;
+    document.body.prepend(header);
+    printHeader = header;
+    return header;
+  }
+
+  function beginPrintLayout() {
+    if (!state.current?.nodes?.length || state.presenting) return false;
+    if (state.printing) {
+      zoomToFit();
+      return true;
+    }
+    const header = ensurePrintHeader();
+    state.printing = true;
+    state.printPreviousTool = state.tool;
+    state.printPreviousFocus = document.activeElement;
+    state.printPreviousSelection = state.selected
+      ? { ...state.selected, keys: state.selected.keys ? [...state.selected.keys] : undefined }
+      : null;
+    state.printPreviousEdgeSource = state.edgeSource;
+    state.printPreviousViewport = { zoom: state.zoom, pan: { ...state.pan } };
+    state.selected = null;
+    state.edgeSource = null;
+    state.dragging = null;
+    state.resizing = null;
+    state.marquee = null;
+    state.guides = [];
+    cancelLongPress();
+    sheetControls.closeAll(false);
+    document.querySelector(".inline-label-editor")?.remove();
+    header.copyTitle.textContent = state.current.title || "Untitled diagram";
+    header.copyDescription.textContent = state.current.description || "Diagram exported from NuiGraph Studio.";
+    header.hidden = false;
+    document.body.classList.add("print-mode");
+    setTool("pan");
+    zoomToFit();
+    return true;
+  }
+
+  function restorePrintLayout() {
+    if (!state.printing) return;
+    state.printing = false;
+    document.body.classList.remove("print-mode");
+    if (printHeader) printHeader.hidden = true;
+    state.selected = state.printPreviousSelection;
+    state.edgeSource = state.printPreviousEdgeSource;
+    if (state.printPreviousViewport) {
+      state.zoom = state.printPreviousViewport.zoom;
+      state.pan = { ...state.printPreviousViewport.pan };
+    }
+    state.printPreviousSelection = null;
+    state.printPreviousEdgeSource = null;
+    state.printPreviousViewport = null;
+    setTool(state.printPreviousTool || "select");
+    render();
+    const returnFocus = state.printPreviousFocus;
+    state.printPreviousFocus = null;
+    window.requestAnimationFrame(() => {
+      if (returnFocus?.isConnected && returnFocus.offsetParent !== null) returnFocus.focus();
+      else canvas.focus({ preventScroll: true });
+    });
+  }
+
+  function printDiagram() {
+    if (!beginPrintLayout()) return;
+    editorLiveStatus.textContent = "Print layout ready.";
+    window.requestAnimationFrame(() => {
+      try {
+        window.print();
+      } catch (error) {
+        restorePrintLayout();
+        toast("Printing is unavailable in this browser.", "error");
+      }
+    });
+  }
+
   function frameNodes(nodes, maximumZoom) {
     if (!nodes.length) return;
     const rect = canvas.getBoundingClientRect();
@@ -2003,11 +2097,12 @@
     const width = Math.max(1, maxX - minX);
     const height = Math.max(1, maxY - minY);
     const mobile = window.matchMedia("(max-width: 760px)").matches;
-    const rulerInset = state.rulers && !state.presenting ? RULER_SIZE : 0;
-    const horizontalPadding = state.presenting ? 32 : mobile ? 28 : 64;
+    const focusedOutput = state.presenting || state.printing;
+    const rulerInset = state.rulers && !focusedOutput ? RULER_SIZE : 0;
+    const horizontalPadding = focusedOutput ? 32 : mobile ? 28 : 64;
     const leftPadding = horizontalPadding + rulerInset;
-    const topPadding = (state.presenting ? 92 : mobile ? 28 : 64) + rulerInset;
-    const bottomPadding = state.presenting ? 32 : mobile ? 84 : 64;
+    const topPadding = (state.presenting ? 92 : state.printing ? 32 : mobile ? 28 : 64) + rulerInset;
+    const bottomPadding = focusedOutput ? 32 : mobile ? 84 : 64;
     const availableWidth = Math.max(1, rect.width - leftPadding - horizontalPadding);
     const availableHeight = Math.max(1, rect.height - topPadding - bottomPadding);
     state.zoom = Math.min(maximumZoom, clampZoom(Math.min(availableWidth / width, availableHeight / height)));
@@ -4450,6 +4545,11 @@
         }
         return;
       }
+      if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "p" && !evt.altKey) {
+        evt.preventDefault();
+        printDiagram();
+        return;
+      }
       if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "k") {
         evt.preventDefault();
         if (document.querySelector(".command-palette-overlay")) closeDialog(".command-palette-overlay");
@@ -4534,6 +4634,8 @@
       evt.preventDefault();
       evt.returnValue = "";
     });
+    window.addEventListener("beforeprint", () => beginPrintLayout());
+    window.addEventListener("afterprint", restorePrintLayout);
   }
 
   initBindings();

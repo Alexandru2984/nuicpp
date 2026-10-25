@@ -53,6 +53,9 @@ grep -Fq 'function resetZoom()' public/editor.js
 grep -Fq 'Enter presentation mode' public/editor.js
 grep -Fq 'function togglePresentationMode(force)' public/editor.js
 grep -Fq 'evt.shiftKey && evt.key.toLowerCase() === "p"' public/editor.js
+grep -Fq 'Print diagram' public/editor.js
+grep -Fq 'function beginPrintLayout()' public/editor.js
+grep -Fq 'window.addEventListener("afterprint", restorePrintLayout)' public/editor.js
 grep -Fq 'Export embeddable SVG' public/editor.js
 grep -Fq 'Export selection as SVG' public/editor.js
 grep -Fq 'function makeSvgSafeToEmbed(clone)' public/editor.js
@@ -116,6 +119,8 @@ grep -Fq '.inline-label-editor' public/styles.css
 grep -Fq '.canvas-rulers' public/styles.css
 grep -Fq 'body.presentation-mode #app' public/styles.css
 grep -Fq '.presentation-controls' public/styles.css
+grep -Fq '@page {' public/styles.css
+grep -Fq 'body.print-mode .print-header' public/styles.css
 grep -Fq '@media (forced-colors: active)' public/styles.css
 grep -Fq '.node-lock-body' public/styles.css
 grep -Fq '@media (prefers-reduced-motion: reduce)' public/styles.css

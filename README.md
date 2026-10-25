@@ -97,6 +97,10 @@ admin account for maintenance.
 - Presentation Mode (`Shift+P`, command palette or mobile action) expands the
   canvas across the viewport with compact Fit/100%/Exit controls, blocks graph
   edits while presenting, and restores the previous tool, selection and view.
+- Print (`Ctrl/Cmd+P` or the command palette) produces a single-page A4
+  landscape layout with safe title/description text and no editor chrome,
+  grid, selection handles or lock badges; cancelling or finishing restores the
+  exact editing context.
 - Diagram search filter over the sidebar list.
 - Light and dark themes, remembered per browser.
 - System forced-colour/high-contrast support preserves node, edge, selection,
@@ -116,7 +120,7 @@ admin account for maintenance.
   transparent PNG of the current node/edge selection, and Mermaid. Generated
   SVGs are self-contained, accessible images stripped of editor-only controls
   and unsafe external references. Raster exports are bounded to 8192 px per
-  side and 40 megapixels.
+  side and 40 megapixels; the print layout can be saved as PDF by the browser.
 - Template gallery: architecture, incident-response, and data-pipeline diagrams.
 - Private-by-default diagrams with explicit read-only sharing at `/d/{slug}`,
   128-bit capabilities, allowlisted 5-minute to 30-day expiry, immediate
