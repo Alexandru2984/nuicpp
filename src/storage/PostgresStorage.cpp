@@ -137,6 +137,9 @@ OperationalMetrics PostgresStorage::operationalMetrics() {
                     (SELECT count(*) FROM rate_limit_buckets) AS rate_limit_buckets,
                     (SELECT logical_bytes FROM public.logical_storage_usage
                      WHERE singleton=true) AS logical_bytes,
+                    COALESCE((SELECT extract(epoch FROM last_success_at)::bigint
+                              FROM public.maintenance_jobs
+                              WHERE job_name='trash_purge'), 0) AS trash_purge_last_success,
                     pg_database_size(current_database()) AS database_bytes
             )SQL")[0];
             metrics.diagrams = row["diagrams"].as<std::uint64_t>();
@@ -146,6 +149,8 @@ OperationalMetrics PostgresStorage::operationalMetrics() {
             metrics.versions = row["versions"].as<std::uint64_t>();
             metrics.activeRateLimitBuckets = row["rate_limit_buckets"].as<std::uint64_t>();
             metrics.logicalBytes = row["logical_bytes"].as<std::uint64_t>();
+            metrics.trashPurgeLastSuccessSeconds =
+                row["trash_purge_last_success"].as<std::uint64_t>();
             metrics.databaseBytes = row["database_bytes"].as<std::uint64_t>();
             metrics.databaseUp = true;
         }
@@ -924,6 +929,61 @@ void PostgresStorage::permanentlyDeleteDiagram(long id, long expectedRevision) {
             "trash item changed since it was listed; refresh trash before permanent deletion");
     }
     tx.commit();
+}
+
+TrashPurgeResult PostgresStorage::purgeExpiredTrash(
+    int retentionDays, int batchSize, int intervalSeconds) {
+    if (retentionDays < 1 || batchSize < 1 || batchSize > 500 ||
+        intervalSeconds < 60 || intervalSeconds > 86400) {
+        throw std::invalid_argument("invalid trash retention policy");
+    }
+
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
+    const auto claimed = tx.exec(R"SQL(
+        WITH due AS (
+            SELECT job_name
+            FROM public.maintenance_jobs
+            WHERE job_name='trash_purge'
+              AND next_run_at <= statement_timestamp()
+            FOR UPDATE SKIP LOCKED
+        )
+        UPDATE public.maintenance_jobs j
+        SET next_run_at = statement_timestamp() + ($1 * interval '1 second')
+        FROM due
+        WHERE j.job_name=due.job_name
+        RETURNING j.job_name
+    )SQL", pqxx::params{intervalSeconds});
+    if (claimed.empty()) {
+        tx.commit();
+        return {};
+    }
+
+    const auto deleted = tx.exec(R"SQL(
+        WITH expired AS (
+            SELECT id
+            FROM public.diagrams
+            WHERE deleted_at IS NOT NULL
+              AND deleted_at <= statement_timestamp() - ($1 * interval '1 day')
+            ORDER BY deleted_at ASC, id ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT $2
+        ), removed AS (
+            DELETE FROM public.diagrams d
+            USING expired e
+            WHERE d.id=e.id
+            RETURNING d.id
+        )
+        SELECT count(*) AS n FROM removed
+    )SQL", pqxx::params{retentionDays, batchSize})[0]["n"].as<std::uint64_t>();
+
+    tx.exec(R"SQL(
+        UPDATE public.maintenance_jobs
+        SET last_success_at=statement_timestamp(), last_deleted_count=$1
+        WHERE job_name='trash_purge'
+    )SQL", pqxx::params{static_cast<long long>(deleted)});
+    tx.commit();
+    return {true, deleted};
 }
 
 DiagramCreationResult PostgresStorage::duplicateDiagram(

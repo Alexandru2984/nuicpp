@@ -61,6 +61,10 @@ rules target 2–5 minute detection for outages, database loss, 5xx spikes, pool
 timeouts and authentication attacks; capacity, latency, growth, disk and TLS
 signals intentionally require longer persistence to limit noise. Trash backlog
 must remain both above 100 retained diagrams and above 25 percent for 24 hours.
+When automatic retention is enabled, dedicated bounded metrics expose its age,
+global interval, claimed success/error runs, removed-row total and last-success
+timestamp. Failures, two missed intervals and 50 removals in ten minutes are
+critical alerts; the VPS operator remains the owner until paging is wired.
 
 Backup freshness is intentionally not represented here while offsite backup
 work is deferred. Do not create a constant-success placeholder: add an alert
@@ -186,6 +190,30 @@ only when a real artifact timestamp and restore verification signal exist.
 4. Permanent deletion removes primary rows and versions. Do not promise recovery
    or GDPR erasure from other stores without verified backup/log retention and a
    tested restore or deletion procedure.
+
+## Automatic trash retention
+
+1. Treat `NuiGraphTrashPurgeFailure`, `NuiGraphTrashPurgeStalled` or
+   `NuiGraphTrashAutoPurgeSpike` as destructive-data incidents until explained.
+   Preserve Prometheus and journal evidence; maintenance logs deliberately carry
+   only aggregate deleted counts and the configured age, never IDs or titles.
+2. Contain by setting `TRASH_RETENTION_DAYS=0` and
+   `TRASH_RETENTION_CONFIRM=false`, validating the candidate configuration and
+   restarting the service. If the actor or host is suspect, use the emergency
+   maintenance deny before editing configuration. Do not modify `deleted_at` or
+   the coordination row to simulate recovery.
+3. Compare `nuigraph_trash_purged_total`, the backlog and logical-byte change
+   with `maintenance_jobs.last_success_at` and `last_deleted_count`. One claimed
+   run per configured interval is expected globally, even with multiple app
+   instances; additional removals or a changed retention age require escalation.
+4. Determine whether affected rows were older than the approved policy and
+   whether the two-key activation was reviewed. The database clock, oldest-first
+   ordering and bounded batch reduce race/blast radius but cannot recover an
+   already committed cascade delete.
+5. Recovery is unavailable while verified backups are deferred. Record that
+   residual explicitly in the incident, assess notification obligations, and do
+   not re-enable automatic retention until paging and recovery assumptions have
+   been re-approved.
 
 ## Unexpected restart
 

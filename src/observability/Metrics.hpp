@@ -28,6 +28,7 @@ struct OperationalMetrics {
     std::uint64_t poolIdle = 0;
     std::uint64_t poolOutstanding = 0;
     std::uint64_t poolTimeouts = 0;
+    std::uint64_t trashPurgeLastSuccessSeconds = 0;
 };
 
 class Metrics {
@@ -38,6 +39,9 @@ public:
     void recordSecurityEvent(const std::string& event, const std::string& outcome);
     void recordDiagramCreated(const std::string& source);
     void recordReadiness(bool ready);
+    void configureTrashRetention(int days, int intervalSeconds);
+    void recordTrashPurge(std::uint64_t deleted);
+    void recordTrashPurgeError();
 
     std::string render(FrontendShell shell, const OperationalMetrics& operational) const;
 
@@ -58,6 +62,11 @@ private:
     std::atomic<std::uint64_t> readinessSuccess_{0};
     std::atomic<std::uint64_t> readinessFailure_{0};
     std::atomic<int> readinessLast_{0};
+    std::atomic<int> trashRetentionDays_{0};
+    std::atomic<int> trashPurgeIntervalSeconds_{0};
+    std::atomic<std::uint64_t> trashPurgeSuccess_{0};
+    std::atomic<std::uint64_t> trashPurgeErrors_{0};
+    std::atomic<std::uint64_t> trashPurged_{0};
 };
 
 } // namespace nuigraph

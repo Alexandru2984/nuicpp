@@ -341,6 +341,33 @@ void testConfigRejectsUnsafeLimits() {
             "excessive database pools should throw");
 }
 
+void testTrashRetentionRequiresExplicitSafePolicy() {
+    require(configThrows(validConfig("TRASH_RETENTION_DAYS=30\n")),
+            "automatic trash deletion must require separate confirmation");
+    require(configThrows(validConfig("TRASH_RETENTION_CONFIRM=true\n")),
+            "confirmation without an enabled retention window must fail closed");
+    require(configThrows(validConfig(
+        "APP_ENV=development\nTRASH_RETENTION_DAYS=6\nTRASH_RETENTION_CONFIRM=true\n")),
+        "non-test retention windows shorter than seven days must be rejected");
+    require(configThrows(validConfig("TRASH_PURGE_INTERVAL_SECONDS=59\n")),
+            "purge scheduling must not run more than once per minute");
+    require(configThrows(validConfig("TRASH_PURGE_BATCH_SIZE=501\n")),
+            "purge batches must have a hard operational ceiling");
+
+    const auto path = tmpEnvPath();
+    writeEnvFile(path, validConfig(
+        "TRASH_RETENTION_DAYS=30\n"
+        "TRASH_RETENTION_CONFIRM=true\n"
+        "TRASH_PURGE_INTERVAL_SECONDS=600\n"
+        "TRASH_PURGE_BATCH_SIZE=25\n"));
+    const auto cfg = Config::load(path);
+    std::remove(path.c_str());
+    require(cfg.trashRetentionDays == 30 && cfg.trashRetentionConfirmed,
+            "an explicitly confirmed retention policy should load");
+    require(cfg.trashPurgeIntervalSeconds == 600 && cfg.trashPurgeBatchSize == 25,
+            "retention scheduling bounds should load exactly");
+}
+
 void testConfigRejectsWeakSecrets() {
     require(!configThrows(validConfig(
         "SESSION_SIGNING_SECRET_PREVIOUS=" + std::string(64, '9') + "\n")),
@@ -446,6 +473,9 @@ void testMetricsStayAggregateAndBounded() {
     metrics.recordDiagramCreated("import");
     metrics.recordDiagramCreated("attacker-controlled-source");
     metrics.recordReadiness(true);
+    metrics.configureTrashRetention(30, 600);
+    metrics.recordTrashPurge(4);
+    metrics.recordTrashPurgeError();
 
     OperationalMetrics operational;
     operational.databaseUp = true;
@@ -459,6 +489,7 @@ void testMetricsStayAggregateAndBounded() {
     operational.poolIdle = 3;
     operational.poolOutstanding = 1;
     operational.poolTimeouts = 2;
+    operational.trashPurgeLastSuccessSeconds = 1234567890;
 
     const auto body = metrics.render(FrontendShell::Server, operational);
     require(body.find("nuigraph_build_info{frontend=\"server\"} 1") != std::string::npos,
@@ -499,6 +530,18 @@ void testMetricsStayAggregateAndBounded() {
     require(body.find("nuigraph_storage_objects{kind=\"trashed_diagrams\"} 2") !=
                 std::string::npos,
             "metrics should expose the aggregate trash backlog");
+    require(body.find("nuigraph_trash_retention_days 30") != std::string::npos &&
+                body.find("nuigraph_trash_purge_interval_seconds 600") != std::string::npos,
+            "metrics should expose the configured retention policy");
+    require(body.find("nuigraph_trash_purge_runs_total{outcome=\"success\"} 1") !=
+                std::string::npos &&
+                body.find("nuigraph_trash_purge_runs_total{outcome=\"error\"} 1") !=
+                std::string::npos &&
+                body.find("nuigraph_trash_purged_total 4") != std::string::npos,
+            "metrics should expose bounded purge outcomes and totals");
+    require(body.find("nuigraph_trash_purge_last_success_timestamp_seconds 1234567890") !=
+                std::string::npos,
+            "metrics should expose the database-coordinated last purge time");
     require(body.find("source=\"import\"} 1") != std::string::npos,
             "metrics should count successful import creations");
     require(body.find("nuigraph_database_size_bytes 4096") != std::string::npos,
@@ -967,6 +1010,7 @@ int main() {
         testConfigEnvOverrides();
         testConfigRejectsAmbiguousValues();
         testConfigRejectsUnsafeLimits();
+        testTrashRetentionRequiresExplicitSafePolicy();
         testConfigRejectsWeakSecrets();
         testProductionConfigRequiresSafePathsAndHttps();
         testFrontendShellDefaultsAndRejectsUnknownModes();
@@ -1011,6 +1055,6 @@ int main() {
         std::cerr << "test failed: " << e.what() << '\n';
         return EXIT_FAILURE;
     }
-    std::cout << "nuigraph validation tests passed (56 tests)\n";
+    std::cout << "nuigraph validation tests passed (57 tests)\n";
     return EXIT_SUCCESS;
 }

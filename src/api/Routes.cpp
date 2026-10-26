@@ -1259,13 +1259,17 @@ void Routes::registerRoutes(httplib::Server& server) {
                                   : storage_.listDeletedDiagramsForOwner(owner, limit, offset);
             const long total = admin ? storage_.countDeletedDiagrams()
                                      : storage_.countDeletedDiagramsForOwner(owner);
-            sendJson(res, 200, {
+            nlohmann::json body = {
                 {"diagrams", diagrams},
                 {"total", total},
                 {"limit", limit},
                 {"offset", offset},
                 {"has_more", offset + static_cast<long>(diagrams.size()) < total}
-            });
+            };
+            body["retention_days"] = cfg_.trashRetentionDays > 0
+                ? nlohmann::json(cfg_.trashRetentionDays)
+                : nlohmann::json(nullptr);
+            sendJson(res, 200, body);
         } catch (const std::exception& e) {
             sendStorageError(req, res, e, 500);
         }

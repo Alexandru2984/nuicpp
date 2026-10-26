@@ -450,6 +450,9 @@ for metric in \
   nuigraph_http_request_duration_seconds \
   nuigraph_security_events_total \
   nuigraph_diagram_creates_total \
+  nuigraph_trash_retention_days \
+  nuigraph_trash_purge_runs_total \
+  nuigraph_trash_purged_total \
   nuigraph_database_up \
   nuigraph_storage_capacity \
   nuigraph_logical_storage_bytes \

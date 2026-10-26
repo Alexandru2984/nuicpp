@@ -150,6 +150,8 @@ python3 -c 'import json,sys; assert int(sys.argv[2]) not in [d["id"] for d in js
   "$OWNER_LIST" "$ID"
 python3 -c 'import json,sys; items=json.loads(sys.argv[1])["diagrams"]; d=next(x for x in items if x["id"]==int(sys.argv[2])); assert d["revision"]==int(sys.argv[3]); assert d["deleted_at"] and d["slug"]=="" and d["sharing_enabled"] is False' \
   "$OWNER_TRASH" "$ID" "$TRASH_REVISION"
+python3 -c 'import json,sys; assert json.loads(sys.argv[1])["retention_days"] is None' \
+  "$OWNER_TRASH"
 python3 -c 'import json,sys; assert int(sys.argv[2]) not in [d["id"] for d in json.loads(sys.argv[1])["diagrams"]]' \
   "$OTHER_TRASH" "$ID"
 
@@ -240,6 +242,8 @@ for outcome in moved restored permanently_deleted; do
   }
 done
 grep -Fqx 'nuigraph_storage_objects{kind="trashed_diagrams"} 0' <<<"$METRICS"
+grep -Fqx 'nuigraph_trash_retention_days 0' <<<"$METRICS"
+grep -Fqx 'nuigraph_trash_purge_interval_seconds 0' <<<"$METRICS"
 grep -q 'category=security event=diagram_trash outcome=permanently_deleted' "$LOG_FILE"
 if grep -Fq "$IDEMPOTENCY_KEY" "$LOG_FILE"; then
   echo "trash lifecycle failed: idempotency token reached logs" >&2

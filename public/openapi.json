@@ -3,7 +3,7 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "NuiGraph Studio API",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "description": "Session-oriented API for private diagrams, trash and restore, templates, version history and capability-based sharing. Start with GET /api/session and retain its HttpOnly cookie. Unsafe requests require the returned CSRF token in X-CSRF-Token. Production HTTPS uses __Host-ngs_session; loopback HTTP development uses ngs_session."
   },
   "servers": [{ "url": "/", "description": "Current NuiGraph Studio origin" }],
@@ -77,7 +77,7 @@
           { "$ref": "#/components/parameters/Offset" }
         ],
         "responses": {
-          "200": { "$ref": "#/components/responses/DiagramListResponse" },
+          "200": { "$ref": "#/components/responses/TrashListResponse" },
           "default": { "$ref": "#/components/responses/ErrorResponse" }
         }
       }
@@ -496,6 +496,10 @@
         "description": "Paginated diagram list.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DiagramList" } } }
       },
+      "TrashListResponse": {
+        "description": "Paginated private trash with the active automatic-retention policy.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TrashList" } } }
+      },
       "TemplateListResponse": {
         "description": "Curated template list.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TemplateList" } } }
@@ -655,6 +659,23 @@
           "offset": { "type": "integer", "minimum": 0 },
           "has_more": { "type": "boolean" }
         }
+      },
+      "TrashList": {
+        "allOf": [
+          { "$ref": "#/components/schemas/DiagramList" },
+          {
+            "type": "object",
+            "required": ["retention_days"],
+            "properties": {
+              "retention_days": {
+                "type": ["integer", "null"],
+                "minimum": 1,
+                "maximum": 3650,
+                "description": "Automatic deletion age in days; null when automatic retention is disabled."
+              }
+            }
+          }
+        ]
       },
       "Template": {
         "type": "object",

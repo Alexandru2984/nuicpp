@@ -244,6 +244,24 @@ void validateConfig(const Config& cfg) {
         throw std::runtime_error(
             "MAX_LOGICAL_BYTES_PER_GUEST cannot exceed MAX_LOGICAL_BYTES_TOTAL");
     }
+    requireRange("TRASH_RETENTION_DAYS", cfg.trashRetentionDays, 0, 3650);
+    if (cfg.trashRetentionDays > 0) {
+        const int minimumDays = cfg.appEnv == "test" ? 1 : 7;
+        if (cfg.trashRetentionDays < minimumDays) {
+            throw std::runtime_error(
+                "TRASH_RETENTION_DAYS must be 0 (disabled) or at least " +
+                std::to_string(minimumDays));
+        }
+        if (!cfg.trashRetentionConfirmed) {
+            throw std::runtime_error(
+                "TRASH_RETENTION_CONFIRM must be true before automatic deletion is enabled");
+        }
+    } else if (cfg.trashRetentionConfirmed) {
+        throw std::runtime_error(
+            "TRASH_RETENTION_CONFIRM must remain false while retention is disabled");
+    }
+    requireRange("TRASH_PURGE_INTERVAL_SECONDS", cfg.trashPurgeIntervalSeconds, 60, 86400);
+    requireRange("TRASH_PURGE_BATCH_SIZE", cfg.trashPurgeBatchSize, 1, 500);
     requireRange("DB_POOL_SIZE", cfg.dbPoolSize, 1, 64);
     if (cfg.maxImportBytes < 1024 || cfg.maxImportBytes > 16 * 1024 * 1024) {
         throw std::runtime_error("MAX_IMPORT_BYTES is outside the allowed range");
@@ -339,6 +357,14 @@ Config Config::load(const std::string& envPath) {
         file, "MAX_LOGICAL_BYTES_PER_GUEST", cfg.maxLogicalBytesPerGuest);
     cfg.maxLogicalBytesTotal = getUint64(
         file, "MAX_LOGICAL_BYTES_TOTAL", cfg.maxLogicalBytesTotal);
+    cfg.trashRetentionDays = getInt(
+        file, "TRASH_RETENTION_DAYS", cfg.trashRetentionDays);
+    cfg.trashRetentionConfirmed = getBool(
+        file, "TRASH_RETENTION_CONFIRM", cfg.trashRetentionConfirmed);
+    cfg.trashPurgeIntervalSeconds = getInt(
+        file, "TRASH_PURGE_INTERVAL_SECONDS", cfg.trashPurgeIntervalSeconds);
+    cfg.trashPurgeBatchSize = getInt(
+        file, "TRASH_PURGE_BATCH_SIZE", cfg.trashPurgeBatchSize);
     cfg.dbPoolSize = getInt(file, "DB_POOL_SIZE", cfg.dbPoolSize);
     cfg.maxImportBytes = static_cast<std::size_t>(getInt(file, "MAX_IMPORT_BYTES", static_cast<int>(cfg.maxImportBytes)));
     cfg.projectRoot = getValue(file, "PROJECT_ROOT", cfg.projectRoot);

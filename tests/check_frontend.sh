@@ -92,6 +92,9 @@ grep -Fq 'function idempotencyHeaders()' public/editor.js
 grep -Fq 'webCrypto.getRandomValues(new Uint8Array(16))' public/editor.js
 grep -Fq 'function openTrashDialog()' public/editor.js
 grep -Fq 'Permanently delete' public/editor.js
+# This is a literal JavaScript template expression, not shell interpolation.
+# shellcheck disable=SC2016
+grep -Fq 'eligible for automatic deletion after ${data.retention_days} days' public/editor.js
 grep -Fq 'Previous share links remain revoked' public/editor.js
 grep -Fq 'id="open-trash"' src/ui/NuiApp.cpp
 grep -Fq 'id = "open-trash"' nui-frontend/frontend/source/frontend/main_page.cpp

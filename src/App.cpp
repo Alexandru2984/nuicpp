@@ -5,6 +5,7 @@
 #include <chrono>
 #include <csignal>
 #include <iostream>
+#include <thread>
 
 namespace nuigraph {
 namespace {
@@ -26,7 +27,10 @@ App::App(Config cfg)
       metrics_(),
       validator_(cfg_),
       storage_(cfg_, validator_),
-      routes_(cfg_, storage_, metrics_) {}
+      routes_(cfg_, storage_, metrics_) {
+    metrics_.configureTrashRetention(
+        cfg_.trashRetentionDays, cfg_.trashPurgeIntervalSeconds);
+}
 
 int App::run() {
     if (!storage_.ping()) {
@@ -84,6 +88,46 @@ int App::run() {
 
     routes_.registerRoutes(server);
 
+    std::jthread trashPurgeWorker;
+    if (cfg_.trashRetentionDays > 0) {
+        trashPurgeWorker = std::jthread([this, &server](std::stop_token stopToken) {
+            // Never mutate retained data if the listener failed to bind. Once
+            // the service is live, the database row coordinates the interval
+            // across all application instances.
+            while (!stopToken.stop_requested() && !server.is_running()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+            while (!stopToken.stop_requested()) {
+                try {
+                    const auto result = storage_.purgeExpiredTrash(
+                        cfg_.trashRetentionDays,
+                        cfg_.trashPurgeBatchSize,
+                        cfg_.trashPurgeIntervalSeconds);
+                    if (result.claimed) {
+                        metrics_.recordTrashPurge(result.deleted);
+                        std::cout << logTimestamp()
+                                  << " level=info category=maintenance event=trash_purge"
+                                  << " outcome=succeeded deleted=" << result.deleted
+                                  << " retention_days=" << cfg_.trashRetentionDays
+                                  << std::endl;
+                    }
+                } catch (const std::exception&) {
+                    metrics_.recordTrashPurgeError();
+                    std::cerr << logTimestamp()
+                              << " level=error category=maintenance event=trash_purge"
+                              << " outcome=error" << std::endl;
+                }
+
+                for (int elapsed = 0;
+                     elapsed < cfg_.trashPurgeIntervalSeconds &&
+                     !stopToken.stop_requested();
+                     ++elapsed) {
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
+                }
+            }
+        });
+    }
+
     g_server.store(&server);
     // systemd sends SIGTERM on stop and restart. The default disposition kills
     // the process mid-response and drops every in-flight request; stopping the
@@ -99,10 +143,18 @@ int App::run() {
     if (!server.listen(cfg_.host, cfg_.port)) {
         std::cerr << "failed to bind " << cfg_.host << ":" << cfg_.port << "\n";
         g_server.store(nullptr);
+        if (trashPurgeWorker.joinable()) {
+            trashPurgeWorker.request_stop();
+            trashPurgeWorker.join();
+        }
         return 3;
     }
 
     g_server.store(nullptr);
+    if (trashPurgeWorker.joinable()) {
+        trashPurgeWorker.request_stop();
+        trashPurgeWorker.join();
+    }
     std::cout << logTimestamp() << " level=info msg=stopped_cleanly" << std::endl;
     return 0;
 }

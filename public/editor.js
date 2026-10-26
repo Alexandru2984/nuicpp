@@ -3853,7 +3853,7 @@
 
     const explanation = document.createElement("p");
     explanation.className = "trash-explanation";
-    explanation.textContent = "Trashed diagrams stay private and continue to use your storage quota until permanently deleted.";
+    explanation.textContent = "Loading trash retention policy...";
     const status = document.createElement("div");
     status.className = "command-status";
     status.setAttribute("role", "status");
@@ -4005,6 +4005,9 @@
         items = items.concat(page.filter((item) => !seen.has(item.id)));
         total = typeof data.total === "number" ? data.total : items.length;
         hasMore = Boolean(data.has_more) && page.length > 0;
+        explanation.textContent = Number.isInteger(data.retention_days)
+          ? `Trashed diagrams stay private, continue to use your storage quota, and become eligible for automatic deletion after ${data.retention_days} days.`
+          : "Trashed diagrams stay private and continue to use your storage quota until permanently deleted.";
         status.textContent = total === 1 ? "1 trashed diagram" : `${total} trashed diagrams`;
       } catch (error) {
         status.textContent = error.message || "Could not load trash.";

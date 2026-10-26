@@ -34,6 +34,10 @@ struct Config {
     int maxDiagramsTotal = 5000;
     std::uint64_t maxLogicalBytesPerGuest = 32ULL * 1024 * 1024;
     std::uint64_t maxLogicalBytesTotal = 512ULL * 1024 * 1024;
+    int trashRetentionDays = 0;
+    bool trashRetentionConfirmed = false;
+    int trashPurgeIntervalSeconds = 3600;
+    int trashPurgeBatchSize = 50;
     int dbPoolSize = 8;
     std::size_t maxImportBytes = 1048576;
     std::string projectRoot = "/opt/nuigraph-studio/current";

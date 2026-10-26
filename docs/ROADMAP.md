@@ -32,6 +32,10 @@ rollback notes where applicable.
   revocation, private restore and explicit permanent deletion. Every transition
   is CSRF-protected, ETag-conditional and observable; trashed rows and versions
   continue consuming quota so deletion cannot bypass retained-data ceilings.
+- Opt-in automatic trash retention with a second confirmation gate, production
+  minimum age, globally coordinated database-clock schedule, bounded
+  oldest-first batches, responsive policy disclosure and failure/stall/spike
+  alerts. It remains disabled unless an operator explicitly accepts deletion.
 - Conditional save, delete and restore with monotonic revisions, strong ETags,
   `428` for missing preconditions, `412` for stale clients and browser-draft
   preservation.
@@ -232,8 +236,6 @@ High risk remain open.
   purpose-specific keys.
 - Workspaces, invitations and roles (`owner`, `editor`, `viewer`) with a central
   policy layer and negative authorization tests.
-- Add a configurable automatic trash-retention window and scheduled purge policy;
-  soft delete, manual restore and permanent deletion are implemented locally.
 - GDPR data export/delete, privacy notice, retention controls, subprocessor list
   and audit-log access policy.
 - Add signed/SLSA release provenance and reproducible-build metadata. Observe and

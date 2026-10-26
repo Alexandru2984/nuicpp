@@ -24,6 +24,9 @@ for alert in \
   NuiGraphDiagramCapacityHigh \
   NuiGraphTrashBacklogHigh \
   NuiGraphPermanentDeleteSpike \
+  NuiGraphTrashPurgeFailure \
+  NuiGraphTrashPurgeStalled \
+  NuiGraphTrashAutoPurgeSpike \
   NuiGraphLogicalStorageCapacityHigh \
   NuiGraphLimiterCapacityHigh \
   NuiGraphDatabaseGrowthHigh \

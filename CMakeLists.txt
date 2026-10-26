@@ -87,6 +87,7 @@ add_test(NAME nuigraph-global-quota COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check
 add_test(NAME nuigraph-logical-quota COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_logical_quota.sh)
 add_test(NAME nuigraph-idempotency COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_idempotency.sh)
 add_test(NAME nuigraph-trash COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_trash.sh)
+add_test(NAME nuigraph-trash-retention COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_trash_retention.sh)
 add_test(NAME nuigraph-key-rotation COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_key_rotation.sh)
 add_test(NAME nuigraph-migrations COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_migrations.sh)
 set_tests_properties(
@@ -110,6 +111,7 @@ set_tests_properties(
     nuigraph-logical-quota
     nuigraph-idempotency
     nuigraph-trash
+    nuigraph-trash-retention
     nuigraph-key-rotation
     nuigraph-migrations
     PROPERTIES

@@ -113,6 +113,21 @@ void Metrics::recordReadiness(bool ready) {
     (ready ? readinessSuccess_ : readinessFailure_).fetch_add(1, std::memory_order_relaxed);
 }
 
+void Metrics::configureTrashRetention(int days, int intervalSeconds) {
+    trashRetentionDays_.store(days, std::memory_order_relaxed);
+    trashPurgeIntervalSeconds_.store(
+        days > 0 ? intervalSeconds : 0, std::memory_order_relaxed);
+}
+
+void Metrics::recordTrashPurge(std::uint64_t deleted) {
+    trashPurgeSuccess_.fetch_add(1, std::memory_order_relaxed);
+    trashPurged_.fetch_add(deleted, std::memory_order_relaxed);
+}
+
+void Metrics::recordTrashPurgeError() {
+    trashPurgeErrors_.fetch_add(1, std::memory_order_relaxed);
+}
+
 std::string Metrics::render(FrontendShell shell, const OperationalMetrics& operational) const {
     std::ostringstream out;
     out << std::setprecision(17);
@@ -167,6 +182,28 @@ std::string Metrics::render(FrontendShell shell, const OperationalMetrics& opera
         << "# HELP nuigraph_readiness_last_result Whether the last readiness probe succeeded.\n"
         << "# TYPE nuigraph_readiness_last_result gauge\n"
         << "nuigraph_readiness_last_result " << readinessLast_.load(std::memory_order_relaxed) << "\n"
+        << "# HELP nuigraph_trash_retention_days Configured automatic trash retention; zero means disabled.\n"
+        << "# TYPE nuigraph_trash_retention_days gauge\n"
+        << "nuigraph_trash_retention_days "
+        << trashRetentionDays_.load(std::memory_order_relaxed) << "\n"
+        << "# HELP nuigraph_trash_purge_interval_seconds Configured global trash purge interval; zero means disabled.\n"
+        << "# TYPE nuigraph_trash_purge_interval_seconds gauge\n"
+        << "nuigraph_trash_purge_interval_seconds "
+        << trashPurgeIntervalSeconds_.load(std::memory_order_relaxed) << "\n"
+        << "# HELP nuigraph_trash_purge_runs_total Claimed automatic trash purge runs by bounded outcome.\n"
+        << "# TYPE nuigraph_trash_purge_runs_total counter\n"
+        << "nuigraph_trash_purge_runs_total{outcome=\"success\"} "
+        << trashPurgeSuccess_.load(std::memory_order_relaxed) << "\n"
+        << "nuigraph_trash_purge_runs_total{outcome=\"error\"} "
+        << trashPurgeErrors_.load(std::memory_order_relaxed) << "\n"
+        << "# HELP nuigraph_trash_purged_total Diagrams removed by automatic retention.\n"
+        << "# TYPE nuigraph_trash_purged_total counter\n"
+        << "nuigraph_trash_purged_total "
+        << trashPurged_.load(std::memory_order_relaxed) << "\n"
+        << "# HELP nuigraph_trash_purge_last_success_timestamp_seconds Unix time of the last claimed successful purge.\n"
+        << "# TYPE nuigraph_trash_purge_last_success_timestamp_seconds gauge\n"
+        << "nuigraph_trash_purge_last_success_timestamp_seconds "
+        << operational.trashPurgeLastSuccessSeconds << "\n"
         << "# HELP nuigraph_database_up Whether aggregate database telemetry was collected.\n"
         << "# TYPE nuigraph_database_up gauge\n"
         << "nuigraph_database_up " << (operational.databaseUp ? 1 : 0) << "\n"

@@ -164,6 +164,10 @@ operator's exported variables cannot override the files being checked.
 | `MAX_DIAGRAMS_TOTAL` | `5000` | Global row ceiling across every owner and creation path |
 | `MAX_LOGICAL_BYTES_PER_GUEST` | `33554432` | 32 MiB of current diagrams plus retained snapshots per guest |
 | `MAX_LOGICAL_BYTES_TOTAL` | `536870912` | 512 MiB global logical-content ceiling |
+| `TRASH_RETENTION_DAYS` | `0` | `0` disables automatic deletion; enabled production values must be 7–3650 days |
+| `TRASH_RETENTION_CONFIRM` | `false` | Must be explicitly `true` whenever automatic retention is enabled |
+| `TRASH_PURGE_INTERVAL_SECONDS` | `3600` | Database-coordinated interval, 60–86400 seconds |
+| `TRASH_PURGE_BATCH_SIZE` | `50` | Oldest expired rows per global interval, 1–500 |
 | `DB_POOL_SIZE` | `8` | Pooled connections; see sizing below |
 | `PROJECT_ROOT` | `/opt/nuigraph-studio/current` | Root-owned release/static root |
 
@@ -209,6 +213,17 @@ content returns `503` at global capacity or `403` at the current guest's logical
 limit, and failed saves roll back their revision and snapshot atomically. Moving
 a diagram to trash does not free row or logical-byte capacity; the owner must use
 the explicit permanent-delete action after confirming the item is no longer needed.
+
+Automatic trash retention is deliberately disabled by default. Keep it disabled
+while recovery capability and live paging are not verified. Before enabling it,
+record the approved retention period, confirm the TrashPurge alerts are reaching
+the responsible operator, inspect the current age distribution, and rehearse the
+maintenance deny from the incident runbook. Then set both
+`TRASH_RETENTION_DAYS` and `TRASH_RETENTION_CONFIRM=true`. A database-owned job
+row permits only one oldest-first batch per interval across every app instance;
+the first eligible run occurs after the new listener has bound successfully.
+Disabling retention again stops new automatic batches but cannot recover rows
+already purged.
 
 ### 3. systemd
 
@@ -365,8 +380,12 @@ binary**: old code ignores `deleted_at` and can list, read or share trashed rows
 Never roll back across this migration while application or share routes are
 reachable. Deny the site at nginx first, restore the trash-aware binary, and only
 then reopen traffic. Do not clear timestamps or drop the column as a rollback;
-that can republish intentionally deleted data. Restored diagrams remain private,
-and no automatic purge runs in this release.
+that can republish intentionally deleted data. Restored diagrams remain private;
+automatic purge runs only under the separately confirmed retention policy.
+`011_trash_retention.sql` adds only the database coordination row/table. Older
+binaries ignore it safely. Roll back the binary with retention disabled first;
+the table may remain. Dropping it is unnecessary and erases useful last-run
+evidence. Never describe a code rollback as recovery for rows already purged.
 `FRONTEND_SHELL` adds no database state: roll back with the prior binary while
 keeping it at `server`, or restore the previous vhost and release together if a
 Nui-specific CSP was introduced.
@@ -383,6 +402,7 @@ Nui-specific CSP was introduced.
 | "storage unavailable" | Correlate the response `X-Request-ID` with the generic `storage_failure` journal event and PostgreSQL logs; raw connection errors are deliberately not journaled |
 | Save/trash/restore/permanent delete returns 412 | Another client won the revision; reopen or refresh, then retry deliberately |
 | Save/trash/restore/permanent delete returns 428 | Client omitted the latest diagram ETag in `If-Match` |
+| Automatic trash purge alert | Set `TRASH_RETENTION_DAYS=0` and `TRASH_RETENTION_CONFIRM=false`, validate config, restart, preserve metrics/journal evidence, then follow the retention runbook; already purged rows are not restored by this change |
 | Migration checksum mismatch | Restore the committed historical file; put the intended change in a new numbered migration |
 | CSS or JS looks stale | Check the Cloudflare Cache Rule above, purge once, then confirm the origin revalidation headers |
 | Guest lost edit rights | Expected after 7 days or a cookie clear; ownership is session-bound by design |

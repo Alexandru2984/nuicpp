@@ -338,11 +338,24 @@ CSRF and the trashed row's current strong ETag. Restore increments the revision
 again and remains private; enabling sharing later mints a fresh capability, so a
 pre-trash URL cannot revive. Permanent deletion is the only workflow that
 cascades current nodes, edges, versions and idempotency records and releases
-their quota accounting. No automatic purge is enabled: data remains retained
-until an authorised permanent delete, and the aggregate backlog is observable.
+their quota accounting. By default no automatic purge is enabled: data remains
+retained until an authorised permanent delete, and the aggregate backlog is
+observable.
 Soft delete is not a GDPR erasure request. Permanent deletion removes the live
 database row and cascaded history, but erasure from logs or any backup media is a
 separate retention process that this application endpoint cannot prove.
+
+Automatic retention is available but defaults to disabled. Enabling it requires
+both a 7–3650 day production age and a separate confirmation flag. The database
+clock selects only rows at or beyond that age, oldest first; a database-owned
+schedule admits at most one 1–500 row batch per 60–86400 second interval across
+all instances. Delete, dependent-row cascades, logical-quota release and schedule
+advance share one transaction. A racing restore either locks the row first and
+removes it from consideration or observes that purge already won—no row can be
+partially restored. Aggregate success/error/removal metrics and failure, stall
+and spike alerts avoid exposing diagram or owner metadata. Because purge is
+irreversible, operators without verified recovery and live paging must leave it
+disabled.
 
 ## Optimistic concurrency
 

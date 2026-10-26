@@ -212,6 +212,51 @@ groups:
           summary: NuiGraph permanently deleted at least 10 diagrams in 10 minutes
           runbook: docs/MONITORING.md#destructive-trash-activity
 
+      - alert: NuiGraphTrashPurgeFailure
+        expr: |
+          increase(nuigraph_trash_purge_runs_total{
+            job="nuigraph",outcome="error"
+          }[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: NuiGraph automatic trash retention failed
+          runbook: docs/MONITORING.md#automatic-trash-retention
+
+      - alert: NuiGraphTrashPurgeStalled
+        expr: |
+          nuigraph_trash_retention_days{job="nuigraph"} > 0
+          and
+          (
+            (
+              nuigraph_trash_purge_last_success_timestamp_seconds{job="nuigraph"} == 0
+              and
+              time() - nuigraph_process_start_time_seconds{job="nuigraph"}
+                > 2 * nuigraph_trash_purge_interval_seconds{job="nuigraph"}
+            )
+            or
+            (
+              nuigraph_trash_purge_last_success_timestamp_seconds{job="nuigraph"} > 0
+              and
+              time() - nuigraph_trash_purge_last_success_timestamp_seconds{job="nuigraph"}
+                > 2 * nuigraph_trash_purge_interval_seconds{job="nuigraph"}
+            )
+          )
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: NuiGraph automatic trash retention has missed two intervals
+          runbook: docs/MONITORING.md#automatic-trash-retention
+
+      - alert: NuiGraphTrashAutoPurgeSpike
+        expr: sum(increase(nuigraph_trash_purged_total{job="nuigraph"}[10m])) >= 50
+        labels:
+          severity: critical
+        annotations:
+          summary: NuiGraph automatically purged at least 50 diagrams in 10 minutes
+          runbook: docs/MONITORING.md#automatic-trash-retention
+
       - alert: NuiGraphLogicalStorageCapacityHigh
         expr: |
           nuigraph_logical_storage_bytes{job="nuigraph"}

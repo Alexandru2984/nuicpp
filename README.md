@@ -136,6 +136,9 @@ admin account for maintenance.
 - Trash immediately revokes sharing and hides content from normal ID, slug,
   version, duplicate and export paths. Restores stay private; trash continues to
   count against row and logical-byte quotas until permanent deletion.
+- Optional automatic trash retention is disabled by default and requires a
+  separately confirmed age. A PostgreSQL-coordinated, oldest-first bounded batch
+  prevents multiple app instances from multiplying destructive work.
 - Browser draft autosave with a restore prompt for unsaved local changes.
 
 ### Mobile and offline
@@ -329,6 +332,8 @@ RATE_LIMIT_SECRET  PUBLIC_ACCESS  FRONTEND_SHELL
 MAX_NODES_PER_DIAGRAM  MAX_EDGES_PER_DIAGRAM  MAX_VERSIONS_PER_DIAGRAM
 MAX_IMPORT_BYTES  MAX_DIAGRAMS_PER_GUEST  MAX_DIAGRAMS_TOTAL
 MAX_LOGICAL_BYTES_PER_GUEST  MAX_LOGICAL_BYTES_TOTAL  DB_POOL_SIZE
+TRASH_RETENTION_DAYS  TRASH_RETENTION_CONFIRM
+TRASH_PURGE_INTERVAL_SECONDS  TRASH_PURGE_BATCH_SIZE
 PROJECT_ROOT
 ```
 

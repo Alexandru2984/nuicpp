@@ -78,8 +78,14 @@ private, permanent deletion is owner/admin-only, and all three transitions are
 CSRF- and ETag-protected. Retained trash still consumes both quotas and has an
 aggregate backlog metric; ten permanent deletions in ten minutes trigger a
 validated critical alert with an evidence-preserving response procedure.
-Automatic retention remains open by design.
-The stage gate passed all 19 CTest suites against disposable PostgreSQL,
+Automatic retention is now implemented behind a fail-closed two-key opt-in. A
+database-clock coordination row admits one oldest-first bounded batch per global
+interval across instances, and cascade/quota release is atomic. Production
+activation remains intentionally blocked on an operator decision: without
+verified recovery and live paging, the documented safe value is disabled.
+Failure, missed-interval and unexpected-volume alerts plus an aggregate runbook
+bound detection and containment without logging IDs, titles or owners.
+The stage gate passed all 20 CTest suites against disposable PostgreSQL,
 including the dedicated cross-session trash lifecycle and real Chromium
 desktop/mobile accessibility flows; ShellCheck, Cppcheck, the repository secret
 scan, OpenAPI drift validation, promtool and npm audit also passed.
@@ -95,9 +101,43 @@ public ingress, and a heavily sandboxed systemd unit.
 The largest residual risks are operational and architectural rather than a single
 critical exploit. The finite global row/byte ceilings can still be filled to deny
 new writes, historical and error logs may retain bearer share identifiers, and
-there is no alerting or NuiGraph-specific backup/restore evidence. Do not expand
-public usage until the P0 controls in `ROADMAP.md` are
-complete.
+there is no verified live alerting or NuiGraph-specific backup/restore evidence.
+Do not expand public usage until the P0 controls in `ROADMAP.md` are complete.
+
+## CISO gate: automatic trash retention (2026-10-26)
+
+- **Threat model:** the top risk is Tampering through an incorrect/compromised
+  retention configuration (low likelihood, high impact), followed by Repudiation
+  of destructive activity (medium/high) and DoS from an unbounded trash backlog
+  (high/medium). Two-key opt-in, a seven-day production floor, globally bounded
+  oldest-first batches, aggregate evidence and alerts address the implementation
+  risks; configuration-host compromise remains outside the app trust boundary.
+- **Blast radius:** one committed run can remove at most the configured batch
+  (default 50, hard maximum 500) of already-expired trash; repeated runs can
+  eventually remove every eligible row, bounded globally by 5,000 retained rows
+  and 512 MiB at defaults. A defensible FAIR annualised dollar loss cannot be
+  calculated from this repository because incident frequency, recovery labour,
+  revenue and per-user impact inputs are absent; activation must not invent one.
+- **Detection:** checked-in rules target immediate detection of a purge error or
+  50-row/10-minute spike and detection after two missed intervals plus two
+  minutes. Current production MTTD remains effectively unbounded until a live
+  collector, Alertmanager receiver and operator rota are verified.
+- **Response:** the monitoring runbook contains containment and evidence steps,
+  and the general incident runbook/tabletop covers maintenance deny and GDPR
+  timing. Automatic deletion itself has not been tabletop-tested, and verified
+  recovery is deferred.
+- **Regulatory:** GDPR's 72-hour supervisory-authority decision window applies
+  when an incident qualifies as a personal-data breach likely to risk people;
+  contractual and local-law windows still require case-specific review. Soft
+  delete is not erasure, and primary-row purge cannot prove deletion from other
+  retained stores.
+- **Supply chain:** no vendor, subprocessor, dependency or external data flow was
+  added. PostgreSQL, the existing process and existing monitoring contract are
+  the only components in the path.
+
+**Verdict:** the disabled-by-default mechanism is safe to ship. Enabling it in
+production is **BLOCKED** while offsite recovery and live paging remain deferred;
+the repository-wide verdict stays **MITIGATE THEN SHIP**.
 
 ## Evidence snapshot
 
@@ -149,7 +189,7 @@ complete.
 
 | Rank | STRIDE | Scenario | Likelihood | Impact | Existing controls | Required treatment |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Denial of service | An attacker rotates guest cookies and source addresses, fills the global row/byte or active limiter-key allowance, or saturates DB workers/storage. | High | Medium | Cloudflare/nginx limits, bounded shared GCRA buckets, payload caps, pool cap, atomic per-session/global row and logical-byte quotas, explicit permanent deletion and trash backlog telemetry | Automatic retention; Turnstile for suspicious creation; deploy and wire the checked-in storage, trash, limiter-capacity and latency alerts |
+| 1 | Denial of service | An attacker rotates guest cookies and source addresses, fills the global row/byte or active limiter-key allowance, or saturates DB workers/storage. | High | Medium | Cloudflare/nginx limits, bounded shared GCRA buckets, payload caps, pool cap, atomic per-session/global row and logical-byte quotas, explicit deletion plus opt-in bounded retention and trash telemetry | Turnstile for suspicious creation; approve retention only after recovery/paging; deploy and wire the checked-in capacity and latency alerts |
 | 2 | Information disclosure | App, DB, backups, journals, or an enabled bearer link expose private diagram content. Legacy links stay active until deliberately expired, rotated or revoked. | Medium | High | Private-by-default creation, optional DB-clock expiry, explicit rotate/revoke, 128-bit slugs, owner checks, least-privilege DB role, CSP, origin guard | Deploy the lifecycle changes; review legacy links; encrypted and access-controlled backups; retention policy |
 | 3 | Spoofing / elevation | Theft or forgery of the single admin session grants access to all diagrams. Stateless sessions have no individual revocation. | Low | High | Purpose-separated HMAC keys, bounded signing-key rollover, `__Host-` Secure/HttpOnly/SameSite cookies, PBKDF2, login throttles | Server-side admin session revocation; MFA/passkey; alert on admin login |
 | 4 | Tampering | Concurrent editors attempt to overwrite, delete or restore over newer work. | Low | Medium | Atomic revision increments, strong ETags, mandatory `If-Match`, `412` rejection, bounded history and local draft preservation | Add a merge/recovery UI before real-time collaboration |

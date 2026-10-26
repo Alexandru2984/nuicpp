@@ -42,6 +42,11 @@ struct DiagramCreationResult {
     bool replayed = false;
 };
 
+struct TrashPurgeResult {
+    bool claimed = false;
+    std::uint64_t deleted = 0;
+};
+
 class DiagramRevisionConflict final : public std::runtime_error {
 public:
     DiagramRevisionConflict(long currentRevision, const std::string& message)
@@ -98,6 +103,8 @@ public:
     void trashDiagram(long id, long expectedRevision);
     Diagram restoreDiagramFromTrash(long id, long expectedRevision);
     void permanentlyDeleteDiagram(long id, long expectedRevision);
+    TrashPurgeResult purgeExpiredTrash(int retentionDays, int batchSize,
+                                       int intervalSeconds);
     DiagramCreationResult duplicateDiagram(
         long id, const std::string& ownerTokenHash = "",
         const std::optional<IdempotencyRequest>& idempotency = std::nullopt);
