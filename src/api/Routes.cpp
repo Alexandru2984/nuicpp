@@ -769,6 +769,30 @@ bool Routes::ensureCanEditDeleted(const httplib::Request& req, httplib::Response
     return false;
 }
 
+bool Routes::ensureGuestOwner(const httplib::Request& req, httplib::Response& res,
+                              std::string& ownerHash) {
+    std::string username;
+    if (!verifySession(req, &username)) {
+        logSecurityEvent(req, res, "privacy_data", "blocked");
+        sendJson(res, 401, errorJson("a guest session is required"));
+        return false;
+    }
+    if (username == cfg_.authUsername) {
+        // Admin can inspect individual diagrams but must never get a bulk
+        // export/delete primitive spanning unrelated owners.
+        logSecurityEvent(req, res, "privacy_data", "blocked");
+        sendJson(res, 403, errorJson("guest data controls are not available to administrators"));
+        return false;
+    }
+    ownerHash = ownerHashForRequest(req);
+    if (ownerHash.empty()) {
+        logSecurityEvent(req, res, "privacy_data", "blocked");
+        sendJson(res, 403, errorJson("guest ownership is unavailable"));
+        return false;
+    }
+    return true;
+}
+
 // Validation failures carry messages meant for the caller; anything escaping the
 // storage layer may embed SQL text or connection strings, so it is logged and
 // replaced with a generic message.
@@ -934,7 +958,8 @@ void Routes::registerRoutes(httplib::Server& server) {
     server.set_post_routing_handler([this](const httplib::Request& req, httplib::Response& res) {
         applySecurityHeaders(res);
         const auto& path = req.path;
-        if (path == "/" || path == "/docs" || path == "/login" || path == "/logout" ||
+        if (path == "/" || path == "/docs" || path == "/privacy" ||
+            path == "/login" || path == "/logout" ||
             path == "/health" || path == "/live" || path == "/ready" || path == "/metrics" ||
             path.starts_with("/api/") || path.starts_with("/d/")) {
             // These responses are authenticated, user-specific, bearer-token
@@ -1006,6 +1031,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n"
             "  <url><loc>" + baseUrl + "/</loc></url>\n"
             "  <url><loc>" + baseUrl + "/docs</loc></url>\n"
+            "  <url><loc>" + baseUrl + "/privacy</loc></url>\n"
             "</urlset>\n";
         res.set_header("Cache-Control", "public, max-age=3600");
         res.set_content(body, "application/xml; charset=utf-8");
@@ -1182,6 +1208,11 @@ void Routes::registerRoutes(httplib::Server& server) {
         if (!ensureAuthenticated(req, res, true)) return;
         res.set_content(renderDocsPage(cfg_.baseUrl, assetVersion_), "text/html; charset=utf-8");
     });
+    server.Get("/privacy", [this](const httplib::Request&, httplib::Response& res) {
+        res.set_content(
+            renderPrivacyPage(cfg_.baseUrl, cfg_.trashRetentionDays, assetVersion_),
+            "text/html; charset=utf-8");
+    });
 
     server.Get("/api/session", [this](const httplib::Request& req, httplib::Response& res) {
         std::string username;
@@ -1272,6 +1303,53 @@ void Routes::registerRoutes(httplib::Server& server) {
             sendJson(res, 200, body);
         } catch (const std::exception& e) {
             sendStorageError(req, res, e, 500);
+        }
+    });
+
+    server.Post("/api/privacy/export", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureWriteRateLimit(req, res, false)) return;
+        if (!ensureCsrf(req, res)) return;
+        std::string ownerHash;
+        if (!ensureGuestOwner(req, res, ownerHash)) return;
+        try {
+            auto body = storage_.exportDataForOwner(ownerHash);
+            body["trash_retention_days"] = cfg_.trashRetentionDays > 0
+                ? nlohmann::json(cfg_.trashRetentionDays)
+                : nlohmann::json(nullptr);
+            res.set_header(
+                "Content-Disposition",
+                "attachment; filename=\"nuigraph-owner-data.json\"");
+            sendJson(res, 200, body);
+            logSecurityEvent(req, res, "privacy_data", "exported");
+        } catch (const std::exception& e) {
+            sendStorageError(req, res, e, 500);
+        }
+    });
+
+    server.Delete("/api/privacy/data", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureWriteRateLimit(req, res, false)) return;
+        if (!ensureCsrf(req, res)) return;
+        std::string ownerHash;
+        if (!ensureGuestOwner(req, res, ownerHash)) return;
+        try {
+            const auto body = nlohmann::json::parse(req.body, nullptr, false);
+            if (body.is_discarded() || !body.is_object() || body.size() != 1 ||
+                !body.contains("confirmation") || !body["confirmation"].is_string() ||
+                body["confirmation"].get<std::string>() != "DELETE MY DATA") {
+                throw std::invalid_argument(
+                    "confirmation must exactly equal DELETE MY DATA");
+            }
+            const auto deleted = storage_.deleteAllDataForOwner(ownerHash);
+            res.set_header("Set-Cookie", sessionCookie(req, "", 0));
+            if (requestIsSecure(req)) {
+                res.set_header("Set-Cookie", legacySessionCookie(req, "", 0));
+            }
+            sendJson(res, 200, {{"ok", true}, {"deleted_diagrams", deleted}});
+            logSecurityEvent(req, res, "privacy_data", "deleted");
+        } catch (const std::exception& e) {
+            sendStorageError(req, res, e, 400);
         }
     });
 

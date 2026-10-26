@@ -20,7 +20,7 @@ enable/disable/rotate/expiry-update lifecycle changes, signing-key and legacy
 cookie upgrades, rejected cross-site mutations, foreign request origins and
 unsupported request media types, malformed idempotency headers and conflicting
 idempotency-key reuse, plus successful move/restore/permanent-delete trash
-transitions. Runtime logs use the same outcomes but redact capabilities
+transitions and guest export/delete activity. Runtime logs use the same outcomes but redact capabilities
 and idempotency keys. A sudden blocked-view spike after a planned rotation is
 expected; an unexplained sustained spike should be correlated with access logs
 without recovering or printing the old token.
@@ -65,6 +65,8 @@ When automatic retention is enabled, dedicated bounded metrics expose its age,
 global interval, claimed success/error runs, removed-row total and last-success
 timestamp. Failures, two missed intervals and 50 removals in ten minutes are
 critical alerts; the VPS operator remains the owner until paging is wired.
+Any guest delete-all is critical and ten exports in ten minutes is a warning;
+these signals are intentionally aggregate and cannot identify an owner.
 
 Backup freshness is intentionally not represented here while offsite backup
 work is deferred. Do not create a constant-success placeholder: add an alert
@@ -214,6 +216,27 @@ only when a real artifact timestamp and restore verification signal exist.
    residual explicitly in the incident, assess notification obligations, and do
    not re-enable automatic retention until paging and recovery assumptions have
    been re-approved.
+
+## Privacy data activity
+
+1. Treat `NuiGraphOwnerDataDeleted` as a destructive-data event requiring
+   prompt review. A legitimate guest cleanup is possible, but the aggregate
+   signal cannot establish intent or identity. Preserve the related request ID,
+   actor class and edge evidence without adding an owner hash, diagram ID/title,
+   confirmation phrase or exported content to a ticket.
+2. For `NuiGraphOwnerDataExportSpike`, compare the window with total request,
+   write-throttle and blocked privacy-control events. A single user retrying a
+   download, automated probing and multiple legitimate sessions look similar in
+   bounded metrics; use only already-approved redacted edge metadata to decide.
+3. Unexplained export/deletion activity can indicate a stolen guest cookie.
+   Use the incident runbook's maintenance deny if activity continues, rotate a
+   compromised signing key without the previous-key grace window, and assess
+   the owner-session blast radius. Do not enable an administrator bulk endpoint
+   for investigation.
+4. Primary-row deletion is irreversible in the application. It does not prove
+   erasure from external logs or backup media. Recovery and offsite deletion
+   remain unavailable/unverified while the deferred backup and retention work
+   is open; record that limitation rather than promising recovery or compliance.
 
 ## Unexpected restart
 

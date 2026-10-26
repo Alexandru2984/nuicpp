@@ -403,6 +403,7 @@
       { id: "save", label: "Save diagram", shortLabel: "Save", category: "Diagram", keywords: "persist sync", shortcut: "Ctrl / Cmd + S", mobile: true, enabled: () => Boolean(state.current) && !state.readOnly, run: saveDiagram },
       { id: "share", label: "Manage or copy sharing", shortLabel: "Share", category: "Diagram", keywords: "private public url revoke rotate expire timed link", mobile: true, enabled: () => Boolean(state.current), run: shareDiagram },
       { id: "trash", label: "Open trash", shortLabel: "Trash", category: "Diagram", keywords: "deleted restore recover permanent remove", mobile: true, run: openTrashDialog },
+      { id: "privacy-data", label: "Privacy and data controls", shortLabel: "My data", category: "Privacy", keywords: "export download delete erase owner session gdpr", mobile: true, run: openPrivacyDataDialog },
       { id: "fork", label: "Fork shared diagram", shortLabel: "Fork", category: "Diagram", keywords: "copy public link own", mobile: true, enabled: () => Boolean(state.current) && state.readOnly && Boolean(sharedSlugFromPath()), run: forkSharedDiagram },
       { id: "undo", label: "Undo", shortLabel: "Undo", category: "Edit", shortcut: "Ctrl / Cmd + Z", mobile: true, enabled: () => state.history.length > 0 && !state.readOnly, run: undo },
       { id: "redo", label: "Redo", shortLabel: "Redo", category: "Edit", shortcut: "Ctrl / Cmd + Y", mobile: true, enabled: () => state.future.length > 0 && !state.readOnly, run: redo },
@@ -4022,6 +4023,152 @@
     loadTrash(true);
   }
 
+  function clearDiagramDrafts() {
+    try {
+      for (const key of Object.keys(localStorage)) {
+        if (key.startsWith("nuigraph:draft:")) localStorage.removeItem(key);
+      }
+    } catch {
+      // Server deletion has already succeeded; unavailable browser storage must
+      // not turn that result into a misleading failure.
+    }
+  }
+
+  function openPrivacyDataDialog() {
+    const existing = document.querySelector(".privacy-data-overlay");
+    if (existing) {
+      existing.querySelector("button")?.focus();
+      return;
+    }
+    closeDialog(".command-palette-overlay");
+    closeDialog(".shortcuts-overlay");
+    sheetControls.closeAll(false);
+
+    const previousFocus = document.activeElement;
+    const overlay = document.createElement("div");
+    overlay.className = "command-palette-overlay privacy-data-overlay";
+    const dialog = document.createElement("section");
+    dialog.className = "privacy-data-dialog";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", "privacy-data-title");
+
+    const head = document.createElement("div");
+    head.className = "command-palette-head";
+    const title = document.createElement("h2");
+    title.id = "privacy-data-title";
+    title.textContent = "Privacy & data";
+    const closeButton = mobileBarButton("Close", "command-close");
+    head.append(title, closeButton);
+
+    const introduction = document.createElement("p");
+    introduction.className = "trash-explanation";
+    introduction.append("These controls apply only to diagrams owned by this guest session. See the ");
+    const notice = document.createElement("a");
+    notice.href = "/privacy";
+    notice.textContent = "privacy notice";
+    introduction.append(notice, " for retention, logging, and session limitations.");
+
+    const exportSection = document.createElement("section");
+    exportSection.className = "privacy-data-section";
+    const exportTitle = document.createElement("h3");
+    exportTitle.textContent = "Download my data";
+    const exportText = document.createElement("p");
+    exportText.textContent = "Export active and trashed diagrams plus retained versions as machine-readable JSON. Revoked historical share capabilities and internal owner hashes are excluded.";
+    const exportButton = mobileBarButton("Download JSON", "primary");
+    exportSection.append(exportTitle, exportText, exportButton);
+
+    const deleteSection = document.createElement("section");
+    deleteSection.className = "privacy-data-section privacy-danger-zone";
+    const deleteTitle = document.createElement("h3");
+    deleteTitle.textContent = "Delete my session data";
+    const deleteText = document.createElement("p");
+    deleteText.textContent = "This permanently deletes every active and trashed diagram owned by this guest session, including versions, then signs this browser out. It cannot be undone.";
+    const confirmationLabel = document.createElement("label");
+    confirmationLabel.htmlFor = "privacy-delete-confirmation";
+    confirmationLabel.textContent = "Type DELETE MY DATA to continue";
+    const confirmation = document.createElement("input");
+    confirmation.id = "privacy-delete-confirmation";
+    confirmation.type = "text";
+    confirmation.autocomplete = "off";
+    confirmation.spellcheck = false;
+    const deleteButton = mobileBarButton("Delete my session data", "danger");
+    deleteButton.disabled = true;
+    confirmation.oninput = () => {
+      deleteButton.disabled = confirmation.value !== "DELETE MY DATA";
+    };
+    deleteSection.append(deleteTitle, deleteText, confirmationLabel, confirmation, deleteButton);
+
+    const status = document.createElement("div");
+    status.className = "command-status";
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    dialog.append(head, introduction, exportSection, deleteSection, status);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    const close = () => {
+      overlay.remove();
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+    overlay.closeDialog = close;
+    closeButton.onclick = close;
+    overlay.onclick = (event) => { if (event.target === overlay) close(); };
+    overlay.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+        return;
+      }
+      trapDialogFocus(event, dialog);
+    });
+
+    exportButton.onclick = async () => {
+      exportButton.disabled = true;
+      status.textContent = "Preparing your data export...";
+      try {
+        const data = await api("/api/privacy/export", { method: "POST", body: "{}" });
+        const date = new Date().toISOString().slice(0, 10);
+        downloadBlob(
+          new Blob([JSON.stringify(data)], { type: "application/json" }),
+          `nuigraph-owner-data-${date}.json`
+        );
+        status.textContent = "Data export downloaded.";
+      } catch (error) {
+        status.textContent = error.message || "Could not export this session's data.";
+      } finally {
+        exportButton.disabled = false;
+      }
+    };
+
+    deleteButton.onclick = async () => {
+      if (confirmation.value !== "DELETE MY DATA") return;
+      if (!confirm("Permanently delete every diagram owned by this guest session and sign out?")) return;
+      exportButton.disabled = true;
+      confirmation.disabled = true;
+      deleteButton.disabled = true;
+      status.textContent = "Permanently deleting this session's data...";
+      try {
+        await api("/api/privacy/data", {
+          method: "DELETE",
+          body: JSON.stringify({ confirmation: "DELETE MY DATA" })
+        });
+        clearDiagramDrafts();
+        state.csrfToken = null;
+        state.current = null;
+        location.assign("/");
+      } catch (error) {
+        exportButton.disabled = false;
+        confirmation.disabled = false;
+        deleteButton.disabled = confirmation.value !== "DELETE MY DATA";
+        status.textContent = error.message || "Could not delete this session's data.";
+      }
+    };
+
+    closeButton.focus();
+  }
+
   function renderDiagramList() {
     const list = el("diagram-list");
     list.replaceChildren();
@@ -4553,6 +4700,7 @@
       el("share-diagram")?.after(fork);
     }
     el("save-diagram").onclick = saveDiagram;
+    el("privacy-data").onclick = openPrivacyDataDialog;
     el("open-trash").onclick = openTrashDialog;
     el("refresh-diagrams").onclick = loadDiagrams;
     el("delete-selected").onclick = deleteSelected;

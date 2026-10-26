@@ -257,6 +257,29 @@ groups:
           summary: NuiGraph automatically purged at least 50 diagrams in 10 minutes
           runbook: docs/MONITORING.md#automatic-trash-retention
 
+      - alert: NuiGraphOwnerDataDeleted
+        expr: |
+          sum(increase(nuigraph_security_events_total{
+            job="nuigraph",event="privacy_data",outcome="deleted"
+          }[5m])) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: A NuiGraph guest session deleted all of its retained data
+          runbook: docs/MONITORING.md#privacy-data-activity
+
+      - alert: NuiGraphOwnerDataExportSpike
+        expr: |
+          sum(increase(nuigraph_security_events_total{
+            job="nuigraph",event="privacy_data",outcome="exported"
+          }[10m])) >= 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: NuiGraph guest data exports are unusually frequent
+          runbook: docs/MONITORING.md#privacy-data-activity
+
       - alert: NuiGraphLogicalStorageCapacityHigh
         expr: |
           nuigraph_logical_storage_bytes{job="nuigraph"}

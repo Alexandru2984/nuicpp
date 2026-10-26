@@ -4,7 +4,7 @@ Order matters: reliability and privacy foundations come before collaboration and
 growth. Each item should ship as a small reviewed commit with tests, migration and
 rollback notes where applicable.
 
-## Completed locally through 2026-10-26
+## Completed locally through 2026-10-27
 
 - GitHub Actions build and all live integration/security suites against a
   disposable PostgreSQL 18 database; ShellCheck, Cppcheck and npm audit run in
@@ -201,6 +201,12 @@ rollback notes where applicable.
 - Zero-interruption HTTPS migration to browser-enforced `__Host-ngs_session`,
   with prefixed-cookie precedence, fail-closed shadow handling, legacy expiry,
   dual-name logout and bounded upgrade telemetry covered by live tests.
+- Guest-owner data controls provide one consistent JSON export of active, trash
+  and retained version data and an atomic delete-all transaction behind session,
+  CSRF, throttling and exact typed confirmation. Historical revoked capabilities
+  and internal owner hashes stay out of exports; administrators are deliberately
+  denied the bulk primitive. A responsive dialog, public privacy notice,
+  OpenAPI contract, live cross-session regression and bounded alerts accompany it.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -236,8 +242,10 @@ High risk remain open.
   purpose-specific keys.
 - Workspaces, invitations and roles (`owner`, `editor`, `viewer`) with a central
   policy layer and negative authorization tests.
-- GDPR data export/delete, privacy notice, retention controls, subprocessor list
-  and audit-log access policy.
+- Complete and approve the deployment-specific controller identity, legal bases,
+  subprocessor/transfer inventory, fixed log-retention schedule and audit-log
+  access policy. The application now supplies guest export/delete, retention
+  disclosure and a privacy-notice baseline, but does not claim legal compliance.
 - Add signed/SLSA release provenance and reproducible-build metadata. Observe and
   triage the first remote SBOM CI run after push.
 

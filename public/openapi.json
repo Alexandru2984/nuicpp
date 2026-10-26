@@ -3,8 +3,8 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "NuiGraph Studio API",
-    "version": "1.4.0",
-    "description": "Session-oriented API for private diagrams, trash and restore, templates, version history and capability-based sharing. Start with GET /api/session and retain its HttpOnly cookie. Unsafe requests require the returned CSRF token in X-CSRF-Token. Production HTTPS uses __Host-ngs_session; loopback HTTP development uses ngs_session."
+    "version": "1.5.0",
+    "description": "Session-oriented API for private diagrams, trash and restore, guest data export/deletion, templates, version history and capability-based sharing. Start with GET /api/session and retain its HttpOnly cookie. Unsafe requests require the returned CSRF token in X-CSRF-Token. Production HTTPS uses __Host-ngs_session; loopback HTTP development uses ngs_session."
   },
   "servers": [{ "url": "/", "description": "Current NuiGraph Studio origin" }],
   "externalDocs": { "description": "Application documentation", "url": "/docs" },
@@ -12,6 +12,7 @@
     { "name": "Session", "description": "Guest or administrator session bootstrap" },
     { "name": "Diagrams", "description": "Owned diagram lifecycle" },
     { "name": "Trash", "description": "Private soft deletion, restore and permanent deletion" },
+    { "name": "Privacy", "description": "Current guest-session export and erasure controls" },
     { "name": "Sharing", "description": "Read-only bearer-link lifecycle" },
     { "name": "Templates", "description": "Curated diagram templates" },
     { "name": "Versions", "description": "Bounded immutable diagram snapshots" },
@@ -117,6 +118,39 @@
           "200": { "$ref": "#/components/responses/OkResponse" },
           "412": { "$ref": "#/components/responses/RevisionConflictResponse" },
           "428": { "$ref": "#/components/responses/PreconditionRequiredResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/privacy/export": {
+      "post": {
+        "operationId": "exportGuestData",
+        "summary": "Export all data owned by the current guest session",
+        "description": "Returns active and trashed diagrams plus retained versions. Internal owner hashes and revoked historical share capabilities are excluded. Administrators cannot use this bulk owner endpoint.",
+        "tags": ["Privacy"],
+        "security": [
+          { "sessionCookie": [], "csrfHeader": [] },
+          { "localSessionCookie": [], "csrfHeader": [] }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/OwnerDataExportResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/privacy/data": {
+      "delete": {
+        "operationId": "deleteGuestData",
+        "summary": "Permanently delete all data owned by the current guest session",
+        "description": "Atomically deletes active diagrams, trash, nodes, edges, versions and linked idempotency records, then expires the browser session. Administrators cannot use this bulk owner endpoint.",
+        "tags": ["Privacy"],
+        "security": [
+          { "sessionCookie": [], "csrfHeader": [] },
+          { "localSessionCookie": [], "csrfHeader": [] }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/OwnerDataDeletion" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/OwnerDataDeleteResponse" },
           "default": { "$ref": "#/components/responses/ErrorResponse" }
         }
       }
@@ -448,6 +482,19 @@
       "VersionNote": {
         "required": false,
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VersionNote" } } }
+      },
+      "OwnerDataDeletion": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["confirmation"],
+              "properties": { "confirmation": { "const": "DELETE MY DATA" } }
+            }
+          }
+        }
       }
     },
     "headers": {
@@ -486,6 +533,19 @@
           "X-Request-ID": { "$ref": "#/components/headers/RequestId" }
         },
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Diagram" } } }
+      },
+      "OwnerDataExportResponse": {
+        "description": "Machine-readable export for the current guest session.",
+        "headers": {
+          "Content-Disposition": { "schema": { "type": "string", "example": "attachment; filename=\"nuigraph-owner-data.json\"" } },
+          "X-Request-ID": { "$ref": "#/components/headers/RequestId" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OwnerDataExport" } } }
+      },
+      "OwnerDataDeleteResponse": {
+        "description": "All currently retained diagrams for this guest session were deleted.",
+        "headers": { "X-Request-ID": { "$ref": "#/components/headers/RequestId" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OwnerDataDelete" } } }
       },
       "DiagramSnapshotResponse": {
         "description": "Immutable diagram snapshot content.",
@@ -676,6 +736,46 @@
             }
           }
         ]
+      },
+      "OwnerExportVersion": {
+        "type": "object",
+        "required": ["id", "version_number", "created_at", "note", "snapshot"],
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "minimum": 1 },
+          "version_number": { "type": "integer", "minimum": 1 },
+          "created_at": { "type": "string", "format": "date-time" },
+          "note": { "type": "string", "maxLength": 240 },
+          "snapshot": { "$ref": "#/components/schemas/DiagramSnapshot" }
+        }
+      },
+      "OwnerExportEntry": {
+        "type": "object",
+        "required": ["state", "deleted_at", "diagram", "versions"],
+        "properties": {
+          "state": { "type": "string", "enum": ["active", "trash"] },
+          "deleted_at": { "type": ["string", "null"], "format": "date-time" },
+          "diagram": { "$ref": "#/components/schemas/DiagramSnapshot" },
+          "versions": { "type": "array", "items": { "$ref": "#/components/schemas/OwnerExportVersion" } }
+        }
+      },
+      "OwnerDataExport": {
+        "type": "object",
+        "required": ["format", "exported_at", "scope", "trash_retention_days", "diagrams"],
+        "properties": {
+          "format": { "const": "nuigraph-owner-export-v1" },
+          "exported_at": { "type": "string", "format": "date-time" },
+          "scope": { "const": "guest_session" },
+          "trash_retention_days": { "type": ["integer", "null"], "minimum": 1, "maximum": 3650 },
+          "diagrams": { "type": "array", "items": { "$ref": "#/components/schemas/OwnerExportEntry" } }
+        }
+      },
+      "OwnerDataDelete": {
+        "type": "object",
+        "required": ["ok", "deleted_diagrams"],
+        "properties": {
+          "ok": { "const": true },
+          "deleted_diagrams": { "type": "integer", "minimum": 0 }
+        }
       },
       "Template": {
         "type": "object",

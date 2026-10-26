@@ -981,6 +981,16 @@ void testSeoMetadata() {
     const auto docs = renderDocsPage("https://example.test/");
     require(docs.find("rel=\"canonical\" href=\"https://example.test/docs\"") != std::string::npos,
             "documentation should have a normalized canonical URL");
+    require(docs.find("POST /api/privacy/export") != std::string::npos &&
+                docs.find("href=\"/privacy\"") != std::string::npos,
+            "documentation should expose the guest privacy controls and notice");
+    const auto privacy = renderPrivacyPage("https://example.test/", 30);
+    require(privacy.find("rel=\"canonical\" href=\"https://example.test/privacy\"") != std::string::npos,
+            "privacy notice should have a normalized canonical URL");
+    require(privacy.find("Privacy notice") != std::string::npos &&
+                privacy.find("DELETE MY DATA") != std::string::npos &&
+                privacy.find("eur-lex.europa.eu/eli/reg/2016/679/oj") != std::string::npos,
+            "privacy notice should explain the self-service controls and link to the official law");
     require(renderLoginPage("").find("noindex, nofollow, noarchive") != std::string::npos,
             "login page should opt out of indexing");
 }

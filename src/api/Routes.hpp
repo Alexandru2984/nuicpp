@@ -46,6 +46,8 @@ private:
     bool ensureCanEdit(const httplib::Request& req, httplib::Response& res, long diagramId);
     bool ensureCanEditDeleted(const httplib::Request& req, httplib::Response& res,
                               long diagramId);
+    bool ensureGuestOwner(const httplib::Request& req, httplib::Response& res,
+                          std::string& ownerHash);
     nlohmann::json diagramResponse(const httplib::Request& req, const Diagram& diagram);
     void sendDiagramJson(const httplib::Request& req, httplib::Response& res,
                          int status, const Diagram& diagram);

@@ -5,7 +5,7 @@
 checked-in nginx/systemd configuration, the running service, and non-sensitive
 production metadata. Diagram content and secret values were not inspected.
 
-**Remediation updates, 2026-10-22 through 2026-10-26:** CI, CodeQL, dependency automation and SEO
+**Remediation updates, 2026-10-22 through 2026-10-27:** CI, CodeQL, dependency automation and SEO
 privacy controls were pushed; their remote CI, CodeQL and secret-scanning checks
 passed. Later hardening remains local until pushed and deployed. The operator
 explicitly deferred offsite backup work, so the corresponding High finding
@@ -85,10 +85,20 @@ activation remains intentionally blocked on an operator decision: without
 verified recovery and live paging, the documented safe value is disabled.
 Failure, missed-interval and unexpected-volume alerts plus an aggregate runbook
 bound detection and containment without logging IDs, titles or owners.
-The stage gate passed all 20 CTest suites against disposable PostgreSQL,
+Guest-owner privacy controls now export one consistent PostgreSQL snapshot and
+atomically delete all diagrams for the cookie-bound owner. Session, CSRF,
+throttling, exact typed confirmation, cross-session tests, historical capability
+redaction and explicit admin denial constrain the boundary. A responsive dialog,
+public notice, OpenAPI 1.5 contract and aggregate alerts accompany it; external
+log/backup erasure and deployment-specific legal approval remain open.
+The previous trash-retention stage gate passed all 20 CTest suites against disposable PostgreSQL,
 including the dedicated cross-session trash lifecycle and real Chromium
 desktop/mobile accessibility flows; ShellCheck, Cppcheck, the repository secret
 scan, OpenAPI drift validation, promtool and npm audit also passed.
+The privacy stage gate passed all 21 suites against a fresh disposable
+PostgreSQL 18 database, including the dedicated cross-session export/delete test
+and responsive Chromium dialog coverage. The same static analyzers, secret scan,
+29-rule promtool validation and high-severity npm audit passed.
 
 ## Executive verdict
 
@@ -138,6 +148,41 @@ Do not expand public usage until the P0 controls in `ROADMAP.md` are complete.
 **Verdict:** the disabled-by-default mechanism is safe to ship. Enabling it in
 production is **BLOCKED** while offsite recovery and live paging remain deferred;
 the repository-wide verdict stays **MITIGATE THEN SHIP**.
+
+## CISO gate: guest export and delete-all (2026-10-27)
+
+- **Threat model:** the leading risks are Information Disclosure through export
+  IDOR/capability leakage (low likelihood after controls, high impact), Tampering
+  through cross-session or accidental bulk deletion (low/high), and Repudiation
+  when a copied stateless guest cookie is used (medium/medium). The API derives
+  ownership only from the verified cookie, rejects administrators, strips
+  historical capabilities, requires CSRF plus exact confirmation and logs only
+  bounded aggregate outcomes.
+- **Blast radius:** one successful delete can remove at most the current guest
+  owner's retained allowance—60 diagram rows and 32 MiB under default per-guest
+  ceilings—not every owner. Cascades include nodes, edges, versions and linked
+  idempotency records. A database/host compromise remains outside this endpoint
+  boundary and retains the repository-wide 5,000-row/512-MiB default exposure.
+- **Detection:** any delete-all and an export spike have checked-in alerts, while
+  blocked/exported/deleted counters and redacted request IDs support triage.
+  Production MTTD is still effectively unbounded until Prometheus,
+  Alertmanager and a receiver are exercised.
+- **Response:** the monitoring runbook covers evidence, maintenance denial and
+  signing-key rotation without collecting content or owner hashes. This exact
+  scenario has not been tabletop-tested, and application rollback cannot restore
+  a committed delete.
+- **Regulatory:** the notice and self-service controls improve transparency and
+  portability/erasure handling for the current guest session but do not alone
+  establish GDPR compliance. Controller identity, lawful bases, subprocessors,
+  transfers, external log/backup retention and case-specific rights handling
+  still require operator/legal approval.
+- **Supply chain:** no vendor, subprocessor, dependency or new external data flow
+  was added. Exports remain between the existing application, PostgreSQL and the
+  requesting browser.
+
+**Verdict:** safe to ship as a bounded guest-session feature. Repository-wide
+status remains **MITIGATE THEN SHIP** because live detection and recovery are
+still deferred; the feature must not be represented as complete legal compliance.
 
 ## Evidence snapshot
 

@@ -492,6 +492,9 @@ for series in \
   'nuigraph_security_events_total{event="diagram_trash",outcome="moved"}' \
   'nuigraph_security_events_total{event="diagram_trash",outcome="restored"}' \
   'nuigraph_security_events_total{event="diagram_trash",outcome="permanently_deleted"}' \
+  'nuigraph_security_events_total{event="privacy_data",outcome="exported"}' \
+  'nuigraph_security_events_total{event="privacy_data",outcome="deleted"}' \
+  'nuigraph_security_events_total{event="privacy_data",outcome="blocked"}' \
   'nuigraph_security_events_total{event="session_cookie_upgrade",outcome="succeeded"}' \
   'nuigraph_security_events_total{event="session_rekey",outcome="succeeded"}'
 do
@@ -584,6 +587,21 @@ for marker in 'name="description"' 'rel="canonical"' 'property="og:title"' 'prop
   fi
 done
 
+privacy_headers="$TMP_DIR/privacy.headers"
+privacy_html="$(curl --noproxy '*' -fsS -D "$privacy_headers" "http://127.0.0.1:${PORT}/privacy")"
+for marker in 'rel="canonical"' 'Privacy notice' 'DELETE MY DATA' 'eur-lex.europa.eu/eli/reg/2016/679/oj'; do
+  if ! grep -q "$marker" <<<"$privacy_html"; then
+    echo "expected privacy marker $marker on the public notice" >&2
+    exit 1
+  fi
+done
+for expected in 'content-security-policy:' 'x-content-type-options: nosniff' 'referrer-policy: strict-origin-when-cross-origin' 'cache-control: private, no-store'; do
+  if ! grep -Fqi "$expected" "$privacy_headers"; then
+    echo "expected $expected on /privacy" >&2
+    exit 1
+  fi
+done
+
 review_script="$(curl --noproxy '*' -fsS "http://127.0.0.1:${PORT}/diagram-review.js")"
 if ! grep -q 'NuiGraphReview' <<<"$review_script"; then
   echo "expected the local diagram review engine to be served" >&2
@@ -627,6 +645,8 @@ if not any(location and location.endswith("/") for location in locations):
     raise SystemExit("sitemap is missing the editor URL")
 if not any(location and location.endswith("/docs") for location in locations):
     raise SystemExit("sitemap is missing the documentation URL")
+if not any(location and location.endswith("/privacy") for location in locations):
+    raise SystemExit("sitemap is missing the privacy notice URL")
 PY
 
 openapi_headers="$(curl --noproxy '*' -sS -D - -o /dev/null "http://127.0.0.1:${PORT}/openapi.json")"

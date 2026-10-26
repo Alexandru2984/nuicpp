@@ -139,7 +139,25 @@ test.describe("desktop security and offline lifecycle", () => {
     await expect.poll(() => page.locator("#canvas-ruler-horizontal").getAttribute("width"))
       .not.toBeNull();
     await expectNoHighImpactAccessibilityViolations(page, testInfo, "desktop-editor");
+
+    await page.locator("#privacy-data").click();
+    const privacyDialog = page.getByRole("dialog", { name: "Privacy & data" });
+    await expect(privacyDialog).toBeVisible();
+    await expect(privacyDialog.getByRole("link", { name: "privacy notice" })).toHaveAttribute("href", "/privacy");
+    const privacyConfirmation = privacyDialog.getByLabel("Type DELETE MY DATA to continue");
+    const privacyDelete = privacyDialog.getByRole("button", { name: "Delete my session data", exact: true });
+    await expect(privacyDelete).toBeDisabled();
+    await privacyConfirmation.fill("DELETE MY DAT");
+    await expect(privacyDelete).toBeDisabled();
+    await privacyConfirmation.fill("DELETE MY DATA");
+    await expect(privacyDelete).toBeEnabled();
+    await expectNoHighImpactAccessibilityViolations(page, testInfo, "privacy-data-dialog");
+    await privacyDialog.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(privacyDialog).not.toBeVisible();
+    await expect(page.locator("#privacy-data")).toBeFocused();
+
     await page.emulateMedia({ forcedColors: "active", reducedMotion: "reduce" });
+    await page.keyboard.press("Tab");
     await page.locator("#canvas").focus();
     const accessibilityMedia = await page.evaluate(() => ({
       forcedColors: matchMedia("(forced-colors: active)").matches,
@@ -1065,6 +1083,7 @@ test.describe("phone layout", () => {
     await expect(customizer.getByLabel("Cut selected nodes", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Enter presentation mode", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Open trash", { exact: true })).toBeVisible();
+    await expect(customizer.getByLabel("Privacy and data controls", { exact: true })).toBeVisible();
     await customizer.getByLabel("Add node", { exact: true }).uncheck();
     await customizer.getByLabel("Actual size (100%)", { exact: true }).check();
     await customizer.getByRole("button", { name: "Apply", exact: true }).click();
@@ -1119,6 +1138,25 @@ test.describe("phone layout", () => {
     expect(trashGeometry.right).toBeLessThanOrEqual(trashGeometry.viewportWidth);
     await expectNoHighImpactAccessibilityViolations(page, testInfo, "mobile-trash-dialog");
     await phoneTrash.getByRole("button", { name: "Close", exact: true }).click();
+
+    await page.getByRole("button", { name: "Commands", exact: true }).click();
+    const privacyPalette = page.getByRole("dialog", { name: "Command palette" });
+    await privacyPalette.getByRole("combobox", { name: "Search commands" }).fill("privacy and data");
+    await page.keyboard.press("Enter");
+    const phonePrivacy = page.getByRole("dialog", { name: "Privacy & data" });
+    await expect(phonePrivacy).toBeVisible();
+    const privacyGeometry = await phonePrivacy.evaluate((element) => ({
+      left: element.getBoundingClientRect().left,
+      right: element.getBoundingClientRect().right,
+      bottom: element.getBoundingClientRect().bottom,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight
+    }));
+    expect(privacyGeometry.left).toBeGreaterThanOrEqual(0);
+    expect(privacyGeometry.right).toBeLessThanOrEqual(privacyGeometry.viewportWidth);
+    expect(privacyGeometry.bottom).toBeLessThanOrEqual(privacyGeometry.viewportHeight);
+    await expectNoHighImpactAccessibilityViolations(page, testInfo, "mobile-privacy-data-dialog");
+    await phonePrivacy.getByRole("button", { name: "Close", exact: true }).click();
 
     expect(await page.evaluate(() => globalThis.__nuigraphPolicyViolations)).toEqual([]);
   });

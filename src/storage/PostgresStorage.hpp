@@ -90,6 +90,8 @@ public:
     long countDiagramsForOwner(const std::string& ownerTokenHash);
     long countDeletedDiagrams();
     long countDeletedDiagramsForOwner(const std::string& ownerTokenHash);
+    nlohmann::json exportDataForOwner(const std::string& ownerTokenHash);
+    std::uint64_t deleteAllDataForOwner(const std::string& ownerTokenHash);
     bool consumeRateLimit(const std::string& bucketKey, std::size_t maxRequests,
                           long long windowSeconds);
     void clearRateLimit(const std::string& bucketKey);

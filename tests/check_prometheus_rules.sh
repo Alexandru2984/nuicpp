@@ -27,6 +27,8 @@ for alert in \
   NuiGraphTrashPurgeFailure \
   NuiGraphTrashPurgeStalled \
   NuiGraphTrashAutoPurgeSpike \
+  NuiGraphOwnerDataDeleted \
+  NuiGraphOwnerDataExportSpike \
   NuiGraphLogicalStorageCapacityHigh \
   NuiGraphLimiterCapacityHigh \
   NuiGraphDatabaseGrowthHigh \

@@ -130,6 +130,7 @@ std::string renderEditorPage(const std::string& username, const std::string& bas
         <button id="zoom-in" title="Zoom in">+</button>
         <span id="draft-status" class="draft-status">Saved</span>
         <a href="/docs">Docs</a>
+        <a href="/privacy">Privacy</a>
         <a href="/login">Admin</a>
       </div>
     </header>
@@ -137,6 +138,7 @@ std::string renderEditorPage(const std::string& username, const std::string& bas
       <div class="panel-head">
         <h2>Diagrams</h2>
         <div class="panel-actions">
+          <button id="privacy-data" title="Privacy and data controls">Data</button>
           <button id="open-trash" title="Open trash">Trash</button>
           <button id="refresh-diagrams" title="Refresh">Refresh</button>
         </div>
@@ -263,6 +265,8 @@ std::string renderDocsPage(const std::string& baseUrl, const std::string& assetV
     <pre>GET /health
 GET /live
 GET /ready
+POST /api/privacy/export
+DELETE /api/privacy/data
 GET /api/templates
 POST /api/templates/{key}/create
 GET /api/diagrams
@@ -282,12 +286,59 @@ GET /api/diagrams/{id}/export.json
 POST /api/diagrams/import</pre>
     <h2>Storage And Versioning</h2>
     <p>PostgreSQL stores diagrams, nodes, edges, and bounded version snapshots. Each save creates a snapshot and old versions are pruned by MAX_VERSIONS_PER_DIAGRAM. Saves and restores use revision ETags, so a stale tab is rejected instead of overwriting newer work; its browser draft remains available. Diff on a version lists what was added, removed and changed between that snapshot and the diagram currently open in the editor, including unsaved edits.</p>
+    <h2>Privacy And Data Controls</h2>
+    <p>The editor can export active diagrams, trash and retained versions owned by the current guest session, or permanently delete that session's diagrams after an exact typed confirmation. These controls are cookie-bound and do not give the administrator a bulk owner operation. See the <a href="/privacy">privacy notice</a> for retention, logging and infrastructure limitations.</p>
     <h2>Security</h2>
     <p>Public editing uses signed guest sessions, CSRF tokens, owner checks, input validation, and IP-based write/create rate limits. Admin login remains available for full access.</p>
     <h2>Templates</h2>
     <p>The app includes built-in cloud architecture, incident-response, and data-pipeline templates. Creating from a template stores a normal versioned diagram owned by the current guest session or admin.</p>
     <h2>Limitations</h2>
     <p>v1 is not WebSocket collaboration: concurrent saves are detected but require manual reload and draft reconciliation. Guest ownership is session based rather than full account identity. Production uses the server-rendered C++ shell; an explicitly selected Nui/Emscripten shell is available only when a complete WASM bundle passes startup validation. Detailed canvas gestures use a small JavaScript bridge. Mutating API calls require CSRF tokens.</p>
+  </main>
+</body>
+</html>)HTML";
+}
+
+std::string renderPrivacyPage(const std::string& baseUrl, int trashRetentionDays,
+                              const std::string& assetVersion) {
+    const auto canonicalUrl = normalizedBaseUrl(baseUrl) + "/privacy";
+    const auto trashPolicy = trashRetentionDays > 0
+        ? "Trash becomes eligible for bounded automatic deletion after " +
+              std::to_string(trashRetentionDays) + " days."
+        : "Automatic trash deletion is disabled; trash remains until the owning session permanently deletes it.";
+    return std::string(R"HTML(<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Notice | NuiGraph Studio</title>
+)HTML") + publicMetadata("NuiGraph Studio Privacy Notice", canonicalUrl, true) + R"HTML(  <link rel="stylesheet" href=")HTML" + assetUrl("/styles.css", assetVersion) + R"HTML(">
+</head>
+<body class="docs-body">
+  <main class="docs">
+    <a href="/">Back to editor</a>
+    <h1>Privacy notice</h1>
+    <p><strong>Last updated:</strong> 27 October 2026. This notice describes the repository's current application behavior; it does not claim that every external infrastructure or legal obligation is fully documented.</p>
+    <h2>Controller and contact</h2>
+    <p>NuiGraph Studio is operated by the owner of this deployment. Privacy and data-rights questions can be sent to <a href="mailto:alex_mihai984@yahoo.com">alex_mihai984@yahoo.com</a>.</p>
+    <h2>Data processed</h2>
+    <ul>
+      <li>A signed, pseudonymous guest-session cookie used to keep diagrams attached to the same browser session. The cookie expires after seven days; clearing it can make guest-owned diagrams inaccessible.</li>
+      <li>Diagram titles, descriptions, nodes, edges, metadata, retained versions, trash state, and optional bearer share links supplied through the editor.</li>
+      <li>Request metadata needed for security and operations, including IP-derived rate-limit identifiers, timestamps, status classes, and redacted application/access logs. Metrics contain aggregate bounded labels rather than diagram content or owner identifiers.</li>
+      <li>Administrator authentication data configured by the operator. The guest self-service export does not export administrator configuration or other owners' records.</li>
+    </ul>
+    <h2>Purposes and legal context</h2>
+    <p>Diagram and session data are processed to provide the storage, editing, sharing, recovery, export, and deletion functions requested by the visitor. Limited request and security data are processed to protect the service, enforce quotas, diagnose failures, and investigate abuse. The operator must assess and document the applicable legal basis for its deployment; this application does not use diagram content for advertising, profiling, or automated decisions with legal or similarly significant effects.</p>
+    <h2>Sharing and recipients</h2>
+    <p>Diagrams are private by default. Enabling sharing creates an unguessable read-only bearer URL: anyone who receives that URL can view the diagram until the owner disables, rotates, expires, trashes, or deletes it. Infrastructure recipients include Cloudflare as the public reverse proxy and the operator's VPS/hosting and PostgreSQL environment. Contact the operator for the current provider, location, transfer safeguards, and subprocessor details before relying on this page as a complete Article 13 notice.</p>
+    <h2>Retention</h2>
+    <p>Active diagrams and bounded versions remain while the guest session retains them. Moving a diagram to trash revokes sharing but does not erase or release its quota. )HTML" + htmlEscape(trashPolicy) + R"HTML( Permanent deletion and “Delete my session data” remove primary PostgreSQL rows and cascaded nodes, edges, versions, and idempotency records. Those actions do not by themselves prove erasure from separately retained logs or backup media. Rate-limit rows expire within ten minutes and idempotency records within 24 hours. A fixed external log-retention period remains an operator control; request the current period from the contact above.</p>
+    <h2>Your controls and rights</h2>
+    <p>The editor's Privacy &amp; data dialog can download a machine-readable JSON copy of current and trashed diagrams plus retained versions for the current guest session. It can also irreversibly delete all diagrams owned by that session after typing the exact confirmation <code>DELETE MY DATA</code>. The export deliberately excludes internal owner hashes and revoked historical share capabilities. Because ownership is cookie-bound, another browser or a lost cookie cannot prove control of the same guest records through this self-service endpoint.</p>
+    <p>Depending on applicable law, you may also request access, rectification, erasure, restriction, objection, or portability and lodge a complaint with a competent supervisory authority. Identity may need to be verified before records outside the current guest session can be discussed. The <a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj">official GDPR text</a> describes these rights and their conditions.</p>
+    <h2>Security and changes</h2>
+    <p>State-changing requests use CSRF protection, session ownership checks, rate limits, and security logging. No internet service can guarantee absolute security. Material changes should update the date and this notice before or when the changed processing begins.</p>
   </main>
 </body>
 </html>)HTML";

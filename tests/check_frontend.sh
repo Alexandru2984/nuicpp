@@ -92,12 +92,18 @@ grep -Fq 'function idempotencyHeaders()' public/editor.js
 grep -Fq 'webCrypto.getRandomValues(new Uint8Array(16))' public/editor.js
 grep -Fq 'function openTrashDialog()' public/editor.js
 grep -Fq 'Permanently delete' public/editor.js
+grep -Fq 'function openPrivacyDataDialog()' public/editor.js
+grep -Fq 'DELETE MY DATA' public/editor.js
+grep -Fq 'clearDiagramDrafts()' public/editor.js
 # This is a literal JavaScript template expression, not shell interpolation.
 # shellcheck disable=SC2016
 grep -Fq 'eligible for automatic deletion after ${data.retention_days} days' public/editor.js
 grep -Fq 'Previous share links remain revoked' public/editor.js
 grep -Fq 'id="open-trash"' src/ui/NuiApp.cpp
 grep -Fq 'id = "open-trash"' nui-frontend/frontend/source/frontend/main_page.cpp
+grep -Fq 'id="privacy-data"' src/ui/NuiApp.cpp
+grep -Fq 'id = "privacy-data"' nui-frontend/frontend/source/frontend/main_page.cpp
+grep -Fq 'href="/privacy"' src/ui/NuiApp.cpp
 test "$(grep -Fc 'headers: idempotencyHeaders(),' public/editor.js)" -eq 5
 grep -Fq 'id="grid-size"' src/ui/NuiApp.cpp
 grep -Fq 'id = "grid-size"' nui-frontend/frontend/source/frontend/main_page.cpp

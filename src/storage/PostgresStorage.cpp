@@ -405,6 +405,138 @@ long PostgresStorage::countDeletedDiagramsForOwner(const std::string& ownerToken
         pqxx::params{ownerTokenHash})[0]["n"].as<long>();
 }
 
+nlohmann::json PostgresStorage::exportDataForOwner(const std::string& ownerTokenHash) {
+    if (ownerTokenHash.empty()) {
+        throw std::invalid_argument("guest ownership is required for data export");
+    }
+
+    auto conn = pool_.acquire();
+    pqxx::read_transaction tx(conn.get());
+    const auto exportedAt = tx.exec(R"SQL(
+        SELECT to_char(statement_timestamp() AT TIME ZONE 'UTC',
+                       'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS exported_at
+    )SQL")[0]["exported_at"].as<std::string>();
+    const auto rows = tx.exec(R"SQL(
+        SELECT d.id, d.title, d.slug, d.description, d.revision,
+               (d.deleted_at IS NULL AND d.sharing_enabled AND
+                (d.share_expires_at IS NULL OR d.share_expires_at > statement_timestamp()))
+                   AS sharing_active,
+               (d.sharing_enabled AND d.share_expires_at IS NOT NULL AND
+                d.share_expires_at <= statement_timestamp()) AS share_expired,
+               to_char(d.share_expires_at AT TIME ZONE 'UTC',
+                       'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS share_expires_at,
+               to_char(d.created_at AT TIME ZONE 'UTC',
+                       'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
+               to_char(d.updated_at AT TIME ZONE 'UTC',
+                       'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS updated_at,
+               to_char(d.deleted_at AT TIME ZONE 'UTC',
+                       'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS deleted_at,
+               COALESCE((
+                   SELECT jsonb_agg(jsonb_build_object(
+                       'key', n.node_key, 'type', n.type, 'title', n.title,
+                       'x', n.x, 'y', n.y, 'width', n.width, 'height', n.height,
+                       'color', n.color, 'metadata', n.metadata_json
+                   ) ORDER BY n.id)
+                   FROM nodes n WHERE n.diagram_id=d.id
+               ), '[]'::jsonb)::text AS nodes_json,
+               COALESCE((
+                   SELECT jsonb_agg(jsonb_build_object(
+                       'key', e.edge_key, 'source', e.source_node_key,
+                       'target', e.target_node_key, 'label', e.label,
+                       'directed', e.directed, 'color', e.color,
+                       'metadata', e.metadata_json
+                   ) ORDER BY e.id)
+                   FROM edges e WHERE e.diagram_id=d.id
+               ), '[]'::jsonb)::text AS edges_json,
+               COALESCE((
+                   SELECT jsonb_agg(jsonb_build_object(
+                       'id', v.id, 'version_number', v.version_number,
+                       'created_at', to_char(v.created_at AT TIME ZONE 'UTC',
+                           'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+                       'note', v.note, 'snapshot', v.snapshot_json
+                   ) ORDER BY v.version_number ASC, v.id ASC)
+                   FROM diagram_versions v WHERE v.diagram_id=d.id
+               ), '[]'::jsonb)::text AS versions_json
+        FROM diagrams d
+        WHERE d.owner_token_hash=$1
+        ORDER BY d.created_at ASC, d.id ASC
+    )SQL", pqxx::params{ownerTokenHash});
+
+    nlohmann::json diagrams = nlohmann::json::array();
+    for (const auto& row : rows) {
+        const bool sharingActive = row["sharing_active"].as<bool>();
+        const auto deletedAt = rowString(row, "deleted_at");
+        nlohmann::json diagram = {
+            {"id", row["id"].as<long>()},
+            {"title", rowString(row, "title")},
+            {"slug", sharingActive ? rowString(row, "slug") : ""},
+            {"description", rowString(row, "description")},
+            {"revision", row["revision"].as<long>()},
+            {"sharing_enabled", sharingActive},
+            {"share_expired", row["share_expired"].as<bool>()},
+            {"created_at", rowString(row, "created_at")},
+            {"updated_at", rowString(row, "updated_at")},
+            {"nodes", nlohmann::json::parse(rowString(row, "nodes_json"))},
+            {"edges", nlohmann::json::parse(rowString(row, "edges_json"))}
+        };
+        diagram["share_expires_at"] = row["share_expires_at"].is_null()
+            ? nlohmann::json(nullptr)
+            : nlohmann::json(rowString(row, "share_expires_at"));
+
+        auto versions = nlohmann::json::parse(rowString(row, "versions_json"));
+        for (auto& version : versions) {
+            if (!version.contains("snapshot") || !version["snapshot"].is_object()) continue;
+            auto& snapshot = version["snapshot"];
+            // Historical share slugs are security capabilities, not portable
+            // content. Exclude them even after they have been revoked.
+            snapshot["slug"] = "";
+            snapshot["sharing_enabled"] = false;
+            snapshot["share_expires_at"] = nullptr;
+            snapshot.erase("share_url");
+            snapshot.erase("can_edit");
+        }
+
+        diagrams.push_back({
+            {"state", deletedAt.empty() ? "active" : "trash"},
+            {"deleted_at", deletedAt.empty() ? nlohmann::json(nullptr)
+                                               : nlohmann::json(deletedAt)},
+            {"diagram", std::move(diagram)},
+            {"versions", std::move(versions)}
+        });
+    }
+
+    return {
+        {"format", "nuigraph-owner-export-v1"},
+        {"exported_at", exportedAt},
+        {"scope", "guest_session"},
+        {"diagrams", std::move(diagrams)}
+    };
+}
+
+std::uint64_t PostgresStorage::deleteAllDataForOwner(const std::string& ownerTokenHash) {
+    if (ownerTokenHash.empty()) {
+        throw std::invalid_argument("guest ownership is required for data deletion");
+    }
+
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
+    // Match createDiagram's global-then-owner order. Whichever transaction gets
+    // these locks first becomes the linearization point for a racing create.
+    tx.exec("SELECT pg_advisory_xact_lock(hashtextextended('nuigraph:global-diagram-quota:v1', 0))");
+    tx.exec("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            pqxx::params{ownerTokenHash});
+    const auto deleted = tx.exec(R"SQL(
+        WITH removed AS (
+            DELETE FROM diagrams
+            WHERE owner_token_hash=$1
+            RETURNING id
+        )
+        SELECT count(*) AS n FROM removed
+    )SQL", pqxx::params{ownerTokenHash})[0]["n"].as<std::uint64_t>();
+    tx.commit();
+    return deleted;
+}
+
 bool PostgresStorage::consumeRateLimit(const std::string& bucketKey,
                                        std::size_t maxRequests,
                                        long long windowSeconds) {

@@ -139,6 +139,11 @@ admin account for maintenance.
 - Optional automatic trash retention is disabled by default and requires a
   separately confirmed age. A PostgreSQL-coordinated, oldest-first bounded batch
   prevents multiple app instances from multiplying destructive work.
+- The current guest session can download one machine-readable export containing
+  its active diagrams, trash and retained versions, or atomically delete all of
+  them after an exact typed confirmation. Exports omit internal ownership hashes
+  and revoked historical share capabilities; the administrator has no bulk
+  owner export/delete primitive.
 - Browser draft autosave with a restore prompt for unsaved local changes.
 
 ### Mobile and offline
@@ -167,8 +172,8 @@ admin account for maintenance.
   release digest; matching assets are immutable, while the worker is never
   stored and its registration bypasses the HTTP cache for updates.
 - Search metadata, canonical URLs, `robots.txt`, and `sitemap.xml` cover the
-  public editor and documentation; bearer share links, auth, API, and probes
-  are explicitly excluded from indexing.
+  public editor, documentation and plain-language privacy notice; bearer share
+  links, auth, API, and probes are explicitly excluded from indexing.
 - Separate `/live` process and PostgreSQL-backed `/ready` probes; `/health`
   remains a compatibility alias for liveness. Dependency errors are not exposed.
 - Loopback-only Prometheus telemetry for bounded HTTP/security/create, latency,
@@ -278,11 +283,12 @@ The build is clean under `-Wall -Wextra -Wpedantic`.
 ctest --test-dir build --output-on-failure
 ```
 
-Fifteen suites cover unit validation, frontend assets, the nginx candidate,
+Twenty-one suites cover unit validation, frontend assets, the nginx candidate,
 Prometheus rules, incident-runbook integrity, secret scanning, CycloneDX SBOM generation, real
 Chromium behavior, live security/API behavior, shared persistent rate limits,
 concurrent row/logical-byte quota enforcement, signing-key rotation, and
-migration-ledger integrity. The eight database-backed suites use
+migration-ledger integrity, including isolated trash retention and guest data
+export/deletion lifecycles. The database-backed suites use
 a config with `APP_ENV=test` whose
 actual PostgreSQL database and login-role names both end in `_test`. Missing
 local prerequisites appear as **Not Run**, not as false passes; deployment sets
@@ -378,11 +384,14 @@ sites, so never restart nginx.
 | `GET` | `/ready` |
 | `GET` | `/` |
 | `GET` | `/docs` |
+| `GET` | `/privacy` |
 | `GET` | `/robots.txt`, `/sitemap.xml` |
 | `GET` | `/openapi.json` |
 | `GET` | `/.well-known/security.txt` |
 | `GET` | `/d/{slug}` |
 | `GET` | `/api/session` |
+| `POST` | `/api/privacy/export` |
+| `DELETE` | `/api/privacy/data` |
 | `GET` | `/api/diagrams` |
 | `POST` | `/api/diagrams` |
 | `GET` | `/api/diagrams/{id}` |
@@ -413,7 +422,7 @@ active key with different request material returns `409`. Rate limits still
 apply to retries. The browser generates a fresh 128-bit key for every creation
 action.
 
-The checked-in OpenAPI 3.1 contract documents all 18 API operations, schemas,
+The checked-in OpenAPI 3.1 contract documents all 23 API operations, schemas,
 cookie/CSRF security, conditional revision headers and retry semantics. A dependency-free CTest
 gate extracts routes and node types from the C++ sources and fails on drift,
 duplicate operation IDs, unresolved references or incomplete mutation security.
@@ -427,6 +436,12 @@ monotonically increasing `revision` value.
 `POST /api/diagrams/{id}/sharing` accepts an `action` of `enable`, `rotate` or
 `disable`. Enable and rotate always mint a new capability; disable makes the
 current `/d/{slug}` and slug API paths return `404` immediately.
+
+The privacy endpoints are guest-session-only. Export returns active and trashed
+diagrams plus retained versions for that cookie-bound owner; deletion requires
+the exact JSON confirmation `DELETE MY DATA`, commits all owner-row cascades in
+one transaction, and expires the browser cookie. Neither endpoint is available
+to the administrator, preventing it from becoming an all-owner bulk primitive.
 
 `GET /api/diagrams` is paged: `?limit=` (default 100, max 200) and `?offset=`
 (max 100000). Out-of-range or unparseable values are clamped rather than

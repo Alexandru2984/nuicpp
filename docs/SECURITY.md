@@ -124,7 +124,7 @@ carry the ID.
 Security events cover admin login outcomes, logout, session re-signing,
 authorization/CSRF denials, write/create throttling, quota/capacity exhaustion,
 revision and idempotency conflicts, malformed idempotency headers, share-page
-views and storage failures. They record actor class, redacted route, source IP
+views, guest export/delete outcomes and storage failures. They record actor class, redacted route, source IP
 and outcome, but never usernames, cookies, idempotency keys, CSRF values,
 passwords, request bodies or share capabilities. Source IPs are personal data;
 journal and nginx retention/access still need an explicit privacy policy.
@@ -357,6 +357,40 @@ and spike alerts avoid exposing diagram or owner metadata. Because purge is
 irreversible, operators without verified recovery and live paging must leave it
 disabled.
 
+## Guest export and delete-all boundary
+
+`POST /api/privacy/export` and `DELETE /api/privacy/data` are available only to
+a valid guest session. The administrator is explicitly rejected: admin access
+to individual diagrams must not silently become an all-owner bulk extraction or
+deletion primitive. Both routes pass the normal unsafe-method firewall,
+persistent write limiter and session-bound CSRF check, and all responses are
+`no-store`. They never accept an owner identifier from the caller; the owner
+hash is derived from the verified cookie.
+
+Export runs in one PostgreSQL read transaction, so active diagrams, trash and
+retained versions form one consistent snapshot. It includes a currently active
+share slug because that capability belongs to the requesting owner, but erases
+slugs and sharing state from every historical snapshot and excludes internal
+owner hashes. It is JSON data portability for the current cookie-bound guest,
+not an identity-recovery or administrator-discovery mechanism.
+
+Delete-all requires the request object to contain only the exact confirmation
+`DELETE MY DATA`. One transaction takes the same global-then-owner advisory-lock
+order as creation, deletes all matching diagrams and relies on foreign-key
+cascades for nodes, edges, versions and idempotency records. A concurrent create
+therefore linearises before or after deletion rather than escaping its scope;
+ordinary diagram updates linearise through row locks. On success the response
+expires the browser cookie and the UI removes diagram drafts before navigating
+to a fresh session. Because sessions are stateless, a copied pre-expiry cookie
+is not server-revoked; it can identify the now-empty owner until it expires.
+
+This boundary removes primary PostgreSQL records only. It does not claim to
+erase request/security logs or separately retained backup media, and a lost
+guest cookie cannot prove ownership for self-service recovery. The public
+`/privacy` notice states these limitations and still requires operator review of
+controller, legal-basis, provider, transfer and retention details before being
+treated as a complete deployment notice.
+
 ## Optimistic concurrency
 
 Every diagram row has a positive, monotonically increasing `revision`. Responses
@@ -465,7 +499,7 @@ Notes:
 
 Two rules that are security-relevant, not just performance:
 
-- JSON/API, login/logout, editor/docs, bearer-share and probe responses carry
+- JSON/API, login/logout, editor/docs/privacy, bearer-share and probe responses carry
   `private, no-store` plus matching CDN/Cloudflare policies, legacy expiry and
   `Vary: Cookie`. A central post-route guard applies this even if a future
   individual handler forgets; these responses are session-, capability- or
@@ -515,8 +549,9 @@ documented in `DEPLOY.md`.
   service-worker activation removes obsolete release caches, checks that no API
   response enters Cache Storage, performs an offline navigation, and exercises
   both desktop and coarse-pointer phone layouts. Command-palette focus return,
-allowlisted mobile-action persistence, 44px touch targets and the complete
-enable/rotate/revoke sharing dialog are checked in the same real browser. It
+  allowlisted mobile-action persistence, 44px touch targets and the complete
+  enable/rotate/revoke sharing and guest privacy-data dialogs are checked in the
+  same real browser. It
 uses the same isolated-test database guard as the live API suites.
 - `/metrics` accepts loopback collectors only, is independently denied to public
   clients by nginx, and exports fixed-label aggregate telemetry without actors,
@@ -554,6 +589,10 @@ These are accepted, not overlooked:
 - **Admin is a single shared credential.** There is no MFA or tamper-resistant,
   per-action audit trail. Security events identify the admin actor class but not
   an individual person.
+- **Self-service ownership is not identity proof.** Export and delete-all cover
+  only the owner derived from the current guest cookie. A lost cookie cannot be
+  recovered, and an already copied stateless cookie cannot be individually
+  revoked before its normal expiry.
 
 ## Verifying the model
 
@@ -574,6 +613,9 @@ sessions concurrently against one remaining global row slot.
 `tests/check_logical_quota.sh` proves an oversized update rolls back content,
 revision, snapshot and accounting, then races six unrelated sessions against one
 logical-capacity slot and recomputes the counter from its source rows.
+`tests/check_privacy_data.sh` proves cross-session export isolation, historical
+capability redaction, administrator denial, exact destructive confirmation,
+cascading atomic deletion, cookie expiry and content-free telemetry.
 
 ```bash
 ctest --test-dir build --output-on-failure

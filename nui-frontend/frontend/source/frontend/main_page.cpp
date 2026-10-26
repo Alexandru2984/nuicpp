@@ -56,6 +56,7 @@ Nui::ElementRenderer MainPage::render() {
                     button{id = "zoom-in", title = "Zoom in"}("+"),
                     span{id = "draft-status", class_ = "draft-status"}("Saved"),
                     a{href = "/docs"}("Docs"),
+                    a{href = "/privacy"}("Privacy"),
                     a{href = "/login"}("Admin")
                 )
             ),
@@ -63,6 +64,7 @@ Nui::ElementRenderer MainPage::render() {
                 div{class_ = "panel-head"}(
                     h2{}("Diagrams"),
                     div{class_ = "panel-actions"}(
+                        button{id = "privacy-data", title = "Privacy and data controls"}("Data"),
                         button{id = "open-trash", title = "Open trash"}("Trash"),
                         button{id = "refresh-diagrams", title = "Refresh"}("Refresh")
                     )

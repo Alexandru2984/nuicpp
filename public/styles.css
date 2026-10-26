@@ -1303,7 +1303,7 @@ body.presentation-mode .presentation-controls {
   background: color-mix(in srgb, var(--scrim) 88%, transparent);
 }
 
-.command-palette, .mobile-customizer, .sharing-dialog, .node-navigator, .diagram-outline, .trash-dialog {
+.command-palette, .mobile-customizer, .sharing-dialog, .node-navigator, .diagram-outline, .trash-dialog, .privacy-data-dialog {
   width: min(640px, 100%);
   max-height: min(72dvh, 680px);
   display: grid;
@@ -1320,6 +1320,29 @@ body.presentation-mode .presentation-controls {
 .trash-dialog {
   grid-template-rows: auto auto auto minmax(0, 1fr);
 }
+
+.privacy-data-dialog {
+  grid-template-rows: auto auto auto auto auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.privacy-data-section {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  padding: 12px;
+}
+
+.privacy-data-section h3,
+.privacy-data-section p { margin: 0; }
+.privacy-data-section p { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.privacy-data-section label { color: var(--text); font-size: 12px; font-weight: 650; }
+.privacy-data-section input { min-height: var(--tap); }
+.privacy-data-section button { justify-self: start; }
+.privacy-danger-zone { border-color: color-mix(in srgb, var(--danger) 52%, var(--line)); }
 
 .trash-explanation {
   margin: 0;
@@ -1562,7 +1585,7 @@ button.primary {
     padding: 12px 8px calc(8px + env(safe-area-inset-bottom));
   }
 
-  .command-palette, .mobile-customizer, .diagram-review, .sharing-dialog, .node-navigator, .diagram-outline, .trash-dialog {
+  .command-palette, .mobile-customizer, .diagram-review, .sharing-dialog, .node-navigator, .diagram-outline, .trash-dialog, .privacy-data-dialog {
     width: 100%;
     max-height: min(82dvh, 720px);
     border-radius: 18px;
@@ -1575,6 +1598,7 @@ button.primary {
   .sharing-actions { display: grid; }
   .trash-item .small-actions { width: 100%; }
   .trash-item .small-actions button { flex: 1 1 auto; }
+  .privacy-data-section button { width: 100%; }
 }
 
 .shortcut-list {

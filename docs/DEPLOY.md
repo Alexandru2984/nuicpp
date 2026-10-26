@@ -225,6 +225,15 @@ the first eligible run occurs after the new listener has bound successfully.
 Disabling retention again stops new automatic batches but cannot recover rows
 already purged.
 
+The public `/privacy` page is a technical baseline, not a deployment-specific
+legal approval. Before release, verify its controller/contact, infrastructure
+provider and transfer descriptions against the actual Cloudflare, VPS,
+PostgreSQL and logging setup. Record the approved log-retention/access policy.
+Do not claim GDPR compliance from the presence of the page or self-service
+buttons. Smoke-test that one guest export cannot contain another guest's data,
+that the administrator receives `403` on both privacy endpoints and that the
+exact delete confirmation remains required.
+
 ### 3. systemd
 
 ```bash
@@ -386,6 +395,8 @@ automatic purge runs only under the separately confirmed retention policy.
 binaries ignore it safely. Roll back the binary with retention disabled first;
 the table may remain. Dropping it is unnecessary and erases useful last-run
 evidence. Never describe a code rollback as recovery for rows already purged.
+Guest export/delete adds no migration. Rolling back the binary removes the two
+endpoints and dialog but cannot recover rows already deleted through them.
 `FRONTEND_SHELL` adds no database state: roll back with the prior binary while
 keeping it at `server`, or restore the previous vhost and release together if a
 Nui-specific CSP was introduced.
@@ -403,6 +414,7 @@ Nui-specific CSP was introduced.
 | Save/trash/restore/permanent delete returns 412 | Another client won the revision; reopen or refresh, then retry deliberately |
 | Save/trash/restore/permanent delete returns 428 | Client omitted the latest diagram ETag in `If-Match` |
 | Automatic trash purge alert | Set `TRASH_RETENTION_DAYS=0` and `TRASH_RETENTION_CONFIRM=false`, validate config, restart, preserve metrics/journal evidence, then follow the retention runbook; already purged rows are not restored by this change |
+| Guest export/delete alert | Preserve request/edge evidence without content or owner hashes, contain ongoing writes if unexplained, and follow the privacy-data runbook; deleted rows cannot be restored by an application rollback |
 | Migration checksum mismatch | Restore the committed historical file; put the intended change in a new numbered migration |
 | CSS or JS looks stale | Check the Cloudflare Cache Rule above, purge once, then confirm the origin revalidation headers |
 | Guest lost edit rights | Expected after 7 days or a cookie clear; ownership is session-bound by design |

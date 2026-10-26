@@ -18,7 +18,7 @@ struct SecurityEventLabel {
     const char* outcome;
 };
 
-constexpr std::array<SecurityEventLabel, 31> kSecurityEvents = {{
+constexpr std::array<SecurityEventLabel, 34> kSecurityEvents = {{
     {"csrf_rejected", "blocked"},
     {"fetch_metadata_rejected", "blocked"},
     {"origin_rejected", "blocked"},
@@ -49,7 +49,10 @@ constexpr std::array<SecurityEventLabel, 31> kSecurityEvents = {{
     {"idempotency_conflict", "blocked"},
     {"diagram_trash", "moved"},
     {"diagram_trash", "restored"},
-    {"diagram_trash", "permanently_deleted"}
+    {"diagram_trash", "permanently_deleted"},
+    {"privacy_data", "exported"},
+    {"privacy_data", "deleted"},
+    {"privacy_data", "blocked"}
 }};
 
 constexpr std::array<const char*, 5> kCreateSources = {"blank", "template", "duplicate", "import", "fork"};
