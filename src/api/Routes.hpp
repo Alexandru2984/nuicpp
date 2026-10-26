@@ -37,12 +37,15 @@ private:
     bool isAdmin(const httplib::Request& req) const;
     std::string ownerHashForRequest(const httplib::Request& req) const;
     bool canEditDiagram(const httplib::Request& req, long diagramId);
+    bool canEditDeletedDiagram(const httplib::Request& req, long diagramId);
     bool canReadDiagramById(const httplib::Request& req, long diagramId);
     bool ensureId(const httplib::Request& req, httplib::Response& res, int index, long& out);
     bool ensureExpectedRevision(const httplib::Request& req, httplib::Response& res,
                                 long diagramId, long& out) const;
     bool ensureCanRead(const httplib::Request& req, httplib::Response& res, long diagramId, const char* what);
     bool ensureCanEdit(const httplib::Request& req, httplib::Response& res, long diagramId);
+    bool ensureCanEditDeleted(const httplib::Request& req, httplib::Response& res,
+                              long diagramId);
     nlohmann::json diagramResponse(const httplib::Request& req, const Diagram& diagram);
     void sendDiagramJson(const httplib::Request& req, httplib::Response& res,
                          int status, const Diagram& diagram);

@@ -115,7 +115,9 @@ admin account for maintenance.
 
 ### Diagrams
 
-- Create, list, open, rename, duplicate, delete, save, import, export.
+- Create, list, open, rename, duplicate, save, import and export. Deletion first
+  moves a diagram to private trash, where it can be restored or permanently
+  deleted from an accessible desktop/mobile workflow.
 - Version history with automatic snapshots on save, manual snapshots, restore,
   and a diff view listing what changed between a snapshot and the open diagram.
   Retention is bounded by `MAX_VERSIONS_PER_DIAGRAM`.
@@ -131,6 +133,9 @@ admin account for maintenance.
 - Private-by-default diagrams with explicit read-only sharing at `/d/{slug}`,
   128-bit capabilities, allowlisted 5-minute to 30-day expiry, immediate
   rotation/revocation and one-click fork. The UI defaults new links to 7 days.
+- Trash immediately revokes sharing and hides content from normal ID, slug,
+  version, duplicate and export paths. Restores stay private; trash continues to
+  count against row and logical-byte quotas until permanent deletion.
 - Browser draft autosave with a restore prompt for unsaved local changes.
 
 ### Mobile and offline

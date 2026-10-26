@@ -693,6 +693,19 @@ bool Routes::canEditDiagram(const httplib::Request& req, long diagramId) {
     return owner == ownerHashForRequest(req);
 }
 
+bool Routes::canEditDeletedDiagram(const httplib::Request& req, long diagramId) {
+    if (isAdmin(req)) {
+        return true;
+    }
+    std::string owner;
+    try {
+        owner = storage_.ownerHashForDeletedDiagram(diagramId);
+    } catch (...) {
+        return false;
+    }
+    return !owner.empty() && owner == ownerHashForRequest(req);
+}
+
 bool Routes::canReadDiagramById(const httplib::Request& req, long diagramId) {
     if (isAdmin(req)) {
         return true;
@@ -743,6 +756,16 @@ bool Routes::ensureCanEdit(const httplib::Request& req, httplib::Response& res, 
     }
     logSecurityEvent(req, res, "authorization_write_denied", "blocked");
     sendJson(res, 403, errorJson("diagram is read-only for this visitor"));
+    return false;
+}
+
+bool Routes::ensureCanEditDeleted(const httplib::Request& req, httplib::Response& res,
+                                  long diagramId) {
+    if (canEditDeletedDiagram(req, diagramId)) {
+        return true;
+    }
+    logSecurityEvent(req, res, "authorization_write_denied", "blocked");
+    sendJson(res, 403, errorJson("trash item is not available for this visitor"));
     return false;
 }
 
@@ -1225,6 +1248,29 @@ void Routes::registerRoutes(httplib::Server& server) {
         }
     });
 
+    server.Get("/api/trash", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!ensureAuthenticated(req, res, false)) return;
+        const long limit = clampQueryParam(req, "limit", kDefaultListLimit, 1, kMaxListLimit);
+        const long offset = clampQueryParam(req, "offset", 0, 0, kMaxListOffset);
+        try {
+            const bool admin = isAdmin(req);
+            const auto owner = admin ? std::string{} : ownerHashForRequest(req);
+            auto diagrams = admin ? storage_.listDeletedDiagrams(limit, offset)
+                                  : storage_.listDeletedDiagramsForOwner(owner, limit, offset);
+            const long total = admin ? storage_.countDeletedDiagrams()
+                                     : storage_.countDeletedDiagramsForOwner(owner);
+            sendJson(res, 200, {
+                {"diagrams", diagrams},
+                {"total", total},
+                {"limit", limit},
+                {"offset", offset},
+                {"has_more", offset + static_cast<long>(diagrams.size()) < total}
+            });
+        } catch (const std::exception& e) {
+            sendStorageError(req, res, e, 500);
+        }
+    });
+
     server.Get("/api/templates", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, false)) return;
         nlohmann::json items = nlohmann::json::array();
@@ -1428,10 +1474,47 @@ void Routes::registerRoutes(httplib::Server& server) {
         long expectedRevision = 0;
         if (!ensureExpectedRevision(req, res, id, expectedRevision)) return;
         try {
-            storage_.deleteDiagram(id, expectedRevision);
+            storage_.trashDiagram(id, expectedRevision);
             sendJson(res, 200, {{"ok", true}});
+            logSecurityEvent(req, res, "diagram_trash", "moved");
         } catch (const std::exception& e) {
             sendStorageError(req, res, e, 400);
+        }
+    });
+
+    server.Post(R"(/api/trash/(\d+)/restore)", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureWriteRateLimit(req, res, false)) return;
+        if (!ensureCsrf(req, res)) return;
+        long id = 0;
+        if (!ensureId(req, res, 1, id)) return;
+        if (!ensureCanEditDeleted(req, res, id)) return;
+        long expectedRevision = 0;
+        if (!ensureExpectedRevision(req, res, id, expectedRevision)) return;
+        try {
+            auto diagram = storage_.restoreDiagramFromTrash(id, expectedRevision);
+            sendDiagramJson(req, res, 200, diagram);
+            logSecurityEvent(req, res, "diagram_trash", "restored");
+        } catch (const std::exception& e) {
+            sendStorageError(req, res, e, 404);
+        }
+    });
+
+    server.Delete(R"(/api/trash/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!ensureAuthenticated(req, res, false)) return;
+        if (!ensureWriteRateLimit(req, res, false)) return;
+        if (!ensureCsrf(req, res)) return;
+        long id = 0;
+        if (!ensureId(req, res, 1, id)) return;
+        if (!ensureCanEditDeleted(req, res, id)) return;
+        long expectedRevision = 0;
+        if (!ensureExpectedRevision(req, res, id, expectedRevision)) return;
+        try {
+            storage_.permanentlyDeleteDiagram(id, expectedRevision);
+            sendJson(res, 200, {{"ok", true}});
+            logSecurityEvent(req, res, "diagram_trash", "permanently_deleted");
+        } catch (const std::exception& e) {
+            sendStorageError(req, res, e, 404);
         }
     });
 

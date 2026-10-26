@@ -203,9 +203,12 @@ Keep `MAX_DIAGRAMS_TOTAL` above the current diagram count and
 value. The latter counts current user-controlled diagram content and retained
 snapshot JSON, not PostgreSQL indexes, WAL or page overhead; continue monitoring
 the database and disk metrics too. Lower either ceiling only with an explicit
-retention or deletion plan. Reads and deletes keep working at capacity. New
+retention or deletion plan. Reads, trash management and permanent deletion keep
+working at capacity. New
 content returns `503` at global capacity or `403` at the current guest's logical
-limit, and failed saves roll back their revision and snapshot atomically.
+limit, and failed saves roll back their revision and snapshot atomically. Moving
+a diagram to trash does not free row or logical-byte capacity; the owner must use
+the explicit permanent-delete action after confirming the item is no longer needed.
 
 ### 3. systemd
 
@@ -356,6 +359,14 @@ key. An older binary ignores it and remains schema-compatible, but creation
 retries can again produce duplicates while that binary runs. Keep the table: it
 contains only domain-separated HMACs and deleting it is unnecessary for rollback.
 The next hardened release can safely resume using unexpired rows.
+`010_diagram_trash.sql` adds the nullable lifecycle timestamp and partial list
+indexes. It is schema-additive but **not behavior-compatible with an older
+binary**: old code ignores `deleted_at` and can list, read or share trashed rows.
+Never roll back across this migration while application or share routes are
+reachable. Deny the site at nginx first, restore the trash-aware binary, and only
+then reopen traffic. Do not clear timestamps or drop the column as a rollback;
+that can republish intentionally deleted data. Restored diagrams remain private,
+and no automatic purge runs in this release.
 `FRONTEND_SHELL` adds no database state: roll back with the prior binary while
 keeping it at `server`, or restore the previous vhost and release together if a
 Nui-specific CSP was introduced.
@@ -370,8 +381,8 @@ Nui-specific CSP was introduced.
 | Login/write returns 503 | Check PostgreSQL readiness, pool saturation and the `rate_limit_storage` event; the abuse control deliberately fails closed |
 | Nui mode refuses startup | Confirm `FRONTEND_SHELL=nui`, inspect regular files under `public/nui/`, then re-run `scripts/build_nui_frontend.sh`; never replace the gate with a symlink |
 | "storage unavailable" | Correlate the response `X-Request-ID` with the generic `storage_failure` journal event and PostgreSQL logs; raw connection errors are deliberately not journaled |
-| Save/delete/restore returns 412 | Another client won the revision; reopen or refresh, then retry deliberately |
-| Save/delete/restore returns 428 | Client omitted the latest diagram ETag in `If-Match` |
+| Save/trash/restore/permanent delete returns 412 | Another client won the revision; reopen or refresh, then retry deliberately |
+| Save/trash/restore/permanent delete returns 428 | Client omitted the latest diagram ETag in `If-Match` |
 | Migration checksum mismatch | Restore the committed historical file; put the intended change in a new numbered migration |
 | CSS or JS looks stale | Check the Cloudflare Cache Rule above, purge once, then confirm the origin revalidation headers |
 | Guest lost edit rights | Expected after 7 days or a cookie clear; ownership is session-bound by design |

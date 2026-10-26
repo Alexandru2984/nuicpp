@@ -73,12 +73,18 @@ public:
     OperationalMetrics operationalMetrics();
     std::vector<nlohmann::json> listDiagrams(long limit, long offset);
     std::vector<nlohmann::json> listDiagramsForOwner(const std::string& ownerTokenHash, long limit, long offset);
+    std::vector<nlohmann::json> listDeletedDiagrams(long limit, long offset);
+    std::vector<nlohmann::json> listDeletedDiagramsForOwner(
+        const std::string& ownerTokenHash, long limit, long offset);
     Diagram getDiagram(long id);
     Diagram getDiagramBySlug(const std::string& slug);
     bool activeShareExists(const std::string& slug);
     std::string ownerHashForDiagram(long id);
+    std::string ownerHashForDeletedDiagram(long id);
     long countDiagrams();
     long countDiagramsForOwner(const std::string& ownerTokenHash);
+    long countDeletedDiagrams();
+    long countDeletedDiagramsForOwner(const std::string& ownerTokenHash);
     bool consumeRateLimit(const std::string& bucketKey, std::size_t maxRequests,
                           long long windowSeconds);
     void clearRateLimit(const std::string& bucketKey);
@@ -89,7 +95,9 @@ public:
                           bool importMode, long expectedRevision);
     Diagram updateSharing(long id, ShareAction action, long expectedRevision,
                           const ShareExpiry& expiry = {});
-    void deleteDiagram(long id, long expectedRevision);
+    void trashDiagram(long id, long expectedRevision);
+    Diagram restoreDiagramFromTrash(long id, long expectedRevision);
+    void permanentlyDeleteDiagram(long id, long expectedRevision);
     DiagramCreationResult duplicateDiagram(
         long id, const std::string& ownerTokenHash = "",
         const std::optional<IdempotencyRequest>& idempotency = std::nullopt);

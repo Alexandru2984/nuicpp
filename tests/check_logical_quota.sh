@@ -116,11 +116,22 @@ python3 -c 'import json,sys; d=json.loads(sys.argv[1]); assert d["revision"]==in
 curl --noproxy '*' -fsS -b "$COOKIE_JAR" \
   -H "X-CSRF-Token: $CSRF" -H "If-Match: \"diagram-${DIAGRAM_ID}-r${REVISION}\"" \
   -X DELETE "${BASE}/api/diagrams/${DIAGRAM_ID}" >/dev/null
+AFTER_TRASH="$(psql --dbname="$DATABASE_URL" -X -v ON_ERROR_STOP=1 -qtAc \
+  "SELECT logical_bytes FROM logical_storage_usage WHERE singleton=true")"
+AFTER_TRASH="${AFTER_TRASH//[[:space:]]/}"
+if [[ "$AFTER_TRASH" == "$BASELINE" ]]; then
+  echo "logical quota test failed: soft delete unexpectedly released logical bytes" >&2
+  exit 1
+fi
+
+curl --noproxy '*' -fsS -b "$COOKIE_JAR" \
+  -H "X-CSRF-Token: $CSRF" -H "If-Match: \"diagram-${DIAGRAM_ID}-r$((REVISION + 1))\"" \
+  -X DELETE "${BASE}/api/trash/${DIAGRAM_ID}" >/dev/null
 AFTER_DELETE="$(psql --dbname="$DATABASE_URL" -X -v ON_ERROR_STOP=1 -qtAc \
   "SELECT logical_bytes FROM logical_storage_usage WHERE singleton=true")"
 AFTER_DELETE="${AFTER_DELETE//[[:space:]]/}"
 if [[ "$AFTER_DELETE" != "$BASELINE" ]]; then
-  echo "logical quota test failed: delete did not restore the logical-byte counter" >&2
+  echo "logical quota test failed: permanent delete did not restore the logical-byte counter" >&2
   exit 1
 fi
 

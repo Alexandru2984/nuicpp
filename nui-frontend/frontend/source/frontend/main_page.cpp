@@ -62,7 +62,10 @@ Nui::ElementRenderer MainPage::render() {
             aside{class_ = "project-panel"}(
                 div{class_ = "panel-head"}(
                     h2{}("Diagrams"),
-                    button{id = "refresh-diagrams", title = "Refresh"}("Refresh")
+                    div{class_ = "panel-actions"}(
+                        button{id = "open-trash", title = "Open trash"}("Trash"),
+                        button{id = "refresh-diagrams", title = "Refresh"}("Refresh")
+                    )
                 ),
                 div{id = "diagram-list", class_ = "diagram-list"}(),
                 section{class_ = "template-section"}(

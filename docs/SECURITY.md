@@ -260,6 +260,11 @@ and creation rate limits, CSRF, Origin/Fetch Metadata checks, authorization and
 input validation still execute. The response remains `201` on replay to keep
 the representation stable; clients distinguish it through the response header.
 
+If the original result is in trash, an exact retry returns `409` instead of
+silently creating a replacement or exposing deleted content. Restoring the same
+row makes replay available again; permanent deletion cascades the ledger record,
+so its key no longer promises replay after the data itself has been erased.
+
 Persistent rate-limit bucket keys use `RATE_LIMIT_SECRET`. Rotating it starts new
 pseudonymous identities; old database rows become unreachable and expire within
 their normal 10-minute window instead of containing reusable client data.
@@ -295,7 +300,7 @@ and inserts in that same transaction. It then takes the owner lock and applies
 the session quota. The fixed global-then-owner lock order avoids deadlocks, and
 parallel requests or rotated sessions cannot race past either ceiling. The API
 returns `503` when global capacity is exhausted and `403` when only the current
-session is full. Reads and deletes remain available.
+session is full. Reads, trash management and permanent deletion remain available.
 
 Logical usage includes the current user-controlled title, description, node,
 edge and metadata bytes plus every retained snapshot and note. PostgreSQL
@@ -318,12 +323,33 @@ cannot make the table grow without bound. At capacity, previously unseen keys
 are rejected until an existing bucket expires. Cloudflare and nginx remain the
 cheaper first line of defence, because a database limiter is not a DDoS sink.
 
+## Trash and erasure boundary
+
+`DELETE /api/diagrams/{id}` is a revision-conditional soft delete. In one
+transaction it records the database timestamp, disables sharing, removes any
+share expiry and increments the revision. Normal ID, slug, duplicate, export and
+version paths filter trashed rows, so neither owners nor bearer links can use the
+ordinary content boundary to retrieve them. The dedicated paginated trash list
+returns metadata only to the owner or administrator and never returns a stored
+slug.
+
+Restore and permanent deletion use separate owner/admin authorization checks,
+CSRF and the trashed row's current strong ETag. Restore increments the revision
+again and remains private; enabling sharing later mints a fresh capability, so a
+pre-trash URL cannot revive. Permanent deletion is the only workflow that
+cascades current nodes, edges, versions and idempotency records and releases
+their quota accounting. No automatic purge is enabled: data remains retained
+until an authorised permanent delete, and the aggregate backlog is observable.
+Soft delete is not a GDPR erasure request. Permanent deletion removes the live
+database row and cascaded history, but erasure from logs or any backup media is a
+separate retention process that this application endpoint cannot prove.
+
 ## Optimistic concurrency
 
 Every diagram row has a positive, monotonically increasing `revision`. Responses
 that contain the live diagram also expose a strong ETag in the form
-`"diagram-<id>-r<revision>"`. Save, delete and restore require that exact value
-in `If-Match`; a missing precondition returns `428`, while a stale revision
+`"diagram-<id>-r<revision>"`. Save, move to trash, version restore, trash restore
+and permanent deletion require that exact value in `If-Match`; a missing precondition returns `428`, while a stale revision
 returns `412` plus the current revision without changing the diagram, nodes,
 edges or version history.
 

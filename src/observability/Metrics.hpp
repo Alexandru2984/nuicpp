@@ -14,6 +14,7 @@ namespace nuigraph {
 struct OperationalMetrics {
     bool databaseUp = false;
     std::uint64_t diagrams = 0;
+    std::uint64_t trashedDiagrams = 0;
     std::uint64_t nodes = 0;
     std::uint64_t edges = 0;
     std::uint64_t versions = 0;
@@ -44,7 +45,7 @@ private:
     static constexpr std::size_t kMethodCount = 5;
     static constexpr std::size_t kStatusCount = 6;
     static constexpr std::size_t kLatencyBucketCount = 6;
-    static constexpr std::size_t kSecurityEventCount = 28;
+    static constexpr std::size_t kSecurityEventCount = 31;
     static constexpr std::size_t kCreateSourceCount = 5;
 
     std::uint64_t startTimeSeconds_;

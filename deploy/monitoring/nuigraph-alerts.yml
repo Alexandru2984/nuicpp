@@ -186,6 +186,32 @@ groups:
           summary: NuiGraph diagram capacity is above 80 percent
           runbook: docs/MONITORING.md#abuse-or-capacity-pressure
 
+      - alert: NuiGraphTrashBacklogHigh
+        expr: |
+          nuigraph_storage_objects{job="nuigraph",kind="trashed_diagrams"}
+          / ignoring(kind)
+          clamp_min(nuigraph_storage_objects{job="nuigraph",kind="diagrams"}, 1) > 0.25
+          and on ()
+          nuigraph_storage_objects{job="nuigraph",kind="diagrams"} >= 100
+        for: 24h
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 25 percent of retained NuiGraph diagrams are in trash
+          runbook: docs/MONITORING.md#abuse-or-capacity-pressure
+
+      - alert: NuiGraphPermanentDeleteSpike
+        expr: |
+          sum(increase(nuigraph_security_events_total{
+            job="nuigraph",event="diagram_trash",outcome="permanently_deleted"
+          }[10m])) >= 10
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: NuiGraph permanently deleted at least 10 diagrams in 10 minutes
+          runbook: docs/MONITORING.md#destructive-trash-activity
+
       - alert: NuiGraphLogicalStorageCapacityHigh
         expr: |
           nuigraph_logical_storage_bytes{job="nuigraph"}

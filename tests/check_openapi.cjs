@@ -74,11 +74,13 @@ for (const [route, pathItem] of Object.entries(spec.paths)) {
 }
 
 assert.deepEqual([...documented].sort(), [...implemented].sort(), "OpenAPI routes drifted from Routes.cpp");
-assert.equal(operationIds.size, 18);
+assert.equal(operationIds.size, 21);
 
 const revisionSafe = new Set([
   "PUT /api/diagrams/{id}",
   "DELETE /api/diagrams/{id}",
+  "POST /api/trash/{id}/restore",
+  "DELETE /api/trash/{id}",
   "POST /api/diagrams/{id}/sharing",
   "POST /api/diagrams/{id}/restore/{versionId}"
 ]);

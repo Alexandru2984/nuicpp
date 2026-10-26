@@ -90,6 +90,11 @@ grep -Fq 'metadata.geometry_locked = true' public/editor.js
 grep -Fq 'if (fetchOptions.body !== undefined' public/editor.js
 grep -Fq 'function idempotencyHeaders()' public/editor.js
 grep -Fq 'webCrypto.getRandomValues(new Uint8Array(16))' public/editor.js
+grep -Fq 'function openTrashDialog()' public/editor.js
+grep -Fq 'Permanently delete' public/editor.js
+grep -Fq 'Previous share links remain revoked' public/editor.js
+grep -Fq 'id="open-trash"' src/ui/NuiApp.cpp
+grep -Fq 'id = "open-trash"' nui-frontend/frontend/source/frontend/main_page.cpp
 test "$(grep -Fc 'headers: idempotencyHeaders(),' public/editor.js)" -eq 5
 grep -Fq 'id="grid-size"' src/ui/NuiApp.cpp
 grep -Fq 'id = "grid-size"' nui-frontend/frontend/source/frontend/main_page.cpp
@@ -123,6 +128,7 @@ grep -Fq 'overlay.closeDialog = closeShortcuts' public/editor.js
 grep -Fq 'overlay.closeDialog = closeDiff' public/editor.js
 grep -Fq 'expectNoHighImpactAccessibilityViolations' nui-frontend/tests/browser.spec.cjs
 grep -Fq 'nuigraph:mobile-actions:v1' public/editor.js
+grep -Fq 'accessibleLabel.toLowerCase().startsWith(visibleLabel.toLowerCase())' public/editor.js
 grep -Fq 'className = "command-palette-overlay"' public/editor.js
 test "$(grep -Fc 'if (state.current.nodes?.length) zoomToFit();' public/editor.js)" -eq 2
 grep -Fq '.mobile-action-bar' public/styles.css

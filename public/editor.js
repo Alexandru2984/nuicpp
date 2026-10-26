@@ -402,6 +402,7 @@
       { id: "sample", label: "Create from cloud template", shortLabel: "Sample", category: "Diagram", keywords: "sample architecture", run: loadSample },
       { id: "save", label: "Save diagram", shortLabel: "Save", category: "Diagram", keywords: "persist sync", shortcut: "Ctrl / Cmd + S", mobile: true, enabled: () => Boolean(state.current) && !state.readOnly, run: saveDiagram },
       { id: "share", label: "Manage or copy sharing", shortLabel: "Share", category: "Diagram", keywords: "private public url revoke rotate expire timed link", mobile: true, enabled: () => Boolean(state.current), run: shareDiagram },
+      { id: "trash", label: "Open trash", shortLabel: "Trash", category: "Diagram", keywords: "deleted restore recover permanent remove", mobile: true, run: openTrashDialog },
       { id: "fork", label: "Fork shared diagram", shortLabel: "Fork", category: "Diagram", keywords: "copy public link own", mobile: true, enabled: () => Boolean(state.current) && state.readOnly && Boolean(sharedSlugFromPath()), run: forkSharedDiagram },
       { id: "undo", label: "Undo", shortLabel: "Undo", category: "Edit", shortcut: "Ctrl / Cmd + Z", mobile: true, enabled: () => state.history.length > 0 && !state.readOnly, run: undo },
       { id: "redo", label: "Redo", shortLabel: "Redo", category: "Edit", shortcut: "Ctrl / Cmd + Y", mobile: true, enabled: () => state.future.length > 0 && !state.readOnly, run: redo },
@@ -735,7 +736,7 @@
         ? "Save diagram - unsaved changes"
         : command.label;
       const visibleLabel = button.textContent.trim();
-      if (visibleLabel && !accessibleLabel.toLowerCase().includes(visibleLabel.toLowerCase())) {
+      if (visibleLabel && !accessibleLabel.toLowerCase().startsWith(visibleLabel.toLowerCase())) {
         accessibleLabel = `${visibleLabel}: ${accessibleLabel}`;
       }
       button.setAttribute("aria-label", accessibleLabel);
@@ -3823,6 +3824,201 @@
       (d.description || "").toLowerCase().includes(needle));
   }
 
+  function openTrashDialog() {
+    const existing = document.querySelector(".trash-overlay");
+    if (existing) {
+      existing.querySelector("button")?.focus();
+      return;
+    }
+    closeDialog(".command-palette-overlay");
+    closeDialog(".shortcuts-overlay");
+    sheetControls.closeAll(false);
+
+    const previousFocus = document.activeElement;
+    const overlay = document.createElement("div");
+    overlay.className = "command-palette-overlay trash-overlay";
+    const dialog = document.createElement("section");
+    dialog.className = "trash-dialog";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", "trash-title");
+
+    const head = document.createElement("div");
+    head.className = "command-palette-head";
+    const title = document.createElement("h2");
+    title.id = "trash-title";
+    title.textContent = "Trash";
+    const closeButton = mobileBarButton("Close", "command-close");
+    head.append(title, closeButton);
+
+    const explanation = document.createElement("p");
+    explanation.className = "trash-explanation";
+    explanation.textContent = "Trashed diagrams stay private and continue to use your storage quota until permanently deleted.";
+    const status = document.createElement("div");
+    status.className = "command-status";
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    const list = document.createElement("div");
+    list.className = "trash-list";
+    dialog.append(head, explanation, status, list);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    let items = [];
+    let total = 0;
+    let hasMore = false;
+    let loading = false;
+
+    const close = () => {
+      overlay.remove();
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+    overlay.closeDialog = close;
+    closeButton.onclick = close;
+    overlay.onclick = (event) => { if (event.target === overlay) close(); };
+    overlay.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+        return;
+      }
+      trapDialogFocus(event, dialog);
+    });
+
+    const formatDeletedAt = (value) => {
+      if (!value) return "Deletion time unavailable";
+      const timestamp = new Date(value);
+      return Number.isNaN(timestamp.getTime())
+        ? "Deletion time unavailable"
+        : `Moved to trash ${timestamp.toLocaleString()}`;
+    };
+
+    const renderTrash = () => {
+      list.replaceChildren();
+      if (!items.length) {
+        const empty = document.createElement("div");
+        empty.className = "command-empty";
+        empty.textContent = loading ? "Loading trash..." : "Trash is empty.";
+        list.appendChild(empty);
+      }
+      for (const item of items) {
+        const card = document.createElement("article");
+        card.className = "diagram-item trash-item";
+        const row = document.createElement("div");
+        row.className = "diagram-row";
+        const name = document.createElement("div");
+        name.className = "diagram-name";
+        name.textContent = item.title || "Untitled diagram";
+        const actions = document.createElement("div");
+        actions.className = "small-actions";
+        const restore = mobileBarButton("Restore", "primary");
+        const remove = mobileBarButton("Delete forever", "danger");
+        actions.append(restore, remove);
+        row.append(name, actions);
+        const counts = document.createElement("div");
+        counts.className = "meta";
+        counts.textContent = `${item.node_count || 0} nodes, ${item.edge_count || 0} edges`;
+        const deletedAt = document.createElement("div");
+        deletedAt.className = "meta";
+        deletedAt.textContent = formatDeletedAt(item.deleted_at);
+        card.append(row, counts, deletedAt);
+        list.appendChild(card);
+
+        restore.onclick = async () => {
+          restore.disabled = true;
+          remove.disabled = true;
+          status.textContent = `Restoring ${item.title || "diagram"}...`;
+          let restored;
+          try {
+            restored = await api(`/api/trash/${item.id}/restore`, {
+              method: "POST",
+              headers: { "If-Match": diagramEtag(item) },
+              body: "{}"
+            });
+          } catch (error) {
+            restore.disabled = false;
+            remove.disabled = false;
+            if (handleRevisionConflict(error, false,
+              "This trash item changed elsewhere. Refresh trash and try again.")) {
+              await loadTrash(true).catch(() => {});
+            } else {
+              status.textContent = error.message || "Could not restore the diagram.";
+            }
+            return;
+          }
+          close();
+          try {
+            await loadDiagrams();
+            await openDiagram(restored.id);
+            toast("Diagram restored privately. Previous share links remain revoked.");
+          } catch (error) {
+            toast(error.message || "Diagram restored, but the editor could not reopen it.", "error");
+          }
+        };
+
+        remove.onclick = async () => {
+          if (!confirm(`Permanently delete “${item.title || "Untitled diagram"}”? This cannot be undone.`)) return;
+          restore.disabled = true;
+          remove.disabled = true;
+          status.textContent = `Permanently deleting ${item.title || "diagram"}...`;
+          try {
+            await api(`/api/trash/${item.id}`, {
+              method: "DELETE",
+              headers: { "If-Match": diagramEtag(item) }
+            });
+            items = items.filter((candidate) => candidate.id !== item.id);
+            total = Math.max(0, total - 1);
+            status.textContent = "Diagram permanently deleted.";
+            renderTrash();
+          } catch (error) {
+            restore.disabled = false;
+            remove.disabled = false;
+            if (handleRevisionConflict(error, false,
+              "This trash item changed elsewhere. Refresh trash and try again.")) {
+              await loadTrash(true).catch(() => {});
+            } else {
+              status.textContent = error.message || "Could not permanently delete the diagram.";
+            }
+          }
+        };
+      }
+
+      if (hasMore) {
+        const more = mobileBarButton(`Load more (${items.length} of ${total})`, "load-more");
+        more.onclick = () => loadTrash(false);
+        list.appendChild(more);
+      }
+    };
+
+    const loadTrash = async (reset) => {
+      if (loading) return;
+      loading = true;
+      if (reset) items = [];
+      status.textContent = "Loading trash...";
+      renderTrash();
+      try {
+        const offset = reset ? 0 : items.length;
+        const data = await api(`/api/trash?offset=${offset}`);
+        const page = data.diagrams || [];
+        const seen = new Set(items.map((item) => item.id));
+        items = items.concat(page.filter((item) => !seen.has(item.id)));
+        total = typeof data.total === "number" ? data.total : items.length;
+        hasMore = Boolean(data.has_more) && page.length > 0;
+        status.textContent = total === 1 ? "1 trashed diagram" : `${total} trashed diagrams`;
+      } catch (error) {
+        status.textContent = error.message || "Could not load trash.";
+        toast(status.textContent, "error");
+      } finally {
+        loading = false;
+        renderTrash();
+      }
+    };
+
+    closeButton.focus();
+    loadTrash(true);
+  }
+
   function renderDiagramList() {
     const list = el("diagram-list");
     list.replaceChildren();
@@ -4049,7 +4245,7 @@
   async function deleteDiagram(diagram) {
     const id = diagram?.id;
     if (!id || (state.readOnly && state.current?.id === id)) return;
-    if (!confirm("Delete this diagram?")) return;
+    if (!confirm("Move this diagram to trash? Sharing will be revoked immediately.")) return;
     try {
       await api(`/api/diagrams/${id}`, {
         method: "DELETE",
@@ -4058,9 +4254,10 @@
       if (state.current?.id === id) state.current = null;
       await loadDiagrams();
       render();
+      toast("Diagram moved to trash.");
     } catch (error) {
       if (!handleRevisionConflict(error, state.current?.id === id)) {
-        toast(error.message || "Could not delete the diagram.", "error");
+        toast(error.message || "Could not move the diagram to trash.", "error");
       }
     }
   }
@@ -4353,6 +4550,7 @@
       el("share-diagram")?.after(fork);
     }
     el("save-diagram").onclick = saveDiagram;
+    el("open-trash").onclick = openTrashDialog;
     el("refresh-diagrams").onclick = loadDiagrams;
     el("delete-selected").onclick = deleteSelected;
     el("undo").onclick = undo;

@@ -19,7 +19,8 @@ The bounded security series includes allowed/blocked share views, successful
 enable/disable/rotate/expiry-update lifecycle changes, signing-key and legacy
 cookie upgrades, rejected cross-site mutations, foreign request origins and
 unsupported request media types, malformed idempotency headers and conflicting
-idempotency-key reuse. Runtime logs use the same outcomes but redact capabilities
+idempotency-key reuse, plus successful move/restore/permanent-delete trash
+transitions. Runtime logs use the same outcomes but redact capabilities
 and idempotency keys. A sudden blocked-view spike after a planned rotation is
 expected; an unexplained sustained spike should be correlated with access logs
 without recovering or printing the old token.
@@ -58,7 +59,8 @@ when neither validator is available.
 The VPS operator owns every alert until an explicit on-call rota exists. The
 rules target 2–5 minute detection for outages, database loss, 5xx spikes, pool
 timeouts and authentication attacks; capacity, latency, growth, disk and TLS
-signals intentionally require longer persistence to limit noise.
+signals intentionally require longer persistence to limit noise. Trash backlog
+must remain both above 100 retained diagrams and above 25 percent for 24 hours.
 
 Backup freshness is intentionally not represented here while offsite backup
 work is deferred. Do not create a constant-success placeholder: add an alert
@@ -93,7 +95,7 @@ only when a real artifact timestamp and restore verification signal exist.
 ## Abuse or capacity pressure
 
 1. Compare create rate, row capacity, logical-byte capacity, rate-limit bucket
-   capacity and physical DB byte growth over the same window. Logical bytes
+   capacity, trash backlog and physical DB byte growth over the same window. Logical bytes
    cover retained user content; DB bytes also include indexes, bloat and system
    overhead.
 2. Contain at Cloudflare/nginx first when the source pattern is clear. Do not
@@ -101,8 +103,9 @@ only when a real artifact timestamp and restore verification signal exist.
 3. Preserve aggregate evidence and open an incident when global capacity can be
    exhausted or legitimate creation is being denied.
 4. Do not raise a logical ceiling until disk headroom and recent growth are
-   understood. Prefer pruning or an explicit retention decision; deleting a
-   diagram transactionally releases its current and historical byte count.
+   understood. Moving to trash deliberately retains current and historical bytes;
+   only owner-confirmed permanent deletion releases them. Do not purge user trash
+   merely to silence the backlog alert—apply an explicit retention decision.
 
 ## Authentication attack
 
@@ -168,6 +171,21 @@ only when a real artifact timestamp and restore verification signal exist.
 3. A sustained distributed pattern is capability probing: contain it at
    Cloudflare/nginx, preserve aggregate evidence and follow the incident runbook
    if any allowed views appear in the same window.
+
+## Destructive trash activity
+
+1. Treat ten permanent deletions in ten minutes as potentially destructive even
+   if capacity is high. Correlate bounded transition counts, actor classes and
+   request IDs; do not add diagram IDs, titles or owner identities to metrics.
+2. Determine whether the window is an expected owner cleanup or an unexplained
+   admin/guest session takeover. Preserve the journal and edge evidence before
+   changing keys or restarting services.
+3. For unexplained activity, use the incident runbook's emergency maintenance
+   deny to stop further mutations, rotate a compromised signing key without a
+   previous-key grace window, and assess the full database blast radius.
+4. Permanent deletion removes primary rows and versions. Do not promise recovery
+   or GDPR erasure from other stores without verified backup/log retention and a
+   tested restore or deletion procedure.
 
 ## Unexpected restart
 

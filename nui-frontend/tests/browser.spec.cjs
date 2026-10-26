@@ -908,21 +908,66 @@ test.describe("desktop security and offline lifecycle", () => {
       })), [firstLink, rotatedLink]);
       expect(revokedStatuses).toEqual([404, 404]);
       await sharingDialog.getByRole("button", { name: "Close" }).click();
+
+      const browserTrashSource = page.locator("#diagram-list .diagram-item")
+        .filter({ hasText: unsafeDiagramTitle });
+      page.once("dialog", (dialog) => dialog.accept());
+      await browserTrashSource.getByRole("button", { name: "Del", exact: true }).click();
+      await expect(browserTrashSource).not.toBeVisible();
+      await page.locator("#open-trash").click();
+      const trashDialog = page.getByRole("dialog", { name: "Trash" });
+      await expect(trashDialog).toBeVisible();
+      await expect(trashDialog.getByText(/continue to use your storage quota/)).toBeVisible();
+      const trashItem = trashDialog.locator(".trash-item").filter({ hasText: unsafeDiagramTitle });
+      await expect(trashItem).toBeVisible();
+      await expectNoHighImpactAccessibilityViolations(page, testInfo, "trash-dialog");
+      await trashItem.getByRole("button", { name: "Restore", exact: true }).click();
+      await expect(trashDialog).not.toBeVisible();
+      await expect(page.locator("#diagram-list .diagram-item.active .diagram-name")).toHaveText(unsafeDiagramTitle);
+      await expect(page.locator("#share-diagram")).toHaveAttribute("title", "Enable sharing");
+
+      page.once("dialog", (dialog) => dialog.accept());
+      await page.locator("#diagram-list .diagram-item.active")
+        .getByRole("button", { name: "Del", exact: true }).click();
+      await page.locator("#open-trash").click();
+      const finalTrashItem = page.getByRole("dialog", { name: "Trash" })
+        .locator(".trash-item").filter({ hasText: unsafeDiagramTitle });
+      await expect(finalTrashItem).toBeVisible();
+      page.once("dialog", (dialog) => dialog.accept());
+      await finalTrashItem.getByRole("button", { name: "Delete forever", exact: true }).click();
+      await expect(finalTrashItem).not.toBeVisible();
+      sharingTestId = null;
     } finally {
       if (sharingTestId) {
         await page.evaluate(async (id) => {
           const session = await (await fetch("/api/session", { credentials: "same-origin" })).json();
           const response = await fetch(`/api/diagrams/${id}`, { credentials: "same-origin" });
-          if (!response.ok) return;
-          const diagram = await response.json();
-          await fetch(`/api/diagrams/${id}`, {
-            method: "DELETE",
-            credentials: "same-origin",
-            headers: {
-              "X-CSRF-Token": session.csrf_token,
-              "If-Match": `"diagram-${id}-r${diagram.revision}"`
-            }
-          });
+          let revision = null;
+          if (response.ok) {
+            const diagram = await response.json();
+            const moved = await fetch(`/api/diagrams/${id}`, {
+              method: "DELETE",
+              credentials: "same-origin",
+              headers: {
+                "X-CSRF-Token": session.csrf_token,
+                "If-Match": `"diagram-${id}-r${diagram.revision}"`
+              }
+            });
+            if (moved.ok) revision = diagram.revision + 1;
+          } else {
+            const trash = await (await fetch("/api/trash", { credentials: "same-origin" })).json();
+            revision = trash.diagrams?.find((item) => item.id === id)?.revision || null;
+          }
+          if (revision) {
+            await fetch(`/api/trash/${id}`, {
+              method: "DELETE",
+              credentials: "same-origin",
+              headers: {
+                "X-CSRF-Token": session.csrf_token,
+                "If-Match": `"diagram-${id}-r${revision}"`
+              }
+            });
+          }
         }, sharingTestId);
       }
     }
@@ -1019,10 +1064,11 @@ test.describe("phone layout", () => {
     await expect(customizer.getByLabel("Duplicate selected nodes", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Cut selected nodes", { exact: true })).toBeVisible();
     await expect(customizer.getByLabel("Enter presentation mode", { exact: true })).toBeVisible();
+    await expect(customizer.getByLabel("Open trash", { exact: true })).toBeVisible();
     await customizer.getByLabel("Add node", { exact: true }).uncheck();
     await customizer.getByLabel("Actual size (100%)", { exact: true }).check();
     await customizer.getByRole("button", { name: "Apply", exact: true }).click();
-    const mobileActualSize = page.getByRole("button", { name: "Actual size (100%)", exact: true });
+    const mobileActualSize = page.getByRole("button", { name: "100%: Actual size (100%)", exact: true });
     await expect(mobileActualSize).toBeVisible();
     await page.locator("#zoom-out").evaluate((button) => button.click());
     await expect(page.locator("#zoom-label")).not.toHaveText("100%");
@@ -1030,7 +1076,7 @@ test.describe("phone layout", () => {
     await expect(page.locator("#zoom-label")).toHaveText("100%");
 
     await page.reload({ waitUntil: "networkidle" });
-    await expect(page.getByRole("button", { name: "Actual size (100%)", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "100%: Actual size (100%)", exact: true })).toBeVisible();
     await expect(page.locator(".mobile-action-bar button")).toHaveCount(5);
 
     await page.getByRole("button", { name: "Commands", exact: true }).click();
@@ -1057,6 +1103,22 @@ test.describe("phone layout", () => {
     await phonePresentation.getByRole("button", { name: "Exit" }).click();
     await expect(phonePresentation).toBeHidden();
     await expect(page.locator(".mobile-action-bar")).toBeVisible();
+
+    await page.getByRole("button", { name: "Commands", exact: true }).click();
+    const trashPalette = page.getByRole("dialog", { name: "Command palette" });
+    await trashPalette.getByRole("combobox", { name: "Search commands" }).fill("open trash");
+    await page.keyboard.press("Enter");
+    const phoneTrash = page.getByRole("dialog", { name: "Trash" });
+    await expect(phoneTrash).toBeVisible();
+    const trashGeometry = await phoneTrash.evaluate((element) => ({
+      left: element.getBoundingClientRect().left,
+      right: element.getBoundingClientRect().right,
+      viewportWidth: window.innerWidth
+    }));
+    expect(trashGeometry.left).toBeGreaterThanOrEqual(0);
+    expect(trashGeometry.right).toBeLessThanOrEqual(trashGeometry.viewportWidth);
+    await expectNoHighImpactAccessibilityViolations(page, testInfo, "mobile-trash-dialog");
+    await phoneTrash.getByRole("button", { name: "Close", exact: true }).click();
 
     expect(await page.evaluate(() => globalThis.__nuigraphPolicyViolations)).toEqual([]);
   });

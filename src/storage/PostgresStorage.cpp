@@ -88,6 +88,9 @@ nlohmann::json diagramSummaryJson(const pqxx::row& row) {
         {"description", rowString(row, "description")},
         {"created_at", rowString(row, "created_at")},
         {"updated_at", rowString(row, "updated_at")},
+        {"deleted_at", row["deleted_at"].is_null()
+            ? nlohmann::json(nullptr)
+            : nlohmann::json(rowString(row, "deleted_at"))},
         {"revision", row["revision"].as<long>()},
         {"node_count", row["node_count"].as<int>()},
         {"edge_count", row["edge_count"].as<int>()}
@@ -124,6 +127,7 @@ OperationalMetrics PostgresStorage::operationalMetrics() {
             const auto row = tx.exec(R"SQL(
                 SELECT
                     (SELECT count(*) FROM diagrams) AS diagrams,
+                    (SELECT count(*) FROM diagrams WHERE deleted_at IS NOT NULL) AS trashed_diagrams,
                     COALESCE((SELECT n_live_tup FROM pg_stat_user_tables
                               WHERE schemaname='public' AND relname='nodes'), 0) AS nodes,
                     COALESCE((SELECT n_live_tup FROM pg_stat_user_tables
@@ -136,6 +140,7 @@ OperationalMetrics PostgresStorage::operationalMetrics() {
                     pg_database_size(current_database()) AS database_bytes
             )SQL")[0];
             metrics.diagrams = row["diagrams"].as<std::uint64_t>();
+            metrics.trashedDiagrams = row["trashed_diagrams"].as<std::uint64_t>();
             metrics.nodes = row["nodes"].as<std::uint64_t>();
             metrics.edges = row["edges"].as<std::uint64_t>();
             metrics.versions = row["versions"].as<std::uint64_t>();
@@ -186,9 +191,11 @@ std::vector<nlohmann::json> PostgresStorage::listDiagrams(long limit, long offse
                        'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS share_expires_at,
                to_char(d.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
                to_char(d.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS updated_at,
+               NULL::text AS deleted_at,
                (SELECT count(*) FROM nodes n WHERE n.diagram_id=d.id) AS node_count,
                (SELECT count(*) FROM edges e WHERE e.diagram_id=d.id) AS edge_count
         FROM diagrams d
+        WHERE d.deleted_at IS NULL
         ORDER BY d.updated_at DESC, d.id DESC
         LIMIT $1 OFFSET $2
     )SQL", pqxx::params{limit, offset});
@@ -216,10 +223,11 @@ std::vector<nlohmann::json> PostgresStorage::listDiagramsForOwner(const std::str
                        'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS share_expires_at,
                to_char(d.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
                to_char(d.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS updated_at,
+               NULL::text AS deleted_at,
                (SELECT count(*) FROM nodes n WHERE n.diagram_id=d.id) AS node_count,
                (SELECT count(*) FROM edges e WHERE e.diagram_id=d.id) AS edge_count
         FROM diagrams d
-        WHERE d.owner_token_hash=$1
+        WHERE d.owner_token_hash=$1 AND d.deleted_at IS NULL
         ORDER BY d.updated_at DESC, d.id DESC
         LIMIT $2 OFFSET $3
     )SQL", pqxx::params{ownerTokenHash, limit, offset});
@@ -228,6 +236,58 @@ std::vector<nlohmann::json> PostgresStorage::listDiagramsForOwner(const std::str
         out.push_back(diagramSummaryJson(row));
     }
     tx.commit();
+    return out;
+}
+
+std::vector<nlohmann::json> PostgresStorage::listDeletedDiagrams(long limit, long offset) {
+    auto conn = pool_.acquire();
+    pqxx::read_transaction tx(conn.get());
+    const auto rows = tx.exec(R"SQL(
+        SELECT d.id, d.title, ''::text AS slug, d.description, d.revision,
+               false AS sharing_enabled, false AS share_expired,
+               NULL::text AS share_expires_at,
+               to_char(d.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
+               to_char(d.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS updated_at,
+               to_char(d.deleted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS deleted_at,
+               (SELECT count(*) FROM nodes n WHERE n.diagram_id=d.id) AS node_count,
+               (SELECT count(*) FROM edges e WHERE e.diagram_id=d.id) AS edge_count
+        FROM diagrams d
+        WHERE d.deleted_at IS NOT NULL
+        ORDER BY d.deleted_at DESC, d.id DESC
+        LIMIT $1 OFFSET $2
+    )SQL", pqxx::params{limit, offset});
+    std::vector<nlohmann::json> out;
+    for (const auto& row : rows) {
+        out.push_back(diagramSummaryJson(row));
+    }
+    return out;
+}
+
+std::vector<nlohmann::json> PostgresStorage::listDeletedDiagramsForOwner(
+    const std::string& ownerTokenHash, long limit, long offset) {
+    if (ownerTokenHash.empty()) {
+        return {};
+    }
+    auto conn = pool_.acquire();
+    pqxx::read_transaction tx(conn.get());
+    const auto rows = tx.exec(R"SQL(
+        SELECT d.id, d.title, ''::text AS slug, d.description, d.revision,
+               false AS sharing_enabled, false AS share_expired,
+               NULL::text AS share_expires_at,
+               to_char(d.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
+               to_char(d.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS updated_at,
+               to_char(d.deleted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS deleted_at,
+               (SELECT count(*) FROM nodes n WHERE n.diagram_id=d.id) AS node_count,
+               (SELECT count(*) FROM edges e WHERE e.diagram_id=d.id) AS edge_count
+        FROM diagrams d
+        WHERE d.owner_token_hash=$1 AND d.deleted_at IS NOT NULL
+        ORDER BY d.deleted_at DESC, d.id DESC
+        LIMIT $2 OFFSET $3
+    )SQL", pqxx::params{ownerTokenHash, limit, offset});
+    std::vector<nlohmann::json> out;
+    for (const auto& row : rows) {
+        out.push_back(diagramSummaryJson(row));
+    }
     return out;
 }
 
@@ -246,6 +306,7 @@ Diagram PostgresStorage::getDiagramBySlug(const std::string& slug) {
         R"SQL(
             SELECT id FROM diagrams
             WHERE slug=$1 AND sharing_enabled=true
+              AND deleted_at IS NULL
               AND (share_expires_at IS NULL OR share_expires_at > now())
         )SQL",
         pqxx::params{slug});
@@ -264,6 +325,7 @@ bool PostgresStorage::activeShareExists(const std::string& slug) {
         R"SQL(
             SELECT 1 FROM diagrams
             WHERE slug=$1 AND sharing_enabled=true
+              AND deleted_at IS NULL
               AND (share_expires_at IS NULL OR share_expires_at > now())
         )SQL",
         pqxx::params{slug});
@@ -273,7 +335,9 @@ bool PostgresStorage::activeShareExists(const std::string& slug) {
 std::string PostgresStorage::ownerHashForDiagram(long id) {
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
-    auto rows = tx.exec("SELECT owner_token_hash FROM diagrams WHERE id=$1", pqxx::params{id});
+    auto rows = tx.exec(
+        "SELECT owner_token_hash FROM diagrams WHERE id=$1 AND deleted_at IS NULL",
+        pqxx::params{id});
     if (rows.empty()) {
         throw std::runtime_error("diagram not found");
     }
@@ -282,10 +346,24 @@ std::string PostgresStorage::ownerHashForDiagram(long id) {
     return owner;
 }
 
+std::string PostgresStorage::ownerHashForDeletedDiagram(long id) {
+    auto conn = pool_.acquire();
+    pqxx::read_transaction tx(conn.get());
+    const auto rows = tx.exec(
+        "SELECT owner_token_hash FROM diagrams WHERE id=$1 AND deleted_at IS NOT NULL",
+        pqxx::params{id});
+    if (rows.empty()) {
+        throw std::runtime_error("trash item not found");
+    }
+    return rows[0]["owner_token_hash"].is_null()
+        ? ""
+        : rows[0]["owner_token_hash"].as<std::string>();
+}
+
 long PostgresStorage::countDiagrams() {
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
-    auto rows = tx.exec("SELECT count(*) AS n FROM diagrams");
+    auto rows = tx.exec("SELECT count(*) AS n FROM diagrams WHERE deleted_at IS NULL");
     auto count = rows[0]["n"].as<long>();
     tx.commit();
     return count;
@@ -297,10 +375,29 @@ long PostgresStorage::countDiagramsForOwner(const std::string& ownerTokenHash) {
     }
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
-    auto rows = tx.exec("SELECT count(*) AS n FROM diagrams WHERE owner_token_hash=$1", pqxx::params{ownerTokenHash});
+    auto rows = tx.exec(
+        "SELECT count(*) AS n FROM diagrams WHERE owner_token_hash=$1 AND deleted_at IS NULL",
+        pqxx::params{ownerTokenHash});
     auto count = rows[0]["n"].as<long>();
     tx.commit();
     return count;
+}
+
+long PostgresStorage::countDeletedDiagrams() {
+    auto conn = pool_.acquire();
+    pqxx::read_transaction tx(conn.get());
+    return tx.exec("SELECT count(*) AS n FROM diagrams WHERE deleted_at IS NOT NULL")[0]["n"].as<long>();
+}
+
+long PostgresStorage::countDeletedDiagramsForOwner(const std::string& ownerTokenHash) {
+    if (ownerTokenHash.empty()) {
+        return 0;
+    }
+    auto conn = pool_.acquire();
+    pqxx::read_transaction tx(conn.get());
+    return tx.exec(
+        "SELECT count(*) AS n FROM diagrams WHERE owner_token_hash=$1 AND deleted_at IS NOT NULL",
+        pqxx::params{ownerTokenHash})[0]["n"].as<long>();
 }
 
 bool PostgresStorage::consumeRateLimit(const std::string& bucketKey,
@@ -386,7 +483,8 @@ Diagram PostgresStorage::getDiagram(pqxx::work& tx, long id) {
                        'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS share_expires_at,
                to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
                to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS updated_at
-        FROM diagrams WHERE id=$1
+        FROM diagrams WHERE id=$1 AND deleted_at IS NULL
+        FOR SHARE
     )SQL", pqxx::params{id});
     if (rows.empty()) {
         throw std::runtime_error("diagram not found");
@@ -469,7 +567,7 @@ void PostgresStorage::enforceLogicalStorageCapacity(
     }
     if (total[0]["logical_bytes"].as<std::uint64_t>() > cfg_.maxLogicalBytesTotal) {
         throw DiagramCapacityExceeded(
-            "logical storage capacity is temporarily exhausted; delete content before retrying");
+            "logical storage capacity is temporarily exhausted; permanently delete trash before retrying");
     }
 
     if (ownerTokenHash.empty()) {
@@ -491,7 +589,7 @@ void PostgresStorage::enforceLogicalStorageCapacity(
     )SQL", pqxx::params{ownerTokenHash});
     if (owned[0]["logical_bytes"].as<std::uint64_t>() > cfg_.maxLogicalBytesPerGuest) {
         throw DiagramQuotaExceeded(
-            "logical storage limit reached for this session; delete content before retrying");
+            "logical storage limit reached for this session; permanently delete trash before retrying");
     }
 }
 
@@ -527,17 +625,34 @@ DiagramCreationResult PostgresStorage::createDiagram(
               AND expires_at <= statement_timestamp()
         )SQL", pqxx::params{request.principalKey, request.operation, request.keyHash});
         const auto existing = tx.exec(R"SQL(
-            SELECT request_hash, diagram_id
-            FROM diagram_idempotency_keys
-            WHERE principal_key=$1 AND operation=$2 AND key_hash=$3
-            FOR UPDATE
+            SELECT k.request_hash, k.diagram_id, (d.deleted_at IS NULL) AS result_active
+            FROM diagram_idempotency_keys k
+            JOIN diagrams d ON d.id=k.diagram_id
+            WHERE k.principal_key=$1 AND k.operation=$2 AND k.key_hash=$3
         )SQL", pqxx::params{request.principalKey, request.operation, request.keyHash});
         if (!existing.empty()) {
             if (rowString(existing[0], "request_hash") != request.requestHash) {
                 throw IdempotencyConflict(
                     "idempotency key was already used for a different request");
             }
-            auto replay = getDiagram(tx, existing[0]["diagram_id"].as<long>());
+            if (!existing[0]["result_active"].as<bool>()) {
+                throw IdempotencyConflict(
+                    "the idempotent result is in trash; restore it or use a new key");
+            }
+            Diagram replay;
+            try {
+                replay = getDiagram(tx, existing[0]["diagram_id"].as<long>());
+            } catch (const std::runtime_error& e) {
+                if (std::string(e.what()) != "diagram not found") {
+                    throw;
+                }
+                // Trash/permanent delete can race this replay. The advisory
+                // key lock serializes creators, while deliberately avoiding a
+                // ledger-then-diagram row-lock order that could deadlock with
+                // ON DELETE CASCADE's diagram-then-ledger order.
+                throw IdempotencyConflict(
+                    "the idempotent result is no longer active; restore it or use a new key");
+            }
             tx.commit();
             return {std::move(replay), true};
         }
@@ -552,7 +667,7 @@ DiagramCreationResult PostgresStorage::createDiagram(
     const auto total = tx.exec("SELECT count(*) AS n FROM diagrams")[0]["n"].as<long>();
     if (total >= cfg_.maxDiagramsTotal) {
         throw DiagramCapacityExceeded(
-            "diagram capacity is temporarily exhausted; delete one before retrying");
+            "diagram capacity is temporarily exhausted; permanently delete trash before retrying");
     }
 
     if (!ownerTokenHash.empty()) {
@@ -568,7 +683,7 @@ DiagramCreationResult PostgresStorage::createDiagram(
             pqxx::params{ownerTokenHash})[0]["n"].as<long>();
         if (owned >= cfg_.maxDiagramsPerGuest) {
             throw DiagramQuotaExceeded(
-                "diagram limit reached for this session; delete one to make room");
+                "diagram limit reached for this session; permanently delete trash to make room");
         }
     }
 
@@ -615,13 +730,15 @@ Diagram PostgresStorage::updateDiagram(long id, const Diagram& input, const std:
         UPDATE diagrams
         SET title=$1, description=$2, logical_bytes=$3,
             updated_at=now(), revision=revision+1
-        WHERE id=$4 AND revision=$5
+        WHERE id=$4 AND revision=$5 AND deleted_at IS NULL
         RETURNING revision, owner_token_hash
     )SQL", pqxx::params{
         diagram.title, diagram.description,
         static_cast<long long>(logicalDiagramBytes(diagram)), id, expectedRevision});
     if (updated.empty()) {
-        auto current = tx.exec("SELECT revision FROM diagrams WHERE id=$1", pqxx::params{id});
+        auto current = tx.exec(
+            "SELECT revision FROM diagrams WHERE id=$1 AND deleted_at IS NULL",
+            pqxx::params{id});
         if (current.empty()) {
             throw std::runtime_error("diagram not found");
         }
@@ -646,7 +763,7 @@ Diagram PostgresStorage::updateSharing(long id, ShareAction action, long expecte
                 (share_expires_at IS NULL OR share_expires_at > now())) AS sharing_active,
                revision
         FROM diagrams
-        WHERE id=$1
+        WHERE id=$1 AND deleted_at IS NULL
         FOR UPDATE
     )SQL", pqxx::params{id});
     if (rows.empty()) {
@@ -735,20 +852,76 @@ Diagram PostgresStorage::updateSharing(long id, ShareAction action, long expecte
     return getDiagram(id);
 }
 
-void PostgresStorage::deleteDiagram(long id, long expectedRevision) {
+void PostgresStorage::trashDiagram(long id, long expectedRevision) {
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
-    auto deleted = tx.exec(
-        "DELETE FROM diagrams WHERE id=$1 AND revision=$2 RETURNING id",
+    const auto moved = tx.exec(R"SQL(
+        UPDATE diagrams
+        SET deleted_at=statement_timestamp(), sharing_enabled=false,
+            share_expires_at=NULL, updated_at=statement_timestamp(),
+            revision=revision+1
+        WHERE id=$1 AND revision=$2 AND deleted_at IS NULL
+        RETURNING id
+    )SQL",
         pqxx::params{id, expectedRevision});
-    if (deleted.empty()) {
-        auto current = tx.exec("SELECT revision FROM diagrams WHERE id=$1", pqxx::params{id});
+    if (moved.empty()) {
+        const auto current = tx.exec(
+            "SELECT revision FROM diagrams WHERE id=$1 AND deleted_at IS NULL",
+            pqxx::params{id});
         if (current.empty()) {
             throw std::runtime_error("diagram not found");
         }
         throw DiagramRevisionConflict(
             current[0]["revision"].as<long>(),
-            "diagram changed since it was opened; reload before deleting");
+            "diagram changed since it was opened; reload before moving it to trash");
+    }
+    tx.commit();
+}
+
+Diagram PostgresStorage::restoreDiagramFromTrash(long id, long expectedRevision) {
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
+    const auto restored = tx.exec(R"SQL(
+        UPDATE diagrams
+        SET deleted_at=NULL, sharing_enabled=false, share_expires_at=NULL,
+            updated_at=statement_timestamp(), revision=revision+1
+        WHERE id=$1 AND revision=$2 AND deleted_at IS NOT NULL
+        RETURNING id
+    )SQL", pqxx::params{id, expectedRevision});
+    if (restored.empty()) {
+        const auto current = tx.exec(
+            "SELECT revision FROM diagrams WHERE id=$1 AND deleted_at IS NOT NULL",
+            pqxx::params{id});
+        if (current.empty()) {
+            throw std::runtime_error("trash item not found");
+        }
+        throw DiagramRevisionConflict(
+            current[0]["revision"].as<long>(),
+            "trash item changed since it was listed; refresh trash before restoring");
+    }
+    auto diagram = getDiagram(tx, id);
+    tx.commit();
+    return diagram;
+}
+
+void PostgresStorage::permanentlyDeleteDiagram(long id, long expectedRevision) {
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
+    const auto deleted = tx.exec(R"SQL(
+        DELETE FROM diagrams
+        WHERE id=$1 AND revision=$2 AND deleted_at IS NOT NULL
+        RETURNING id
+    )SQL", pqxx::params{id, expectedRevision});
+    if (deleted.empty()) {
+        const auto current = tx.exec(
+            "SELECT revision FROM diagrams WHERE id=$1 AND deleted_at IS NOT NULL",
+            pqxx::params{id});
+        if (current.empty()) {
+            throw std::runtime_error("trash item not found");
+        }
+        throw DiagramRevisionConflict(
+            current[0]["revision"].as<long>(),
+            "trash item changed since it was listed; refresh trash before permanent deletion");
     }
     tx.commit();
 }
@@ -783,6 +956,10 @@ std::vector<VersionInfo> PostgresStorage::listVersions(long diagramId) {
                note
         FROM diagram_versions
         WHERE diagram_id=$1
+          AND EXISTS (
+              SELECT 1 FROM diagrams d
+              WHERE d.id=$1 AND d.deleted_at IS NULL
+          )
         ORDER BY version_number DESC
     )SQL", pqxx::params{diagramId});
     std::vector<VersionInfo> out;
@@ -798,7 +975,7 @@ VersionInfo PostgresStorage::createVersion(long diagramId, const std::string& no
     pqxx::work tx(conn.get());
     auto info = createVersion(tx, diagramId, note);
     const auto owner = tx.exec(
-        "SELECT owner_token_hash FROM diagrams WHERE id=$1",
+        "SELECT owner_token_hash FROM diagrams WHERE id=$1 AND deleted_at IS NULL",
         pqxx::params{diagramId});
     if (owner.empty()) {
         throw std::runtime_error("diagram not found");
@@ -817,8 +994,9 @@ VersionInfo PostgresStorage::createVersion(pqxx::work& tx, long diagramId, const
     // assign a version for this diagram. Locking its parent row also serializes
     // saves/restores with manual snapshots and turns the unique constraint into
     // a final invariant rather than normal concurrency control.
-    auto locked = tx.exec("SELECT 1 FROM diagrams WHERE id=$1 FOR UPDATE",
-                          pqxx::params{diagramId});
+    auto locked = tx.exec(
+        "SELECT 1 FROM diagrams WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",
+        pqxx::params{diagramId});
     if (locked.empty()) {
         throw std::runtime_error("diagram not found");
     }
@@ -863,8 +1041,12 @@ void PostgresStorage::pruneVersions(pqxx::work& tx, long diagramId) {
 Diagram PostgresStorage::getVersion(long diagramId, long versionId) {
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
-    auto rows = tx.exec("SELECT snapshot_json::text FROM diagram_versions WHERE diagram_id=$1 AND id=$2",
-                        pqxx::params{diagramId, versionId});
+    auto rows = tx.exec(R"SQL(
+        SELECT v.snapshot_json::text
+        FROM diagram_versions v
+        JOIN diagrams d ON d.id=v.diagram_id
+        WHERE v.diagram_id=$1 AND v.id=$2 AND d.deleted_at IS NULL
+    )SQL", pqxx::params{diagramId, versionId});
     if (rows.empty()) {
         throw std::runtime_error("version not found");
     }
@@ -882,7 +1064,12 @@ Diagram PostgresStorage::getVersion(long diagramId, long versionId) {
 Diagram PostgresStorage::restoreVersion(long diagramId, long versionId, long expectedRevision) {
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
-    auto rows = tx.exec("SELECT snapshot_json::text FROM diagram_versions WHERE diagram_id=$1 AND id=$2", pqxx::params{diagramId, versionId});
+    auto rows = tx.exec(R"SQL(
+        SELECT v.snapshot_json::text
+        FROM diagram_versions v
+        JOIN diagrams d ON d.id=v.diagram_id
+        WHERE v.diagram_id=$1 AND v.id=$2 AND d.deleted_at IS NULL
+    )SQL", pqxx::params{diagramId, versionId});
     if (rows.empty()) {
         throw std::runtime_error("version not found");
     }
@@ -897,13 +1084,15 @@ Diagram PostgresStorage::restoreVersion(long diagramId, long versionId, long exp
         UPDATE diagrams
         SET title=$1, description=$2, logical_bytes=$3,
             updated_at=now(), revision=revision+1
-        WHERE id=$4 AND revision=$5
+        WHERE id=$4 AND revision=$5 AND deleted_at IS NULL
         RETURNING revision, owner_token_hash
     )SQL", pqxx::params{
         diagram.title, diagram.description,
         static_cast<long long>(logicalDiagramBytes(diagram)), diagramId, expectedRevision});
     if (updated.empty()) {
-        auto current = tx.exec("SELECT revision FROM diagrams WHERE id=$1", pqxx::params{diagramId});
+        auto current = tx.exec(
+            "SELECT revision FROM diagrams WHERE id=$1 AND deleted_at IS NULL",
+            pqxx::params{diagramId});
         if (current.empty()) {
             throw std::runtime_error("diagram not found");
         }

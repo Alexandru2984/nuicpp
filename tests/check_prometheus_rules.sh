@@ -22,6 +22,8 @@ for alert in \
   NuiGraphBlockedShareViewSpike \
   NuiGraphRateLimitStorageFailure \
   NuiGraphDiagramCapacityHigh \
+  NuiGraphTrashBacklogHigh \
+  NuiGraphPermanentDeleteSpike \
   NuiGraphLogicalStorageCapacityHigh \
   NuiGraphLimiterCapacityHigh \
   NuiGraphDatabaseGrowthHigh \

@@ -28,6 +28,10 @@ rollback notes where applicable.
   import creation paths, with 24-hour principal/operation scoping, HMAC-only
   ledger data, conflict detection, browser CSPRNG keys, OpenAPI coverage and a
   concurrent PostgreSQL regression proving one row and one creation metric.
+- Private soft deletion with owner-isolated paginated trash, immediate share
+  revocation, private restore and explicit permanent deletion. Every transition
+  is CSRF-protected, ETag-conditional and observable; trashed rows and versions
+  continue consuming quota so deletion cannot bypass retained-data ceilings.
 - Conditional save, delete and restore with monotonic revisions, strong ETags,
   `428` for missing preconditions, `412` for stale clients and browser-draft
   preservation.
@@ -228,8 +232,8 @@ High risk remain open.
   purpose-specific keys.
 - Workspaces, invitations and roles (`owner`, `editor`, `viewer`) with a central
   policy layer and negative authorization tests.
-- Trash/soft delete, restore window, permanent-delete workflow and retention
-  policy.
+- Add a configurable automatic trash-retention window and scheduled purge policy;
+  soft delete, manual restore and permanent deletion are implemented locally.
 - GDPR data export/delete, privacy notice, retention controls, subprocessor list
   and audit-log access policy.
 - Add signed/SLSA release provenance and reproducible-build metadata. Observe and

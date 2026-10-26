@@ -18,7 +18,7 @@ struct SecurityEventLabel {
     const char* outcome;
 };
 
-constexpr std::array<SecurityEventLabel, 28> kSecurityEvents = {{
+constexpr std::array<SecurityEventLabel, 31> kSecurityEvents = {{
     {"csrf_rejected", "blocked"},
     {"fetch_metadata_rejected", "blocked"},
     {"origin_rejected", "blocked"},
@@ -46,7 +46,10 @@ constexpr std::array<SecurityEventLabel, 28> kSecurityEvents = {{
     {"session_rekey", "succeeded"},
     {"session_cookie_upgrade", "succeeded"},
     {"idempotency_rejected", "blocked"},
-    {"idempotency_conflict", "blocked"}
+    {"idempotency_conflict", "blocked"},
+    {"diagram_trash", "moved"},
+    {"diagram_trash", "restored"},
+    {"diagram_trash", "permanently_deleted"}
 }};
 
 constexpr std::array<const char*, 5> kCreateSources = {"blank", "template", "duplicate", "import", "fork"};
@@ -170,6 +173,8 @@ std::string Metrics::render(FrontendShell shell, const OperationalMetrics& opera
         << "# HELP nuigraph_storage_objects Current aggregate database object counts.\n"
         << "# TYPE nuigraph_storage_objects gauge\n"
         << "nuigraph_storage_objects{kind=\"diagrams\"} " << operational.diagrams << "\n"
+        << "nuigraph_storage_objects{kind=\"trashed_diagrams\"} "
+        << operational.trashedDiagrams << "\n"
         << "nuigraph_storage_objects{kind=\"nodes\"} " << operational.nodes << "\n"
         << "nuigraph_storage_objects{kind=\"edges\"} " << operational.edges << "\n"
         << "nuigraph_storage_objects{kind=\"versions\"} " << operational.versions << "\n"

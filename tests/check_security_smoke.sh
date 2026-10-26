@@ -486,6 +486,9 @@ for series in \
   'nuigraph_security_events_total{event="unsupported_media_type",outcome="blocked"}' \
   'nuigraph_security_events_total{event="idempotency_rejected",outcome="blocked"}' \
   'nuigraph_security_events_total{event="idempotency_conflict",outcome="blocked"}' \
+  'nuigraph_security_events_total{event="diagram_trash",outcome="moved"}' \
+  'nuigraph_security_events_total{event="diagram_trash",outcome="restored"}' \
+  'nuigraph_security_events_total{event="diagram_trash",outcome="permanently_deleted"}' \
   'nuigraph_security_events_total{event="session_cookie_upgrade",outcome="succeeded"}' \
   'nuigraph_security_events_total{event="session_rekey",outcome="succeeded"}'
 do

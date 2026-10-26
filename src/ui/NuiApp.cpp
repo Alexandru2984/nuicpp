@@ -136,7 +136,10 @@ std::string renderEditorPage(const std::string& username, const std::string& bas
     <aside class="project-panel">
       <div class="panel-head">
         <h2>Diagrams</h2>
-        <button id="refresh-diagrams" title="Refresh">Refresh</button>
+        <div class="panel-actions">
+          <button id="open-trash" title="Open trash">Trash</button>
+          <button id="refresh-diagrams" title="Refresh">Refresh</button>
+        </div>
       </div>
       <div id="diagram-list" class="diagram-list"></div>
       <section class="template-section">

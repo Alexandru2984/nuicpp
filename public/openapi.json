@@ -3,14 +3,15 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "NuiGraph Studio API",
-    "version": "1.2.0",
-    "description": "Session-oriented API for private diagrams, templates, version history and capability-based sharing. Start with GET /api/session and retain its HttpOnly cookie. Unsafe requests require the returned CSRF token in X-CSRF-Token. Production HTTPS uses __Host-ngs_session; loopback HTTP development uses ngs_session."
+    "version": "1.3.0",
+    "description": "Session-oriented API for private diagrams, trash and restore, templates, version history and capability-based sharing. Start with GET /api/session and retain its HttpOnly cookie. Unsafe requests require the returned CSRF token in X-CSRF-Token. Production HTTPS uses __Host-ngs_session; loopback HTTP development uses ngs_session."
   },
   "servers": [{ "url": "/", "description": "Current NuiGraph Studio origin" }],
   "externalDocs": { "description": "Application documentation", "url": "/docs" },
   "tags": [
     { "name": "Session", "description": "Guest or administrator session bootstrap" },
     { "name": "Diagrams", "description": "Owned diagram lifecycle" },
+    { "name": "Trash", "description": "Private soft deletion, restore and permanent deletion" },
     { "name": "Sharing", "description": "Read-only bearer-link lifecycle" },
     { "name": "Templates", "description": "Curated diagram templates" },
     { "name": "Versions", "description": "Bounded immutable diagram snapshots" },
@@ -61,6 +62,61 @@
         "responses": {
           "201": { "$ref": "#/components/responses/DiagramCreatedResponse" },
           "409": { "$ref": "#/components/responses/IdempotencyConflictResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/trash": {
+      "get": {
+        "operationId": "listTrash",
+        "summary": "List trashed diagrams visible to the current owner",
+        "description": "Trashed diagrams remain private and continue to consume row and logical-byte quotas until permanently deleted.",
+        "tags": ["Trash"],
+        "parameters": [
+          { "$ref": "#/components/parameters/Limit" },
+          { "$ref": "#/components/parameters/Offset" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/DiagramListResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/trash/{id}/restore": {
+      "parameters": [{ "$ref": "#/components/parameters/DiagramId" }],
+      "post": {
+        "operationId": "restoreTrashedDiagram",
+        "summary": "Conditionally restore a trashed diagram as private",
+        "tags": ["Trash", "Diagrams"],
+        "security": [
+          { "sessionCookie": [], "csrfHeader": [] },
+          { "localSessionCookie": [], "csrfHeader": [] }
+        ],
+        "parameters": [{ "$ref": "#/components/parameters/IfMatch" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/DiagramResponse" },
+          "412": { "$ref": "#/components/responses/RevisionConflictResponse" },
+          "428": { "$ref": "#/components/responses/PreconditionRequiredResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/trash/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/DiagramId" }],
+      "delete": {
+        "operationId": "permanentlyDeleteDiagram",
+        "summary": "Conditionally and permanently delete a trashed diagram",
+        "description": "Irreversibly deletes current content, retained versions and its idempotency records, releasing their quota usage.",
+        "tags": ["Trash"],
+        "security": [
+          { "sessionCookie": [], "csrfHeader": [] },
+          { "localSessionCookie": [], "csrfHeader": [] }
+        ],
+        "parameters": [{ "$ref": "#/components/parameters/IfMatch" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/OkResponse" },
+          "412": { "$ref": "#/components/responses/RevisionConflictResponse" },
+          "428": { "$ref": "#/components/responses/PreconditionRequiredResponse" },
           "default": { "$ref": "#/components/responses/ErrorResponse" }
         }
       }
@@ -124,7 +180,8 @@
       },
       "delete": {
         "operationId": "deleteDiagram",
-        "summary": "Conditionally delete an owned diagram",
+        "summary": "Conditionally move an owned diagram to private trash",
+        "description": "Immediately revokes sharing and increments the diagram revision. The retained item continues to consume quota.",
         "tags": ["Diagrams"],
         "security": [
           { "sessionCookie": [], "csrfHeader": [] },
@@ -571,7 +628,7 @@
       },
       "DiagramSummary": {
         "type": "object",
-        "required": ["id", "title", "slug", "sharing_enabled", "share_expires_at", "share_expired", "description", "created_at", "updated_at", "revision", "node_count", "edge_count"],
+        "required": ["id", "title", "slug", "sharing_enabled", "share_expires_at", "share_expired", "description", "created_at", "updated_at", "deleted_at", "revision", "node_count", "edge_count"],
         "properties": {
           "id": { "type": "integer", "format": "int64", "minimum": 1 },
           "title": { "type": "string", "maxLength": 120 },
@@ -583,6 +640,7 @@
           "revision": { "type": "integer", "format": "int64", "minimum": 1 },
           "created_at": { "type": "string", "format": "date-time" },
           "updated_at": { "type": "string", "format": "date-time" },
+          "deleted_at": { "type": ["string", "null"], "format": "date-time", "readOnly": true },
           "node_count": { "type": "integer", "minimum": 0 },
           "edge_count": { "type": "integer", "minimum": 0 }
         }

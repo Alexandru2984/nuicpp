@@ -439,6 +439,9 @@ void testMetricsStayAggregateAndBounded() {
     metrics.recordSecurityEvent("session_cookie_upgrade", "succeeded");
     metrics.recordSecurityEvent("idempotency_rejected", "blocked");
     metrics.recordSecurityEvent("idempotency_conflict", "blocked");
+    metrics.recordSecurityEvent("diagram_trash", "moved");
+    metrics.recordSecurityEvent("diagram_trash", "restored");
+    metrics.recordSecurityEvent("diagram_trash", "permanently_deleted");
     metrics.recordSecurityEvent("attacker-controlled-label", "ignored");
     metrics.recordDiagramCreated("import");
     metrics.recordDiagramCreated("attacker-controlled-source");
@@ -447,6 +450,7 @@ void testMetricsStayAggregateAndBounded() {
     OperationalMetrics operational;
     operational.databaseUp = true;
     operational.diagrams = 7;
+    operational.trashedDiagrams = 2;
     operational.nodes = 21;
     operational.logicalBytes = 2048;
     operational.logicalByteCapacity = 8192;
@@ -483,6 +487,18 @@ void testMetricsStayAggregateAndBounded() {
     require(body.find("event=\"idempotency_conflict\",outcome=\"blocked\"} 1") !=
                 std::string::npos,
             "metrics should count conflicting idempotency-key reuse");
+    require(body.find("event=\"diagram_trash\",outcome=\"moved\"} 1") !=
+                std::string::npos,
+            "metrics should count soft deletion");
+    require(body.find("event=\"diagram_trash\",outcome=\"restored\"} 1") !=
+                std::string::npos,
+            "metrics should count trash restoration");
+    require(body.find("event=\"diagram_trash\",outcome=\"permanently_deleted\"} 1") !=
+                std::string::npos,
+            "metrics should count permanent deletion");
+    require(body.find("nuigraph_storage_objects{kind=\"trashed_diagrams\"} 2") !=
+                std::string::npos,
+            "metrics should expose the aggregate trash backlog");
     require(body.find("source=\"import\"} 1") != std::string::npos,
             "metrics should count successful import creations");
     require(body.find("nuigraph_database_size_bytes 4096") != std::string::npos,

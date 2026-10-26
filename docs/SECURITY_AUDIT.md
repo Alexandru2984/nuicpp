@@ -55,7 +55,7 @@ have a bounded-label alert. Existing links intentionally migrate with no expiry.
 Retained user content now has transactional per-guest and global logical-byte
 ceilings in addition to row quotas. A trigger-maintained singleton serialises
 growth across app instances; rejected writes roll back revisions and snapshots;
-delete/prune release capacity; usage and capacity have a validated alert.
+permanent delete/prune release capacity; usage and capacity have a validated alert.
 Session signing, CSRF derivation, stable guest ownership and rate-limit
 pseudonymisation now use distinct required keys. Planned signing rotation can
 re-sign old cookies during an explicit bounded window; emergency rotation omits
@@ -72,6 +72,17 @@ with a validated abuse alert. A live eight-way concurrency regression found and
 fixed a connection-pool exhaustion deadlock, then proved one retained diagram,
 one creation metric and exact replay behavior across blank, template, duplicate,
 import and fork operations.
+Deletion now crosses an explicit private trash boundary. Soft delete revokes
+sharing atomically and blocks every normal content/history path; restore stays
+private, permanent deletion is owner/admin-only, and all three transitions are
+CSRF- and ETag-protected. Retained trash still consumes both quotas and has an
+aggregate backlog metric; ten permanent deletions in ten minutes trigger a
+validated critical alert with an evidence-preserving response procedure.
+Automatic retention remains open by design.
+The stage gate passed all 19 CTest suites against disposable PostgreSQL,
+including the dedicated cross-session trash lifecycle and real Chromium
+desktop/mobile accessibility flows; ShellCheck, Cppcheck, the repository secret
+scan, OpenAPI drift validation, promtool and npm audit also passed.
 
 ## Executive verdict
 
@@ -138,7 +149,7 @@ complete.
 
 | Rank | STRIDE | Scenario | Likelihood | Impact | Existing controls | Required treatment |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Denial of service | An attacker rotates guest cookies and source addresses, fills the global row/byte or active limiter-key allowance, or saturates DB workers/storage. | High | Medium | Cloudflare/nginx limits, bounded shared GCRA buckets, payload caps, pool cap, atomic per-session/global row and logical-byte quotas | Retention/cleanup; Turnstile for suspicious creation; deploy and wire the checked-in storage, limiter-capacity and latency alerts |
+| 1 | Denial of service | An attacker rotates guest cookies and source addresses, fills the global row/byte or active limiter-key allowance, or saturates DB workers/storage. | High | Medium | Cloudflare/nginx limits, bounded shared GCRA buckets, payload caps, pool cap, atomic per-session/global row and logical-byte quotas, explicit permanent deletion and trash backlog telemetry | Automatic retention; Turnstile for suspicious creation; deploy and wire the checked-in storage, trash, limiter-capacity and latency alerts |
 | 2 | Information disclosure | App, DB, backups, journals, or an enabled bearer link expose private diagram content. Legacy links stay active until deliberately expired, rotated or revoked. | Medium | High | Private-by-default creation, optional DB-clock expiry, explicit rotate/revoke, 128-bit slugs, owner checks, least-privilege DB role, CSP, origin guard | Deploy the lifecycle changes; review legacy links; encrypted and access-controlled backups; retention policy |
 | 3 | Spoofing / elevation | Theft or forgery of the single admin session grants access to all diagrams. Stateless sessions have no individual revocation. | Low | High | Purpose-separated HMAC keys, bounded signing-key rollover, `__Host-` Secure/HttpOnly/SameSite cookies, PBKDF2, login throttles | Server-side admin session revocation; MFA/passkey; alert on admin login |
 | 4 | Tampering | Concurrent editors attempt to overwrite, delete or restore over newer work. | Low | Medium | Atomic revision increments, strong ETags, mandatory `If-Match`, `412` rejection, bounded history and local draft preservation | Add a merge/recovery UI before real-time collaboration |
