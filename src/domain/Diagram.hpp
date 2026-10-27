@@ -39,6 +39,7 @@ struct Diagram {
     bool sharingEnabled = false;
     std::string shareExpiresAt;
     bool shareExpired = false;
+    bool sharePasswordProtected = false;
     std::vector<Node> nodes;
     std::vector<Edge> edges;
 };

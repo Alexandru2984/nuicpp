@@ -178,6 +178,7 @@ void testJsonRoundTrip() {
     d.sharingEnabled = true;
     d.shareExpiresAt = "2030-01-02T03:04:05Z";
     d.shareExpired = false;
+    d.sharePasswordProtected = true;
     auto parsed = diagramFromJson(diagramToJson(d));
     require(parsed.nodes.size() == 2, "nodes should round trip");
     require(parsed.edges.size() == 1, "edges should round trip");
@@ -186,6 +187,8 @@ void testJsonRoundTrip() {
     require(parsed.sharingEnabled, "sharing state should round trip");
     require(parsed.shareExpiresAt == "2030-01-02T03:04:05Z", "share expiry should round trip");
     require(!parsed.shareExpired, "active share should not round trip as expired");
+    require(parsed.sharePasswordProtected,
+            "share password protection should round trip without a verifier");
 }
 
 void testFormUrlDecode() {
@@ -469,6 +472,8 @@ void testMetricsStayAggregateAndBounded() {
     metrics.recordSecurityEvent("diagram_trash", "moved");
     metrics.recordSecurityEvent("diagram_trash", "restored");
     metrics.recordSecurityEvent("diagram_trash", "permanently_deleted");
+    metrics.recordSecurityEvent("sharing_change", "password_updated");
+    metrics.recordSecurityEvent("share_password", "failed");
     metrics.recordSecurityEvent("attacker-controlled-label", "ignored");
     metrics.recordDiagramCreated("import");
     metrics.recordDiagramCreated("attacker-controlled-source");
@@ -527,6 +532,11 @@ void testMetricsStayAggregateAndBounded() {
     require(body.find("event=\"diagram_trash\",outcome=\"permanently_deleted\"} 1") !=
                 std::string::npos,
             "metrics should count permanent deletion");
+    require(body.find("event=\"sharing_change\",outcome=\"password_updated\"} 1") !=
+                std::string::npos &&
+                body.find("event=\"share_password\",outcome=\"failed\"} 1") !=
+                    std::string::npos,
+            "metrics should count bounded share-password lifecycle events");
     require(body.find("nuigraph_storage_objects{kind=\"trashed_diagrams\"} 2") !=
                 std::string::npos,
             "metrics should expose the aggregate trash backlog");
@@ -790,9 +800,15 @@ void testRateLimiterClearsOneKey() {
 void testSensitivePathsAreRedacted() {
     require(redactRequestPath("/d/private-capability-123") == "/d/<redacted>",
             "public share capability should be redacted");
+    require(redactRequestPath("/d/private-capability-123/unlock") ==
+                "/d/<redacted>/unlock",
+            "share unlock capability should be redacted");
     require(redactRequestPath("/api/diagrams/slug/private-capability-123") ==
                 "/api/diagrams/slug/<redacted>",
             "API share capability should be redacted");
+    require(redactRequestPath("/api/diagrams/slug/private-capability-123/fork") ==
+                "/api/diagrams/slug/<redacted>/fork",
+            "share fork capability should be redacted");
     require(redactRequestPath("/api/diagrams/42") == "/api/diagrams/42",
             "ordinary route should be preserved");
     require(redactRequestPath("/d/") == "/d/", "empty share route should be preserved");
@@ -977,6 +993,11 @@ void testSeoMetadata() {
             "bearer share page should not advertise public application microdata");
     require(privateShare.find("itemprop=") == std::string::npos,
             "bearer share page should omit structured application properties");
+    const auto shareUnlock = renderShareUnlockPage("safe-share-123", "<invalid>");
+    require(shareUnlock.find("noindex, nofollow, noarchive") != std::string::npos &&
+                shareUnlock.find("action=\"/d/safe-share-123/unlock\"") != std::string::npos &&
+                shareUnlock.find("&lt;invalid&gt;") != std::string::npos,
+            "share unlock page should be unindexed, scoped to its slug and escape errors");
 
     const auto docs = renderDocsPage("https://example.test/");
     require(docs.find("rel=\"canonical\" href=\"https://example.test/docs\"") != std::string::npos,

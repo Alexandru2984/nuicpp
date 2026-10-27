@@ -133,6 +133,10 @@ admin account for maintenance.
 - Private-by-default diagrams with explicit read-only sharing at `/d/{slug}`,
   128-bit capabilities, allowlisted 5-minute to 30-day expiry, immediate
   rotation/revocation and one-click fork. The UI defaults new links to 7 days.
+- Active share links can optionally require a separate 10–128 byte password.
+  Only a salted PBKDF2-SHA256 verifier is stored; per-link/IP persistent
+  throttling protects unlock attempts, and replacing the password or rotating
+  the URL invalidates every prior eight-hour unlock cookie.
 - Trash immediately revokes sharing and hides content from normal ID, slug,
   version, duplicate and export paths. Restores stay private; trash continues to
   count against row and logical-byte quotas until permanent deletion.
@@ -283,12 +287,12 @@ The build is clean under `-Wall -Wextra -Wpedantic`.
 ctest --test-dir build --output-on-failure
 ```
 
-Twenty-one suites cover unit validation, frontend assets, the nginx candidate,
+Twenty-two suites cover unit validation, frontend assets, the nginx candidate,
 Prometheus rules, incident-runbook integrity, secret scanning, CycloneDX SBOM generation, real
 Chromium behavior, live security/API behavior, shared persistent rate limits,
 concurrent row/logical-byte quota enforcement, signing-key rotation, and
 migration-ledger integrity, including isolated trash retention and guest data
-export/deletion lifecycles. The database-backed suites use
+export/deletion and password-protected sharing lifecycles. The database-backed suites use
 a config with `APP_ENV=test` whose
 actual PostgreSQL database and login-role names both end in `_test`. Missing
 local prerequisites appear as **Not Run**, not as false passes; deployment sets
@@ -434,8 +438,11 @@ preconditions return `428`; stale revisions return `412` with
 monotonically increasing `revision` value.
 
 `POST /api/diagrams/{id}/sharing` accepts an `action` of `enable`, `rotate` or
-`disable`. Enable and rotate always mint a new capability; disable makes the
-current `/d/{slug}` and slug API paths return `404` immediately.
+`disable`, plus expiry and password actions. Enable and rotate always mint a new
+capability; disable makes the current `/d/{slug}` and slug API paths return `404`
+immediately. `set_password` accepts a write-only 10–128 byte password and
+`remove_password` returns the active link to bearer-only access. Passwords must
+be supplied separately from the URL.
 
 The privacy endpoints are guest-session-only. Export returns active and trashed
 diagrams plus retained versions for that cookie-bound owner; deletion requires

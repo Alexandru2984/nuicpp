@@ -83,6 +83,10 @@ assert.equal(spec.paths["/api/privacy/data"].delete.requestBody.$ref,
   "#/components/requestBodies/OwnerDataDeletion");
 assert.equal(spec.components.requestBodies.OwnerDataDeletion.content["application/json"]
   .schema.properties.confirmation.const, "DELETE MY DATA");
+assert.ok(spec.components.schemas.SharingRequest.properties.action.enum.includes("set_password"));
+assert.ok(spec.components.schemas.SharingRequest.properties.action.enum.includes("remove_password"));
+assert.equal(spec.components.schemas.SharingRequest.properties.password.writeOnly, true);
+assert.ok(spec.components.schemas.DiagramSnapshot.allOf[1].required.includes("share_password_protected"));
 
 const revisionSafe = new Set([
   "PUT /api/diagrams/{id}",

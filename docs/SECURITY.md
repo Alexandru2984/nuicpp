@@ -110,9 +110,31 @@ is hidden from API responses and can only be re-enabled with a newly rotated
 token. Existing URLs remain enabled without expiry during the additive migration
 for compatibility. The application logger and the dedicated
 nginx access format replace values in `/d/{slug}` and
-`/api/diagrams/slug/{slug}` with `<redacted>` before writing them. Do not switch
+`/d/{slug}/unlock`, `/api/diagrams/slug/{slug}` and
+`/api/diagrams/slug/{slug}/fork` with `<redacted>` before writing them. Do not switch
 the vhost back to the default `$request` access format, which contains the raw
 path, or add the raw `Referer`, which can contain the share page URL.
+
+An active share may additionally carry a 10–128 byte password. PostgreSQL stores
+only `pbkdf2_sha256$210000$<128-bit salt>$<256-bit verifier>`; the plaintext is
+accepted only in the owner JSON mutation or same-origin unlock form and is never
+placed in the URL, response, metric or log. This is a second factor for someone
+who already has the bearer URL, not a replacement for a high-entropy capability.
+Weak user-chosen passwords remain guessable, so the database-backed limiter
+allows only eight attempts per ten minutes for each pseudonymous link/IP pair
+and fails closed when its decision cannot be stored.
+
+A successful unlock sets one fixed `HttpOnly`, `SameSite=Strict` cookie for eight
+hours (`Secure` and `__Host-` prefixed on HTTPS). Its signed value contains only
+a digest of the slug, the password version and expiry. API reads and forks check
+the active database policy and then require that exact binding. Password
+replacement/removal increments the version; link rotation changes the slug;
+disable and trash clear the verifier. Each transition therefore invalidates old
+access without storing unlock sessions. The fixed cookie intentionally unlocks
+only one protected share at a time, preventing an attacker from filling the
+origin's cookie jar with per-link cookies. A copied valid unlock cookie remains
+usable until its eight-hour expiry unless the owner performs one of those
+revoking transitions.
 
 nginx generates `$request_id`, forwards it as `X-Request-ID`, records it in the
 dedicated access log and receives the same value in the response. Requests
@@ -124,7 +146,7 @@ carry the ID.
 Security events cover admin login outcomes, logout, session re-signing,
 authorization/CSRF denials, write/create throttling, quota/capacity exhaustion,
 revision and idempotency conflicts, malformed idempotency headers, share-page
-views, guest export/delete outcomes and storage failures. They record actor class, redacted route, source IP
+views and password unlock outcomes, guest export/delete outcomes and storage failures. They record actor class, redacted route, source IP
 and outcome, but never usernames, cookies, idempotency keys, CSRF values,
 passwords, request bodies or share capabilities. Source IPs are personal data;
 journal and nginx retention/access still need an explicit privacy policy.
@@ -172,8 +194,9 @@ Two subtleties worth preserving:
    knowing an inactive or expired slug does not bypass revocation. Sharing
    mutations require owner authorization, CSRF and the current revision ETag.
    Durations are a closed allowlist and expiry changes increment the diagram
-   revision. Do not reintroduce a predictable suffix or an application-clock
-   check on only one access path.
+   revision. Protected page, API and fork paths also require the same signed
+   password-unlock cookie. Do not reintroduce a predictable suffix, bypass that
+   second check on one path, or use an application-clock expiry on only one path.
 4. **Forking does not weaken ID authorization.** The owner-only
    `POST /api/diagrams/{id}/duplicate` remains protected against IDOR. A visitor
    may instead fork only through `POST /api/diagrams/slug/{slug}/fork`, which
@@ -216,8 +239,8 @@ Neither rejected origins nor configured hosts become metric labels.
 
 ## Request media types
 
-Before route handlers run, login submissions must declare
-`application/x-www-form-urlencoded`. A state-changing `/api/` request that
+Before route handlers run, login and protected-share unlock submissions must
+declare `application/x-www-form-urlencoded`. A state-changing `/api/` request that
 carries a body or a `Content-Type` header must declare `application/json`.
 Matching is case-insensitive and permits standard semicolon parameters such as
 `charset=utf-8`, but rejects prefix tricks, structured JSON variants that the
@@ -283,11 +306,12 @@ Three independent layers, because each has a different failure mode:
 | Layer | Limit | Where |
 | --- | --- | --- |
 | Edge | 120 req/min per IP on `/api/`, burst 40 | `nuicpp-rate-limit.conf` |
-| Edge | 10 req/min per IP on `/login`, burst 5 | `nuicpp-rate-limit.conf` |
+| Edge | 10 req/min per IP on `/login` and `/d/{slug}/unlock`, burst 5 | `nuicpp-rate-limit.conf` |
 | Edge | 24 concurrent connections per IP | `nuicpp-rate-limit.conf` |
 | App/DB | 240 writes / 10 min per pseudonymous IP key | `ensureWriteRateLimit` |
 | App/DB | 40 creates / 10 min per pseudonymous IP key | `ensureWriteRateLimit` |
 | App/DB | 8 login attempts / 10 min per pseudonymous IP key | `/login` |
+| App/DB | 8 unlock attempts / 10 min per pseudonymous link/IP key | `/d/{slug}/unlock` |
 | App | `MAX_DIAGRAMS_PER_GUEST` rows per owner hash | `PostgresStorage::createDiagram` |
 | App | `MAX_DIAGRAMS_TOTAL` rows across all owners | `PostgresStorage::createDiagram` |
 | App/DB | `MAX_LOGICAL_BYTES_PER_GUEST` retained logical bytes per owner hash | Every content/snapshot mutation |
@@ -615,7 +639,12 @@ revision, snapshot and accounting, then races six unrelated sessions against one
 logical-capacity slot and recomputes the counter from its source rows.
 `tests/check_privacy_data.sh` proves cross-session export isolation, historical
 capability redaction, administrator denial, exact destructive confirmation,
-cascading atomic deletion, cookie expiry and content-free telemetry.
+cascading atomic deletion, cookie expiry, content-free telemetry and
+verifier-free password-protection metadata. `tests/check_share_passwords.sh`
+proves page/API/fork enforcement, PBKDF2-only storage, cookie attributes and
+tamper rejection, password/version revocation, rotation, throttling, aggregate
+telemetry and capability/password log redaction. It also exercises the HTTPS
+`__Host-` cookie path against the loopback test service.
 
 ```bash
 ctest --test-dir build --output-on-failure

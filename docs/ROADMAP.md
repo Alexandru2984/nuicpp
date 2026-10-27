@@ -207,6 +207,11 @@ rollback notes where applicable.
   and internal owner hashes stay out of exports; administrators are deliberately
   denied the bulk primitive. A responsive dialog, public privacy notice,
   OpenAPI contract, live cross-session regression and bounded alerts accompany it.
+- Optional share passwords add a salted PBKDF2 verifier, per-link/IP persistent
+  unlock throttling and a fixed `HttpOnly` unlock cookie bound to both capability
+  and password version. Password replacement, link rotation, disable and trash
+  revoke prior access; owner UI, protected mobile page, Chromium/live negative
+  tests, aggregate alerts and complete capability-log redaction ship together.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -234,7 +239,6 @@ High risk remain open.
   plain-HTTP name only for local development and tests.
 - Add an explicitly indexed `public` visibility distinct from the implemented
   private and unlisted-link states.
-- Add optional password-protected links.
 - User accounts with email verification or OIDC, passkeys/WebAuthn and MFA for
   the administrator; convert a guest workspace into an account without data loss.
 - Server-side admin sessions with device list, last-used metadata and individual

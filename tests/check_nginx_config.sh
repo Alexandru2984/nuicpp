@@ -39,8 +39,10 @@ require_count() {
 # log format.
 require_count "$VHOST" 'location ^~ /.well-known/acme-challenge/' 2
 require_text "$VHOST" "set \$nuicpp_origin_allowed \$from_cloudflare_origin;"
-require_count "$VHOST" "proxy_set_header X-Request-ID \$request_id;" 5
+require_count "$VHOST" "proxy_set_header X-Request-ID \$request_id;" 6
 require_text "$VHOST" 'location = /metrics {'
+require_text "$VHOST" 'location ~ ^/d/[A-Za-z0-9-]+/unlock$ {'
+require_count "$VHOST" 'limit_req zone=nuicpp_login burst=5 nodelay;' 2
 require_text "$VHOST" 'allow 127.0.0.1;'
 require_text "$VHOST" 'allow ::1;'
 require_text "$VHOST" 'deny all;'
@@ -61,6 +63,8 @@ require_text "$VHOST" "media-src 'none'; frame-src 'none';"
 require_text "$VHOST" "worker-src 'self'; manifest-src 'self';"
 require_text "$RATE_LIMITS" "map \$uri \$nuicpp_log_uri {"
 require_text "$RATE_LIMITS" 'log_format nuicpp_redacted'
+require_text "$RATE_LIMITS" '~^/d/[A-Za-z0-9-]+/unlock$ /d/<redacted>/unlock;'
+require_text "$RATE_LIMITS" '~^/api/diagrams/slug/[A-Za-z0-9-]+/fork$ /api/diagrams/slug/<redacted>/fork;'
 
 if grep -Eq '^[[:space:]]*add_header Content-Security-Policy .*unsafe-inline' "$VHOST"; then
   echo "nginx config test failed: CSP reintroduced unsafe-inline" >&2

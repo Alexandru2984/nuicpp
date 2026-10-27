@@ -70,6 +70,12 @@ struct ShareExpiry {
     std::optional<long> seconds;
 };
 
+struct ShareAccessPolicy {
+    bool passwordProtected = false;
+    long passwordVersion = 0;
+    std::string passwordHash;
+};
+
 class PostgresStorage {
 public:
     PostgresStorage(const Config& cfg, const DiagramValidator& validator);
@@ -82,8 +88,9 @@ public:
     std::vector<nlohmann::json> listDeletedDiagramsForOwner(
         const std::string& ownerTokenHash, long limit, long offset);
     Diagram getDiagram(long id);
-    Diagram getDiagramBySlug(const std::string& slug);
-    bool activeShareExists(const std::string& slug);
+    Diagram getDiagramBySlug(const std::string& slug,
+                             long authorizedPasswordVersion = -1);
+    std::optional<ShareAccessPolicy> shareAccessPolicy(const std::string& slug);
     std::string ownerHashForDiagram(long id);
     std::string ownerHashForDeletedDiagram(long id);
     long countDiagrams();
@@ -102,6 +109,8 @@ public:
                           bool importMode, long expectedRevision);
     Diagram updateSharing(long id, ShareAction action, long expectedRevision,
                           const ShareExpiry& expiry = {});
+    Diagram updateSharePassword(long id, long expectedRevision,
+                                const std::optional<std::string>& passwordHash);
     void trashDiagram(long id, long expectedRevision);
     Diagram restoreDiagramFromTrash(long id, long expectedRevision);
     void permanentlyDeleteDiagram(long id, long expectedRevision);
@@ -112,7 +121,8 @@ public:
         const std::optional<IdempotencyRequest>& idempotency = std::nullopt);
     DiagramCreationResult forkDiagramBySlug(
         const std::string& slug, const std::string& ownerTokenHash,
-        const std::optional<IdempotencyRequest>& idempotency = std::nullopt);
+        const std::optional<IdempotencyRequest>& idempotency = std::nullopt,
+        long authorizedPasswordVersion = -1);
     std::vector<VersionInfo> listVersions(long diagramId);
     VersionInfo createVersion(long diagramId, const std::string& note);
     Diagram getVersion(long diagramId, long versionId);

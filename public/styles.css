@@ -1457,6 +1457,16 @@ body.presentation-mode .presentation-controls {
 .sharing-link { width: 100%; min-height: var(--tap); font-size: 14px; }
 .sharing-expiry { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
 .sharing-expiry select { min-height: var(--tap); }
+.sharing-password {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.sharing-password span { grid-column: 1 / -1; }
+.sharing-password input { min-height: var(--tap); min-width: 0; }
+.sharing-password button { min-height: var(--tap); }
 .sharing-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .sharing-actions button { min-height: var(--tap); }
 
@@ -1596,6 +1606,9 @@ button.primary {
   .diagram-review .command-palette-head { align-items: flex-start; flex-wrap: wrap; }
   .review-finding { align-items: flex-start; }
   .sharing-actions { display: grid; }
+  .sharing-password { grid-template-columns: 1fr; }
+  .sharing-password span { grid-column: auto; }
+  .sharing-password button { width: 100%; }
   .trash-item .small-actions { width: 100%; }
   .trash-item .small-actions button { flex: 1 1 auto; }
   .privacy-data-section button { width: 100%; }

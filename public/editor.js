@@ -3217,25 +3217,32 @@
 
     const mergeSharingMetadata = (updated) => {
       if (!state.current || state.current.id !== updated.id) return;
+      const protectionEnabled = Boolean(updated.share_password_protected);
       state.current.revision = updated.revision;
       state.current.updated_at = updated.updated_at;
       state.current.slug = updated.slug;
       state.current.sharing_enabled = updated.sharing_enabled;
       state.current.share_expires_at = updated.share_expires_at;
       state.current.share_expired = updated.share_expired;
+      state.current.share_password_protected = protectionEnabled;
       state.current.share_url = updated.share_url;
     };
 
-    const changeSharing = async (action, expiresIn = undefined) => {
+    const changeSharing = async (action, expiresIn = undefined, password = undefined) => {
       const buttons = [...dialog.querySelectorAll("button")];
       buttons.forEach((button) => { button.disabled = true; });
       const progressLabel = action === "set_expiry"
         ? "Expiry update"
-        : `${action[0].toUpperCase()}${action.slice(1)}`;
+        : action === "set_password"
+          ? "Password update"
+          : action === "remove_password"
+            ? "Password removal"
+            : `${action[0].toUpperCase()}${action.slice(1)}`;
       liveStatus.textContent = `${progressLabel} in progress...`;
       try {
         const request = { action };
         if (expiresIn !== undefined) request.expires_in = expiresIn;
+        if (password !== undefined) request.password = password;
         const updated = await api(`/api/diagrams/${state.current.id}/sharing`, {
           method: "POST",
           headers: { "If-Match": diagramEtag(state.current) },
@@ -3251,7 +3258,11 @@
             ? "Link rotated. The previous URL no longer works."
             : action === "set_expiry"
               ? "Link expiry updated."
-              : "Sharing enabled with a new link.";
+              : action === "set_password"
+                ? "Share password updated. Previous unlocks no longer work."
+                : action === "remove_password"
+                  ? "Share password removed. The bearer link is sufficient again."
+                  : "Sharing enabled with a new link.";
       } catch (error) {
         if (!handleRevisionConflict(
           error,
@@ -3264,6 +3275,12 @@
         }
       } finally {
         dialog.querySelectorAll("button").forEach((button) => { button.disabled = false; });
+        const passwordInput = dialog.querySelector(".sharing-password input");
+        const passwordButton = dialog.querySelector(".sharing-password button");
+        if (passwordInput && passwordButton) {
+          const passwordBytes = new TextEncoder().encode(passwordInput.value).length;
+          passwordButton.disabled = passwordBytes < 10 || passwordBytes > 128;
+        }
       }
     };
 
@@ -3310,8 +3327,8 @@
       const explanation = document.createElement("p");
       explanation.textContent = state.current.sharing_enabled
         ? state.current.share_expires_at
-          ? `Anyone with this unguessable link can view and fork the diagram until ${new Date(state.current.share_expires_at).toLocaleString()}.`
-          : "Anyone with this unguessable link can view and fork the diagram. It has no automatic expiry."
+          ? `${state.current.share_password_protected ? "Anyone with this link and its separately supplied password" : "Anyone with this unguessable link"} can view and fork the diagram until ${new Date(state.current.share_expires_at).toLocaleString()}.`
+          : `${state.current.share_password_protected ? "Anyone with this link and its separately supplied password" : "Anyone with this unguessable link"} can view and fork the diagram. It has no automatic expiry.`
         : expired
           ? "The old URL is inactive. Enabling sharing creates a new capability instead of reviving it."
           : "Only this guest session and the administrator can access the diagram.";
@@ -3357,7 +3374,43 @@
             changeSharing("set_expiry", selectedExpiry(expiry.select));
           }
         };
-        actions.append(copy, rotate, updateExpiry, disable);
+
+        const passwordLabel = document.createElement("label");
+        passwordLabel.className = "sharing-password";
+        const passwordCaption = document.createElement("span");
+        passwordCaption.textContent = state.current.share_password_protected
+          ? "Replace share password"
+          : "Optional share password";
+        const passwordInput = document.createElement("input");
+        passwordInput.type = "password";
+        passwordInput.autocomplete = "new-password";
+        passwordInput.minLength = 10;
+        passwordInput.maxLength = 128;
+        passwordInput.setAttribute("aria-label", passwordCaption.textContent);
+        passwordInput.placeholder = "10–128 UTF-8 bytes";
+        const setPassword = mobileBarButton(
+          state.current.share_password_protected ? "Replace password" : "Add password");
+        setPassword.disabled = true;
+        passwordInput.oninput = () => {
+          const passwordBytes = new TextEncoder().encode(passwordInput.value).length;
+          setPassword.disabled = passwordBytes < 10 || passwordBytes > 128;
+        };
+        setPassword.onclick = () => changeSharing(
+          "set_password", undefined, passwordInput.value);
+        passwordLabel.append(passwordCaption, passwordInput, setPassword);
+        content.appendChild(passwordLabel);
+
+        actions.append(copy, rotate, updateExpiry);
+        if (state.current.share_password_protected) {
+          const removePassword = mobileBarButton("Remove password", "danger");
+          removePassword.onclick = () => {
+            if (confirm("Remove the password? Anyone with the current link will be able to open it.")) {
+              changeSharing("remove_password");
+            }
+          };
+          actions.appendChild(removePassword);
+        }
+        actions.appendChild(disable);
       }
       content.appendChild(actions);
     };

@@ -134,6 +134,7 @@ assert data["format"] == "nuigraph-owner-export-v1"
 assert data["scope"] == "guest_session"
 assert data["trash_retention_days"] is None
 assert owner_hash not in raw and "owner_token_hash" not in raw and "share_url" not in raw
+assert "share_password_hash" not in raw
 entries = {entry["diagram"]["id"]: entry for entry in data["diagrams"]}
 assert set(entries) == {active_id, trash_id} and other_id not in entries
 assert entries[active_id]["state"] == "active"
@@ -145,6 +146,7 @@ for entry in entries.values():
     for version in entry["versions"]:
         assert version["snapshot"]["slug"] == ""
         assert version["snapshot"]["sharing_enabled"] is False
+        assert version["snapshot"]["share_password_protected"] is False
         assert version["snapshot"]["share_expires_at"] is None
 PY
 

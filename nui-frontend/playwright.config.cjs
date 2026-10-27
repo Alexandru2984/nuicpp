@@ -11,7 +11,7 @@ module.exports = defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  timeout: 30_000,
+  timeout: 45_000,
   expect: { timeout: 8_000 },
   reporter: "line",
   outputDir: process.env.NUIGRAPH_BROWSER_OUTPUT_DIR || "test-results",

@@ -272,7 +272,9 @@ without it makes `nginx -t` fail with "unknown limit_req_zone".
 The candidate test builds a self-contained nginx configuration, substitutes
 only ephemeral certificate/log paths, and runs `nginx -t` before either live
 file is copied. It also asserts the ACME locations, Cloudflare origin guard,
-request-ID forwarding and bearer-safe log format. The final live `nginx -t`
+request-ID forwarding and bearer-safe log format for the base share, unlock and
+fork paths. Install the map and vhost together: an older map can leak a raw
+capability when a suffix route is logged. The final live `nginx -t`
 remains mandatory because shared Cloudflare/Certbot files are host state that CI
 cannot reproduce. A failed final test must never be followed by reload.
 
@@ -308,6 +310,13 @@ keeps the Cloudflare WAF from being bypassed):
 curl -sS -o /dev/null -w '%{http_code}\n' --resolve nuicpp.micutu.com:443:<origin-ip> \
   https://nuicpp.micutu.com/ready     # expect 403
 ```
+
+For a protected-share smoke test, create a disposable diagram, enable sharing,
+set a temporary password and verify the page, JSON read and fork all reject an
+unauthorised visitor. Unlock once, then replace the password and confirm the old
+cookie is rejected on all three paths. Inspect only redacted logs; neither the
+password, its verifier nor the share slug may appear. Disable the disposable
+link when finished.
 
 ## Static assets and caching
 
@@ -397,6 +406,13 @@ the table may remain. Dropping it is unnecessary and erases useful last-run
 evidence. Never describe a code rollback as recovery for rows already purged.
 Guest export/delete adds no migration. Rolling back the binary removes the two
 endpoints and dialog but cannot recover rows already deleted through them.
+`012_share_passwords.sql` is additive at the schema level but is **not safe for
+an older binary while protected links are reachable**. Old code ignores the
+verifier and would serve a password-protected capability as bearer-only. Before
+rolling back across it, deny `/d/` and `/api/diagrams/slug/` at nginx (including
+unlock and fork suffixes), then restore a password-aware binary before reopening
+traffic. Do not clear verifiers, reset password versions or drop the columns as
+a rollback; those actions silently weaken or revoke owner-selected protection.
 `FRONTEND_SHELL` adds no database state: roll back with the prior binary while
 keeping it at `server`, or restore the previous vhost and release together if a
 Nui-specific CSP was introduced.
@@ -415,6 +431,8 @@ Nui-specific CSP was introduced.
 | Save/trash/restore/permanent delete returns 428 | Client omitted the latest diagram ETag in `If-Match` |
 | Automatic trash purge alert | Set `TRASH_RETENTION_DAYS=0` and `TRASH_RETENTION_CONFIRM=false`, validate config, restart, preserve metrics/journal evidence, then follow the retention runbook; already purged rows are not restored by this change |
 | Guest export/delete alert | Preserve request/edge evidence without content or owner hashes, contain ongoing writes if unexplained, and follow the privacy-data runbook; deleted rows cannot be restored by an application rollback |
+| Protected share stays at 401 | Confirm the password was supplied to `/d/<slug>/unlock`, cookies are enabled, and the link was not rotated or its password replaced; never put the password in the URL or logs |
+| Protected-share unlock returns 429 | Keep the database limiter enabled, check the password-attack alert/runbook and edge evidence, and wait for the ten-minute window or deliberately rotate/disable the link after assessing abuse |
 | Migration checksum mismatch | Restore the committed historical file; put the intended change in a new numbered migration |
 | CSS or JS looks stale | Check the Cloudflare Cache Rule above, purge once, then confirm the origin revalidation headers |
 | Guest lost edit rights | Expected after 7 days or a cookie clear; ownership is session-bound by design |

@@ -103,10 +103,28 @@ std::string canonicalHost(const std::string& host) {
 std::string redactRequestPath(const std::string& path) {
     constexpr std::string_view publicPrefix = "/d/";
     constexpr std::string_view apiPrefix = "/api/diagrams/slug/";
+    constexpr std::string_view unlockSuffix = "/unlock";
+    constexpr std::string_view forkSuffix = "/fork";
 
     const std::string_view view{path};
+    if (view.starts_with(publicPrefix) && view.ends_with(unlockSuffix)) {
+        const auto capability = view.substr(
+            publicPrefix.size(),
+            view.size() - publicPrefix.size() - unlockSuffix.size());
+        if (isSinglePathSegment(capability)) {
+            return "/d/<redacted>/unlock";
+        }
+    }
     if (view.starts_with(publicPrefix) && isSinglePathSegment(view.substr(publicPrefix.size()))) {
         return "/d/<redacted>";
+    }
+    if (view.starts_with(apiPrefix) && view.ends_with(forkSuffix)) {
+        const auto capability = view.substr(
+            apiPrefix.size(),
+            view.size() - apiPrefix.size() - forkSuffix.size());
+        if (isSinglePathSegment(capability)) {
+            return "/api/diagrams/slug/<redacted>/fork";
+        }
     }
     if (view.starts_with(apiPrefix) && isSinglePathSegment(view.substr(apiPrefix.size()))) {
         return "/api/diagrams/slug/<redacted>";

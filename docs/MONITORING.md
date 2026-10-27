@@ -16,7 +16,8 @@ PostgreSQL's live-row estimates so the monitor does not repeatedly scan millions
 of rows. Responses are `no-store` and excluded from indexing.
 
 The bounded security series includes allowed/blocked share views, successful
-enable/disable/rotate/expiry-update lifecycle changes, signing-key and legacy
+enable/disable/rotate/expiry/password lifecycle changes, required/successful/
+failed/rate-limited share-password unlocks, signing-key and legacy
 cookie upgrades, rejected cross-site mutations, foreign request origins and
 unsupported request media types, malformed idempotency headers and conflicting
 idempotency-key reuse, plus successful move/restore/permanent-delete trash
@@ -67,6 +68,9 @@ timestamp. Failures, two missed intervals and 50 removals in ten minutes are
 critical alerts; the VPS operator remains the owner until paging is wired.
 Any guest delete-all is critical and ten exports in ten minutes is a warning;
 these signals are intentionally aggregate and cannot identify an owner.
+Ten failed or rate-limited share-password attempts in ten minutes sustain a
+warning after two minutes. The signal deliberately cannot identify the link or
+source; correlate it only with already-approved redacted edge evidence.
 
 Backup freshness is intentionally not represented here while offsite backup
 work is deferred. Do not create a constant-success placeholder: add an alert
@@ -177,6 +181,24 @@ only when a real artifact timestamp and restore verification signal exist.
 3. A sustained distributed pattern is capability probing: contain it at
    Cloudflare/nginx, preserve aggregate evidence and follow the incident runbook
    if any allowed views appear in the same window.
+
+## Share-password attack
+
+1. Confirm `NuiGraphSharePasswordAttack` is driven by aggregate `failed` or
+   `rate_limited` outcomes. Correlate only redacted `/d/<redacted>/unlock`
+   records, request IDs, time windows and approved edge metadata; never recover
+   or print a password, verifier or share slug.
+2. Distinguish a legitimate recipient mistyping a recently changed password
+   from distributed guessing. A successful unlock in the same window may mean
+   the link and password were compromised; preserve evidence and follow
+   `docs/INCIDENT_RESPONSE.md`.
+3. Contain a clear hostile source pattern at Cloudflare/nginx without disabling
+   the database-backed limiter. The owner can replace the password, rotate the
+   link or disable sharing; each option revokes existing unlock cookies.
+4. An unlock cookie is valid for at most eight hours and only for its bound
+   link/password version. Do not rely on expiry when compromise is plausible:
+   use an explicit revoking transition and verify protected page, API and fork
+   routes all reject the old cookie.
 
 ## Destructive trash activity
 

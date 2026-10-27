@@ -20,6 +20,7 @@ for alert in \
   NuiGraphUnsupportedMediaTypeSpike \
   NuiGraphIdempotencyMisuseSpike \
   NuiGraphBlockedShareViewSpike \
+  NuiGraphSharePasswordAttack \
   NuiGraphRateLimitStorageFailure \
   NuiGraphDiagramCapacityHigh \
   NuiGraphTrashBacklogHigh \

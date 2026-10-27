@@ -89,6 +89,7 @@ add_test(NAME nuigraph-idempotency COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_
 add_test(NAME nuigraph-trash COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_trash.sh)
 add_test(NAME nuigraph-trash-retention COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_trash_retention.sh)
 add_test(NAME nuigraph-privacy-data COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_privacy_data.sh)
+add_test(NAME nuigraph-share-passwords COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_share_passwords.sh)
 add_test(NAME nuigraph-key-rotation COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_key_rotation.sh)
 add_test(NAME nuigraph-migrations COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_migrations.sh)
 set_tests_properties(
@@ -114,6 +115,7 @@ set_tests_properties(
     nuigraph-trash
     nuigraph-trash-retention
     nuigraph-privacy-data
+    nuigraph-share-passwords
     nuigraph-key-rotation
     nuigraph-migrations
     PROPERTIES

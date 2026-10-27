@@ -484,6 +484,12 @@ for series in \
   'nuigraph_security_events_total{event="sharing_change",outcome="disabled"}' \
   'nuigraph_security_events_total{event="sharing_change",outcome="rotated"}' \
   'nuigraph_security_events_total{event="sharing_change",outcome="expiry_updated"}' \
+  'nuigraph_security_events_total{event="sharing_change",outcome="password_updated"}' \
+  'nuigraph_security_events_total{event="sharing_change",outcome="password_removed"}' \
+  'nuigraph_security_events_total{event="share_password",outcome="required"}' \
+  'nuigraph_security_events_total{event="share_password",outcome="unlocked"}' \
+  'nuigraph_security_events_total{event="share_password",outcome="failed"}' \
+  'nuigraph_security_events_total{event="share_password",outcome="rate_limited"}' \
   'nuigraph_security_events_total{event="fetch_metadata_rejected",outcome="blocked"}' \
   'nuigraph_security_events_total{event="origin_rejected",outcome="blocked"}' \
   'nuigraph_security_events_total{event="unsupported_media_type",outcome="blocked"}' \

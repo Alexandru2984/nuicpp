@@ -18,7 +18,7 @@ struct SecurityEventLabel {
     const char* outcome;
 };
 
-constexpr std::array<SecurityEventLabel, 34> kSecurityEvents = {{
+constexpr std::array<SecurityEventLabel, 40> kSecurityEvents = {{
     {"csrf_rejected", "blocked"},
     {"fetch_metadata_rejected", "blocked"},
     {"origin_rejected", "blocked"},
@@ -43,6 +43,12 @@ constexpr std::array<SecurityEventLabel, 34> kSecurityEvents = {{
     {"sharing_change", "disabled"},
     {"sharing_change", "rotated"},
     {"sharing_change", "expiry_updated"},
+    {"sharing_change", "password_updated"},
+    {"sharing_change", "password_removed"},
+    {"share_password", "required"},
+    {"share_password", "unlocked"},
+    {"share_password", "failed"},
+    {"share_password", "rate_limited"},
     {"session_rekey", "succeeded"},
     {"session_cookie_upgrade", "succeeded"},
     {"idempotency_rejected", "blocked"},

@@ -88,6 +88,35 @@ std::string renderLoginPage(const std::string& error, const std::string& assetVe
 </html>)HTML";
 }
 
+std::string renderShareUnlockPage(const std::string& slug, const std::string& error,
+                                  const std::string& assetVersion) {
+    const auto safeSlug = htmlEscape(slug);
+    return std::string(R"HTML(<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Unlock a protected NuiGraph Studio share link.">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <title>Protected diagram | NuiGraph Studio</title>
+  <link rel="stylesheet" href=")HTML" + assetUrl("/styles.css", assetVersion) + R"HTML(">
+</head>
+<body class="login-body">
+  <main class="login-shell">
+    <form class="login-panel" method="post" action="/d/)HTML" + safeSlug + R"HTML(/unlock">
+      <div class="brand-mark">NG</div>
+      <h1>Protected diagram</h1>
+      <p>Enter the password supplied separately by the diagram owner. The password is never added to the share URL.</p>
+)HTML") + (error.empty() ? "" : "<div class=\"login-error\">" + htmlEscape(error) + "</div>") + R"HTML(
+      <label>Share password<input type="password" name="password" autocomplete="current-password" required minlength="10" maxlength="128" autofocus></label>
+      <button type="submit">Unlock diagram</button>
+      <a href="/">Back to editor</a>
+    </form>
+  </main>
+</body>
+</html>)HTML";
+}
+
 std::string renderEditorPage(const std::string& username, const std::string& baseUrl,
                              bool indexable, const std::string& assetVersion) {
     const auto canonicalUrl = normalizedBaseUrl(baseUrl) + "/";
@@ -246,7 +275,7 @@ std::string renderDocsPage(const std::string& baseUrl, const std::string& assetV
   <main class="docs">
     <a href="/">Back to editor</a>
     <h1>NuiGraph Studio</h1>
-    <p>NuiGraph Studio is a C++ powered graph and diagram editor for flowcharts, architecture maps, service graphs, and node-link diagrams. Diagrams start private. Owners can enable an unguessable read-only link, rotate it, or disable it immediately; visitors can fork an active shared diagram into their own session.</p>
+    <p>NuiGraph Studio is a C++ powered graph and diagram editor for flowcharts, architecture maps, service graphs, and node-link diagrams. Diagrams start private. Owners can enable an unguessable read-only link, optionally add a separately supplied password, rotate it, or disable it immediately; authorised visitors can fork an active shared diagram into their own session.</p>
     <h2>Canvas Controls</h2>
     <p>Select nodes and edges with the Select tool. Shift-click nodes for basic multi-select, or drag on empty canvas to rubber-band everything the band touches; hold Shift while dragging to add to the current selection instead of replacing it. Drag nodes to move them; edges and centres latch onto nearby nodes and a guide line shows what lined up. Choose an 8, 16, 32 or 64 pixel grid to change both the visual spacing and snap interval. Adaptive coordinate rulers follow pan and zoom; toggle them from Commands or a pinned mobile action. Arrow keys move selected nodes by one grid step and Shift+Arrow moves five; key repeat is grouped into one undo. Multi-node selections can align left, centre, right, top, middle or bottom, and three or more nodes can distribute equal centre spacing through the command palette. The multi-selection inspector summarises type, colour and bounds, then applies shared type, colour or size changes as one undoable edit. Press Shift+1 for actual size (100%), Shift+2 to frame the selected nodes or both endpoints of a selected edge, Shift+P for the edit-safe full-viewport presentation mode, or Ctrl/Cmd+P for the clean A4 landscape print/PDF layout. A single selected node gets eight resize handles; the opposite edge stays anchored and sizes are held between 72x48 and 600x400, the same range the server enforces. Double-click a node or edge, or select it and press F2 or Enter, to edit its label directly on the canvas; the same action can be pinned on mobile. Use the Node tool to create nodes, Edge to connect two nodes, and Pan or middle mouse drag to move the canvas. Delete removes the selected object. Press / to search nodes by title, type, trust zone or key and centre a result. Ctrl+K (or Cmd+K) opens the searchable command palette; Ctrl+S saves, Ctrl+C/Ctrl+V copy and paste selected nodes, Ctrl+Z/Ctrl+Y undo and redo, and Esc closes transient UI or clears selection. Actual size, Zoom to fit, Snap, Layout, viewport/embeddable/selection SVG, opaque/transparent PNG, cropped selection PNG, Mermaid and Sample are available from the palette. Diagram Review checks structure locally in the browser for orphan nodes, invalid or duplicate edges, missing titles or labels, self-loops and directed cycles. Once a node is assigned an internet, edge, application, data or management trust zone, the same review flags incomplete classification, unlabelled boundary crossings and direct internet-to-data relationships; Focus centres the affected object and SARIF exports the findings for CI. On phones a compact bottom bar keeps the canvas large; choose Customize mobile action bar from the palette to pin up to two preferred actions. Unsaved browser drafts are stored locally and can be restored when reopening the same diagram.</p>
     <h2>Node Types</h2>
@@ -324,18 +353,18 @@ std::string renderPrivacyPage(const std::string& baseUrl, int trashRetentionDays
     <h2>Data processed</h2>
     <ul>
       <li>A signed, pseudonymous guest-session cookie used to keep diagrams attached to the same browser session. The cookie expires after seven days; clearing it can make guest-owned diagrams inaccessible.</li>
-      <li>Diagram titles, descriptions, nodes, edges, metadata, retained versions, trash state, and optional bearer share links supplied through the editor.</li>
+      <li>Diagram titles, descriptions, nodes, edges, metadata, retained versions, trash state, optional bearer share links, and whether a link is password protected. A supplied share password is retained only as a salted verifier.</li>
       <li>Request metadata needed for security and operations, including IP-derived rate-limit identifiers, timestamps, status classes, and redacted application/access logs. Metrics contain aggregate bounded labels rather than diagram content or owner identifiers.</li>
       <li>Administrator authentication data configured by the operator. The guest self-service export does not export administrator configuration or other owners' records.</li>
     </ul>
     <h2>Purposes and legal context</h2>
     <p>Diagram and session data are processed to provide the storage, editing, sharing, recovery, export, and deletion functions requested by the visitor. Limited request and security data are processed to protect the service, enforce quotas, diagnose failures, and investigate abuse. The operator must assess and document the applicable legal basis for its deployment; this application does not use diagram content for advertising, profiling, or automated decisions with legal or similarly significant effects.</p>
     <h2>Sharing and recipients</h2>
-    <p>Diagrams are private by default. Enabling sharing creates an unguessable read-only bearer URL: anyone who receives that URL can view the diagram until the owner disables, rotates, expires, trashes, or deletes it. Infrastructure recipients include Cloudflare as the public reverse proxy and the operator's VPS/hosting and PostgreSQL environment. Contact the operator for the current provider, location, transfer safeguards, and subprocessor details before relying on this page as a complete Article 13 notice.</p>
+    <p>Diagrams are private by default. Enabling sharing creates an unguessable read-only bearer URL: anyone who receives that URL can view the diagram until the owner disables, rotates, expires, trashes, or deletes it. The owner may add a password that must be supplied separately; the application stores only a salted verifier and issues a bounded unlock cookie after a successful attempt. Infrastructure recipients include Cloudflare as the public reverse proxy and the operator's VPS/hosting and PostgreSQL environment. Contact the operator for the current provider, location, transfer safeguards, and subprocessor details before relying on this page as a complete Article 13 notice.</p>
     <h2>Retention</h2>
     <p>Active diagrams and bounded versions remain while the guest session retains them. Moving a diagram to trash revokes sharing but does not erase or release its quota. )HTML" + htmlEscape(trashPolicy) + R"HTML( Permanent deletion and “Delete my session data” remove primary PostgreSQL rows and cascaded nodes, edges, versions, and idempotency records. Those actions do not by themselves prove erasure from separately retained logs or backup media. Rate-limit rows expire within ten minutes and idempotency records within 24 hours. A fixed external log-retention period remains an operator control; request the current period from the contact above.</p>
     <h2>Your controls and rights</h2>
-    <p>The editor's Privacy &amp; data dialog can download a machine-readable JSON copy of current and trashed diagrams plus retained versions for the current guest session. It can also irreversibly delete all diagrams owned by that session after typing the exact confirmation <code>DELETE MY DATA</code>. The export deliberately excludes internal owner hashes and revoked historical share capabilities. Because ownership is cookie-bound, another browser or a lost cookie cannot prove control of the same guest records through this self-service endpoint.</p>
+    <p>The editor's Privacy &amp; data dialog can download a machine-readable JSON copy of current and trashed diagrams plus retained versions for the current guest session. It can also irreversibly delete all diagrams owned by that session after typing the exact confirmation <code>DELETE MY DATA</code>. The export deliberately excludes internal owner hashes, share-password verifiers, and revoked historical share capabilities; it reports only whether a current link is protected. Because ownership is cookie-bound, another browser or a lost cookie cannot prove control of the same guest records through this self-service endpoint.</p>
     <p>Depending on applicable law, you may also request access, rectification, erasure, restriction, objection, or portability and lodge a complaint with a competent supervisory authority. Identity may need to be verified before records outside the current guest session can be discussed. The <a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj">official GDPR text</a> describes these rights and their conditions.</p>
     <h2>Security and changes</h2>
     <p>State-changing requests use CSRF protection, session ownership checks, rate limits, and security logging. No internet service can guarantee absolute security. Material changes should update the date and this notice before or when the changed processing begins.</p>

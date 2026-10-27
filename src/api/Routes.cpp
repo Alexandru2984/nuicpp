@@ -152,6 +152,8 @@ bool requestIsSecure(const httplib::Request& req) {
 
 constexpr const char* kLegacySessionCookie = "ngs_session";
 constexpr const char* kHostSessionCookie = "__Host-ngs_session";
+constexpr const char* kLegacyShareAccessCookie = "ngs_share_access";
+constexpr const char* kHostShareAccessCookie = "__Host-ngs_share_access";
 
 std::string sessionCookieWithName(const httplib::Request& req, const std::string& name,
                                   const std::string& value, int maxAgeSeconds) {
@@ -198,6 +200,52 @@ std::string sessionValue(const httplib::Request& req, bool* usedLegacyCookie = n
 
 constexpr long long kLoginFailureWindow = 10 * 60;
 constexpr int kGuestSessionSeconds = 7 * 24 * 60 * 60;
+constexpr int kShareAccessSeconds = 8 * 60 * 60;
+constexpr int kSharePasswordIterations = 210000;
+
+bool verifyPbkdf2Password(const std::string& password, const std::string& encoded) {
+    const auto parts = split(encoded, '$');
+    if (parts.size() != 4 || parts[0] != "pbkdf2_sha256") {
+        return false;
+    }
+    int iterations = 0;
+    try {
+        std::size_t consumed = 0;
+        iterations = std::stoi(parts[1], &consumed);
+        if (consumed != parts[1].size() || iterations < 100000 || iterations > 1000000) {
+            return false;
+        }
+    } catch (...) {
+        return false;
+    }
+    const auto salt = hexToBytes(parts[2]);
+    const auto expected = hexToBytes(parts[3]);
+    if (salt.size() != 16 || expected.size() != 32) {
+        return false;
+    }
+    std::vector<unsigned char> actual(expected.size());
+    if (PKCS5_PBKDF2_HMAC(
+            password.data(), static_cast<int>(password.size()),
+            salt.data(), static_cast<int>(salt.size()), iterations, EVP_sha256(),
+            static_cast<int>(actual.size()), actual.data()) != 1) {
+        return false;
+    }
+    return constantTimeEquals(actual, expected);
+}
+
+std::string makeSharePasswordHash(const std::string& password) {
+    const auto saltHex = randomHex(16);
+    const auto salt = hexToBytes(saltHex);
+    std::array<unsigned char, 32> derived{};
+    if (PKCS5_PBKDF2_HMAC(
+            password.data(), static_cast<int>(password.size()),
+            salt.data(), static_cast<int>(salt.size()), kSharePasswordIterations,
+            EVP_sha256(), static_cast<int>(derived.size()), derived.data()) != 1) {
+        throw std::runtime_error("password derivation failed");
+    }
+    return "pbkdf2_sha256$" + std::to_string(kSharePasswordIterations) + "$" +
+        saltHex + "$" + bytesToHex(derived.data(), derived.size());
+}
 
 // A page comfortably exceeds MAX_DIAGRAMS_PER_GUEST, so a guest still gets its
 // whole list in one request and only the admin view ever pages.
@@ -493,21 +541,64 @@ void Routes::sendJson(httplib::Response& res, int status, const nlohmann::json& 
 }
 
 bool Routes::verifyPassword(const std::string& password) const {
-    auto parts = split(cfg_.authPasswordHash, '$');
-    if (parts.size() != 4 || parts[0] != "pbkdf2_sha256") {
+    return verifyPbkdf2Password(password, cfg_.authPasswordHash);
+}
+
+std::string Routes::makeShareAccessCookie(
+    const httplib::Request& req, const std::string& slug,
+    long passwordVersion) const {
+    const auto expiry = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count() +
+        kShareAccessSeconds;
+    const auto slugDigest = sha256Hex("share-access:v1:" + slug);
+    const auto payload = "v1." + slugDigest + "." +
+        std::to_string(passwordVersion) + "." + std::to_string(expiry);
+    const auto value = payload + "." +
+        hmacHex(cfg_.sessionSigningSecret, "share-access-cookie:" + payload);
+    return sessionCookieWithName(
+        req,
+        requestIsSecure(req) ? kHostShareAccessCookie : kLegacyShareAccessCookie,
+        value, kShareAccessSeconds);
+}
+
+bool Routes::verifyShareAccess(
+    const httplib::Request& req, const std::string& slug,
+    long passwordVersion) const {
+    const auto value = cookieValue(
+        req, requestIsSecure(req) ? kHostShareAccessCookie : kLegacyShareAccessCookie);
+    const auto parts = split(value, '.');
+    if (parts.size() != 5 || parts[0] != "v1") {
         return false;
     }
-    int iterations = std::stoi(parts[1]);
-    auto salt = hexToBytes(parts[2]);
-    auto expected = hexToBytes(parts[3]);
-    if (salt.empty() || expected.empty()) {
+    long storedVersion = -1;
+    long long expiry = 0;
+    try {
+        std::size_t versionConsumed = 0;
+        std::size_t expiryConsumed = 0;
+        storedVersion = std::stol(parts[2], &versionConsumed);
+        expiry = std::stoll(parts[3], &expiryConsumed);
+        if (versionConsumed != parts[2].size() || expiryConsumed != parts[3].size()) {
+            return false;
+        }
+    } catch (...) {
         return false;
     }
-    std::vector<unsigned char> actual(expected.size());
-    if (PKCS5_PBKDF2_HMAC(password.c_str(), static_cast<int>(password.size()), salt.data(), static_cast<int>(salt.size()), iterations, EVP_sha256(), static_cast<int>(actual.size()), actual.data()) != 1) {
+    const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    if (storedVersion != passwordVersion || expiry <= now ||
+        parts[1].size() != 64 || parts[4].size() != 64) {
         return false;
     }
-    return constantTimeEquals(actual, expected);
+    const auto expectedSlug = hexToBytes(sha256Hex("share-access:v1:" + slug));
+    const auto suppliedSlug = hexToBytes(parts[1]);
+    if (!constantTimeEquals(expectedSlug, suppliedSlug)) {
+        return false;
+    }
+    const auto payload = parts[0] + "." + parts[1] + "." + parts[2] + "." + parts[3];
+    const auto expectedSignature = hexToBytes(
+        hmacHex(cfg_.sessionSigningSecret, "share-access-cookie:" + payload));
+    const auto suppliedSignature = hexToBytes(parts[4]);
+    return constantTimeEquals(expectedSignature, suppliedSignature);
 }
 
 std::string Routes::makeSessionCookie(const httplib::Request& req, const std::string& username) const {
@@ -933,9 +1024,11 @@ void Routes::registerRoutes(httplib::Server& server) {
         const auto contentType = req.get_header_value("Content-Type");
         const auto contentTypeCount = req.get_header_value_count("Content-Type");
         const auto isLoginForm = req.method == "POST" && req.path == "/login";
+        const auto isShareUnlockForm = req.method == "POST" &&
+            req.path.starts_with("/d/") && req.path.ends_with("/unlock");
         const auto isApiMutation = req.path.starts_with("/api/") &&
             req.method != "GET" && req.method != "HEAD" && req.method != "OPTIONS";
-        const auto invalidLoginType = isLoginForm &&
+        const auto invalidLoginType = (isLoginForm || isShareUnlockForm) &&
             (contentTypeCount != 1 ||
              !contentTypeMatches(contentType, "application/x-www-form-urlencoded"));
         const auto invalidApiType = isApiMutation &&
@@ -1185,10 +1278,20 @@ void Routes::registerRoutes(httplib::Server& server) {
             return;
         }
         try {
-            if (!storage_.activeShareExists(slug)) {
+            const auto policy = storage_.shareAccessPolicy(slug);
+            if (!policy.has_value()) {
                 res.status = 404;
                 res.set_content("not found", "text/plain; charset=utf-8");
                 logSecurityEvent(req, res, "share_view", "blocked");
+                return;
+            }
+            if (policy->passwordProtected &&
+                !verifyShareAccess(req, slug, policy->passwordVersion)) {
+                res.status = 200;
+                res.set_content(
+                    renderShareUnlockPage(slug, "", assetVersion_),
+                    "text/html; charset=utf-8");
+                logSecurityEvent(req, res, "share_password", "required");
                 return;
             }
         } catch (const std::exception&) {
@@ -1203,6 +1306,95 @@ void Routes::registerRoutes(httplib::Server& server) {
             return;
         }
         res.set_content(renderEditorPage("guest", cfg_.baseUrl, false, assetVersion_), "text/html; charset=utf-8");
+    });
+    server.Post(R"(/d/([A-Za-z0-9-]+)/unlock)", [this](const httplib::Request& req, httplib::Response& res) {
+        res.set_header("X-Robots-Tag", "noindex, nofollow, noarchive");
+        const auto slug = req.matches[1].str();
+        if (!safeSlug(slug) || req.body.size() > 1024) {
+            res.status = 404;
+            res.set_content("not found", "text/plain; charset=utf-8");
+            logSecurityEvent(req, res, "share_view", "blocked");
+            return;
+        }
+
+        ShareAccessPolicy policy;
+        try {
+            const auto activePolicy = storage_.shareAccessPolicy(slug);
+            if (!activePolicy.has_value()) {
+                res.status = 404;
+                res.set_content("not found", "text/plain; charset=utf-8");
+                logSecurityEvent(req, res, "share_view", "blocked");
+                return;
+            }
+            policy = *activePolicy;
+            if (!policy.passwordProtected) {
+                res.status = 303;
+                res.set_header("Location", "/d/" + slug);
+                return;
+            }
+        } catch (const std::exception&) {
+            res.status = 503;
+            res.set_content(
+                renderShareUnlockPage(
+                    slug, "Unlock validation is temporarily unavailable.", assetVersion_),
+                "text/html; charset=utf-8");
+            logSecurityEvent(req, res, "storage_failure", "error");
+            return;
+        }
+
+        const auto limiterKey = hmacHex(
+            cfg_.rateLimitSecret,
+            "rate-limit:v1:share-unlock:" + sha256Hex(slug) + ":" + clientIp(req));
+        try {
+            if (!storage_.consumeRateLimit(limiterKey, 8, kLoginFailureWindow)) {
+                res.status = 429;
+                res.set_content(
+                    renderShareUnlockPage(
+                        slug, "Too many attempts. Try again later.", assetVersion_),
+                    "text/html; charset=utf-8");
+                logSecurityEvent(req, res, "share_password", "rate_limited");
+                return;
+            }
+        } catch (const std::exception&) {
+            res.status = 503;
+            res.set_content(
+                renderShareUnlockPage(
+                    slug, "Unlock validation is temporarily unavailable.", assetVersion_),
+                "text/html; charset=utf-8");
+            logSecurityEvent(req, res, "rate_limit_storage", "error");
+            return;
+        }
+
+        try {
+            const auto password = formValue(req.body, "password");
+            if (password.size() < 10 || password.size() > 128 ||
+                !verifyPbkdf2Password(password, policy.passwordHash)) {
+                res.status = 401;
+                res.set_content(
+                    renderShareUnlockPage(slug, "Invalid password", assetVersion_),
+                    "text/html; charset=utf-8");
+                logSecurityEvent(req, res, "share_password", "failed");
+                return;
+            }
+            res.status = 303;
+            res.set_header(
+                "Set-Cookie",
+                makeShareAccessCookie(req, slug, policy.passwordVersion));
+            res.set_header("Location", "/d/" + slug);
+            logSecurityEvent(req, res, "share_password", "unlocked");
+            try {
+                storage_.clearRateLimit(limiterKey);
+            } catch (const std::exception&) {
+                logSecurityEvent(req, res, "rate_limit_storage", "clear_error");
+            }
+        } catch (const std::exception&) {
+            res.status = 503;
+            res.set_content(
+                renderShareUnlockPage(
+                    slug, "Unlock validation is temporarily unavailable.", assetVersion_),
+                "text/html; charset=utf-8");
+            logSecurityEvent(req, res, "storage_failure", "error");
+        }
     });
     server.Get("/docs", [this](const httplib::Request& req, httplib::Response& res) {
         if (!ensureAuthenticated(req, res, true)) return;
@@ -1428,7 +1620,20 @@ void Routes::registerRoutes(httplib::Server& server) {
             return;
         }
         try {
-            auto diagram = storage_.getDiagramBySlug(slug);
+            const auto policy = storage_.shareAccessPolicy(slug);
+            if (!policy.has_value()) {
+                throw std::runtime_error("diagram not found");
+            }
+            const auto passwordVersion = policy->passwordProtected
+                ? policy->passwordVersion
+                : -1;
+            if (policy->passwordProtected &&
+                !verifyShareAccess(req, slug, policy->passwordVersion)) {
+                logSecurityEvent(req, res, "share_password", "required");
+                sendJson(res, 401, errorJson("share password required"));
+                return;
+            }
+            auto diagram = storage_.getDiagramBySlug(slug, passwordVersion);
             sendDiagramJson(req, res, 200, diagram);
         } catch (const std::exception& e) {
             sendStorageError(req, res, e, 404);
@@ -1448,8 +1653,21 @@ void Routes::registerRoutes(httplib::Server& server) {
         if (!parseIdempotencyRequest(req, res, "fork",
                                      slug + "\n" + req.body, idempotency)) return;
         try {
+            const auto policy = storage_.shareAccessPolicy(slug);
+            if (!policy.has_value()) {
+                throw std::runtime_error("diagram not found");
+            }
+            const auto passwordVersion = policy->passwordProtected
+                ? policy->passwordVersion
+                : -1;
+            if (policy->passwordProtected &&
+                !verifyShareAccess(req, slug, policy->passwordVersion)) {
+                logSecurityEvent(req, res, "share_password", "required");
+                sendJson(res, 401, errorJson("share password required"));
+                return;
+            }
             const auto copy = storage_.forkDiagramBySlug(
-                slug, ownerHashForRequest(req), idempotency);
+                slug, ownerHashForRequest(req), idempotency, passwordVersion);
             if (!copy.replayed) metrics_.recordDiagramCreated("fork");
             sendCreationResult(req, res, copy);
         } catch (const std::exception& e) {
@@ -1487,7 +1705,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         long expectedRevision = 0;
         if (!ensureExpectedRevision(req, res, id, expectedRevision)) return;
         try {
-            if (req.body.size() > 128) {
+            if (req.body.size() > 1024) {
                 throw std::invalid_argument("sharing request is too large");
             }
             const auto body = nlohmann::json::parse(req.body);
@@ -1496,11 +1714,43 @@ void Routes::registerRoutes(httplib::Server& server) {
             }
             for (const auto& [key, value] : body.items()) {
                 (void)value;
-                if (key != "action" && key != "expires_in") {
+                if (key != "action" && key != "expires_in" && key != "password") {
                     throw std::invalid_argument("unknown sharing field");
                 }
             }
             const auto actionName = body["action"].get<std::string>();
+            if (actionName == "set_password") {
+                if (body.size() != 2 || !body.contains("password") ||
+                    !body["password"].is_string()) {
+                    throw std::invalid_argument(
+                        "set_password requires only one password field");
+                }
+                const auto password = body["password"].get<std::string>();
+                if (password.size() < 10 || password.size() > 128) {
+                    throw std::invalid_argument(
+                        "share password must be 10-128 bytes");
+                }
+                const auto diagram = storage_.updateSharePassword(
+                    id, expectedRevision, makeSharePasswordHash(password));
+                sendDiagramJson(req, res, 200, diagram);
+                logSecurityEvent(req, res, "sharing_change", "password_updated");
+                return;
+            }
+            if (actionName == "remove_password") {
+                if (body.size() != 1) {
+                    throw std::invalid_argument(
+                        "remove_password does not accept other fields");
+                }
+                const auto diagram = storage_.updateSharePassword(
+                    id, expectedRevision, std::nullopt);
+                sendDiagramJson(req, res, 200, diagram);
+                logSecurityEvent(req, res, "sharing_change", "password_removed");
+                return;
+            }
+            if (body.contains("password")) {
+                throw std::invalid_argument(
+                    "password is only accepted by set_password");
+            }
             ShareAction action;
             ShareExpiry expiry;
             std::string outcome;

@@ -3,8 +3,8 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "NuiGraph Studio API",
-    "version": "1.5.0",
-    "description": "Session-oriented API for private diagrams, trash and restore, guest data export/deletion, templates, version history and capability-based sharing. Start with GET /api/session and retain its HttpOnly cookie. Unsafe requests require the returned CSRF token in X-CSRF-Token. Production HTTPS uses __Host-ngs_session; loopback HTTP development uses ngs_session."
+    "version": "1.6.0",
+    "description": "Session-oriented API for private diagrams, trash and restore, guest data export/deletion, templates, version history and capability-based sharing with optional password protection. Start with GET /api/session and retain its HttpOnly cookie. Unsafe requests require the returned CSRF token in X-CSRF-Token. Production HTTPS uses __Host-ngs_session; loopback HTTP development uses ngs_session."
   },
   "servers": [{ "url": "/", "description": "Current NuiGraph Studio origin" }],
   "externalDocs": { "description": "Application documentation", "url": "/docs" },
@@ -264,7 +264,7 @@
       "parameters": [{ "$ref": "#/components/parameters/DiagramId" }],
       "post": {
         "operationId": "updateDiagramSharing",
-        "summary": "Enable, disable, rotate or expire a share capability",
+        "summary": "Enable, disable, rotate, expire or password-protect a share capability",
         "tags": ["Sharing"],
         "security": [
           { "sessionCookie": [], "csrfHeader": [] },
@@ -663,7 +663,7 @@
           { "$ref": "#/components/schemas/DiagramInput" },
           {
             "type": "object",
-            "required": ["id", "slug", "created_at", "updated_at", "revision", "sharing_enabled", "share_expires_at", "share_expired"],
+            "required": ["id", "slug", "created_at", "updated_at", "revision", "sharing_enabled", "share_expires_at", "share_expired", "share_password_protected"],
             "properties": {
               "id": { "type": "integer", "format": "int64", "minimum": 1 },
               "slug": { "type": "string" },
@@ -672,7 +672,8 @@
               "revision": { "type": "integer", "format": "int64", "minimum": 1 },
               "sharing_enabled": { "type": "boolean" },
               "share_expires_at": { "type": ["string", "null"], "format": "date-time" },
-              "share_expired": { "type": "boolean" }
+              "share_expired": { "type": "boolean" },
+              "share_password_protected": { "type": "boolean", "readOnly": true }
             }
           }
         ]
@@ -692,7 +693,7 @@
       },
       "DiagramSummary": {
         "type": "object",
-        "required": ["id", "title", "slug", "sharing_enabled", "share_expires_at", "share_expired", "description", "created_at", "updated_at", "deleted_at", "revision", "node_count", "edge_count"],
+        "required": ["id", "title", "slug", "sharing_enabled", "share_expires_at", "share_expired", "share_password_protected", "description", "created_at", "updated_at", "deleted_at", "revision", "node_count", "edge_count"],
         "properties": {
           "id": { "type": "integer", "format": "int64", "minimum": 1 },
           "title": { "type": "string", "maxLength": 120 },
@@ -700,6 +701,7 @@
           "sharing_enabled": { "type": "boolean" },
           "share_expires_at": { "type": ["string", "null"], "format": "date-time" },
           "share_expired": { "type": "boolean" },
+          "share_password_protected": { "type": "boolean", "readOnly": true },
           "description": { "type": "string", "maxLength": 1000 },
           "revision": { "type": "integer", "format": "int64", "minimum": 1 },
           "created_at": { "type": "string", "format": "date-time" },
@@ -819,8 +821,9 @@
         "additionalProperties": false,
         "required": ["action"],
         "properties": {
-          "action": { "type": "string", "enum": ["enable", "disable", "rotate", "set_expiry"] },
-          "expires_in": { "type": ["integer", "null"], "enum": [300, 3600, 86400, 604800, 2592000, null] }
+          "action": { "type": "string", "enum": ["enable", "disable", "rotate", "set_expiry", "set_password", "remove_password"] },
+          "expires_in": { "type": ["integer", "null"], "enum": [300, 3600, 86400, 604800, 2592000, null] },
+          "password": { "type": "string", "minLength": 10, "maxLength": 128, "writeOnly": true, "description": "Supplied separately from the link and accepted only by set_password; the server enforces 10–128 UTF-8 bytes and never returns or logs it." }
         }
       },
       "Ok": {

@@ -908,6 +908,29 @@ test.describe("desktop security and offline lifecycle", () => {
       const firstLink = await shareInput.inputValue();
       expect(firstLink).toMatch(/\/d\/[a-z0-9-]+-[0-9a-f]{32}$/);
 
+      const sharePassword = sharingDialog.getByLabel("Optional share password", { exact: true });
+      const addSharePassword = sharingDialog.getByRole("button", { name: "Add password", exact: true });
+      await expect(addSharePassword).toBeDisabled();
+      await sharePassword.fill("browser-share-password");
+      await expect(addSharePassword).toBeEnabled();
+      await addSharePassword.click();
+      await expect(sharingDialog.getByLabel("Replace share password", { exact: true })).toBeVisible();
+      await expect(sharingDialog.getByText(/link and its separately supplied password/)).toBeVisible();
+
+      const protectedShare = await context.newPage();
+      await protectedShare.goto(firstLink, { waitUntil: "networkidle" });
+      await expect(protectedShare.getByRole("heading", { name: "Protected diagram" })).toBeVisible();
+      await expect(protectedShare.locator("#canvas")).toHaveCount(0);
+      await expectNoHighImpactAccessibilityViolations(protectedShare, testInfo, "share-password-challenge");
+      const unlockPassword = protectedShare.getByLabel("Share password", { exact: true });
+      await unlockPassword.fill("wrong-share-password");
+      await protectedShare.getByRole("button", { name: "Unlock diagram", exact: true }).click();
+      await expect(protectedShare.getByText("Invalid password", { exact: true })).toBeVisible();
+      await unlockPassword.fill("browser-share-password");
+      await protectedShare.getByRole("button", { name: "Unlock diagram", exact: true }).click();
+      await expect(protectedShare.locator("#canvas")).toBeVisible();
+      await protectedShare.close();
+
       await lifetime.selectOption("never");
       await sharingDialog.getByRole("button", { name: "Update expiry" }).click();
       await expect(sharingDialog.getByText(/no automatic expiry/i)).toBeVisible();

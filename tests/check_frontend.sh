@@ -124,6 +124,12 @@ grep -Fq 'h1{}("NuiGraph Studio")' nui-frontend/frontend/source/frontend/main_pa
 grep -Fq 'schema.org/SoftwareApplication' public/nui/index.html
 grep -Fq 'schema.org/SoftwareApplication' nui-frontend/static/index.html
 grep -Fq 'Share link lifetime' public/editor.js
+grep -Fq 'Optional share password' public/editor.js
+grep -Fq 'remove_password' public/editor.js
+grep -Fq 'share_password_protected' public/editor.js
+grep -Fq '<h1>Protected diagram</h1>' src/ui/NuiApp.cpp
+grep -Fq 'name="password" autocomplete="current-password" required minlength="10" maxlength="128"' src/ui/NuiApp.cpp
+grep -Fq 'share-password verifiers' src/ui/NuiApp.cpp
 grep -Fq 'NODE_NAVIGATOR_RESULT_LIMIT = 100' public/editor.js
 grep -Fq 'evt.key === "/"' public/editor.js
 grep -Fq 'DIAGRAM_OUTLINE_RESULT_LIMIT = 250' public/editor.js

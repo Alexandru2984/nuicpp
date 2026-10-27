@@ -91,6 +91,15 @@ throttling, exact typed confirmation, cross-session tests, historical capability
 redaction and explicit admin denial constrain the boundary. A responsive dialog,
 public notice, OpenAPI 1.5 contract and aggregate alerts accompany it; external
 log/backup erasure and deployment-specific legal approval remain open.
+Optional share passwords now add a separately supplied PBKDF2-protected factor
+to active bearer links. A persistent per-link/IP limiter, fixed signed unlock
+cookie and password-version binding cover page, API and fork access; password
+replacement, rotation, disable and trash revoke old access. The new live test
+also found that the prior route redactors matched only base capability paths:
+raw slugs could reach application/nginx logs on `/unlock` and `/fork` suffixes.
+Both redactors and their static/live regressions now cover every share route.
+The public contract is now OpenAPI 1.6 and exposes only the protection boolean;
+the verifier and plaintext are never response fields.
 The previous trash-retention stage gate passed all 20 CTest suites against disposable PostgreSQL,
 including the dedicated cross-session trash lifecycle and real Chromium
 desktop/mobile accessibility flows; ShellCheck, Cppcheck, the repository secret
@@ -99,6 +108,11 @@ The privacy stage gate passed all 21 suites against a fresh disposable
 PostgreSQL 18 database, including the dedicated cross-session export/delete test
 and responsive Chromium dialog coverage. The same static analyzers, secret scan,
 29-rule promtool validation and high-severity npm audit passed.
+The protected-sharing stage gate passed all 22 suites against the disposable
+PostgreSQL 18 database in 88.99 seconds, including the dedicated password test,
+real Chromium and migration ledger. All 57 C++ tests, Cppcheck, ShellCheck,
+the 131-file secret scan, OpenAPI 23/23 validation, 30-rule promtool validation
+and high-severity npm audit also passed with zero reported vulnerabilities.
 
 ## Executive verdict
 
@@ -183,6 +197,41 @@ the repository-wide verdict stays **MITIGATE THEN SHIP**.
 **Verdict:** safe to ship as a bounded guest-session feature. Repository-wide
 status remains **MITIGATE THEN SHIP** because live detection and recovery are
 still deferred; the feature must not be represented as complete legal compliance.
+
+## CISO gate: password-protected share links (2026-10-27)
+
+- **Threat model:** the leading risks are brute-force guessing after a bearer
+  URL leaks (medium likelihood, medium impact), password or capability leakage
+  through a URL/log/response (low/high after controls), bypassing protection on
+  one of the page/API/fork paths (low/high), and theft of an unlock cookie
+  (medium/medium). PBKDF2 storage, persistent throttling, complete route checks,
+  redaction regressions and version-bound signed cookies address the application
+  paths; a copied valid cookie remains usable until revocation or expiry.
+- **Blast radius:** one successful unlock exposes and permits forking one active
+  diagram. The fixed cookie unlocks only one protected share at a time and grants
+  neither ownership nor administrator access; it cannot enumerate other rows.
+  Database/host or owner-session compromise retains the larger repository-wide
+  exposure described below.
+- **Detection:** aggregate failed/rate-limited outcomes have a checked-in alert
+  and a redaction-safe response runbook. Current production MTTD remains
+  effectively unbounded until Prometheus, Alertmanager and a monitored receiver
+  are installed and exercised.
+- **Response:** an owner can replace the password, rotate the link or disable
+  sharing to invalidate old cookies; the runbook covers evidence and edge
+  containment without collecting secrets. This exact attack scenario has not
+  been tabletop-tested.
+- **Regulatory:** the database retains a salted verifier, link-protection state
+  and pseudonymous rate-limit metadata; the browser receives a bounded cookie.
+  The public notice describes these facts and self-service export excludes the
+  verifier. This does not by itself establish a lawful basis, complete notice or
+  regulatory compliance for the operator's deployment.
+- **Supply chain:** no dependency, vendor, subprocessor or external data flow was
+  added. Password derivation uses the existing OpenSSL dependency and protection
+  stays within the existing application, PostgreSQL and requesting browser.
+
+**Verdict:** the code-level feature is safe to ship and its full stage gate
+passed. The repository-wide verdict remains **MITIGATE THEN SHIP** because live
+paging, recovery and deployment remain outstanding.
 
 ## Evidence snapshot
 
@@ -292,10 +341,12 @@ costs.
    deny new writes. Deploy the change and its capacity alert; add retention and
    cleanup, and require stronger proof for suspicious anonymous creation.
 2. **Bearer capabilities in historical/error logs.** Application and dedicated
-   nginx access logging now redact `/d/{slug}` and
-   `/api/diagrams/slug/{slug}`. Historical records and nginx error messages may
-   still contain capabilities; restrict retention/access and rotate legacy
-   links whose exposure cannot be ruled out.
+   nginx access logging now redact `/d/{slug}`, `/d/{slug}/unlock`,
+   `/api/diagrams/slug/{slug}` and `/api/diagrams/slug/{slug}/fork`. The
+   protected-share live regression found and closed a real suffix-route gap in
+   both redactors. Historical records and nginx error messages may still contain
+   capabilities; restrict retention/access and rotate legacy links whose
+   exposure cannot be ruled out.
 3. **Detection gap.** Bounded metrics, validated alert rules and response steps
    now exist locally, but no verified collector/Alertmanager receiver is wired
    and there is no on-call rota. Until installation and a test alert, a quiet
@@ -341,6 +392,7 @@ costs.
 | Backup failure | Backup timer fails or no verified artifact appears in 26 hours | 30 minutes | VPS operator |
 | Secret/token exposure | Secret scan or bearer token appears in non-redacted application logs | Before merge / 15 minutes runtime | Maintainer |
 | Idempotency misuse | 10 malformed or conflicting key events within 10 minutes for 2 minutes | 12 minutes | VPS operator |
+| Share-password guessing | 10 failed or rate-limited unlocks within 10 minutes for 2 minutes | 12 minutes | VPS operator |
 
 Current MTTD is effectively unbounded for silent disclosure and bounded only by
 manual journal inspection for most other scenarios.

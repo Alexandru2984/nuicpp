@@ -18,6 +18,11 @@ public:
 private:
     bool ensureAuthenticated(const httplib::Request& req, httplib::Response& res, bool htmlResponse);
     bool verifyPassword(const std::string& password) const;
+    std::string makeShareAccessCookie(const httplib::Request& req,
+                                      const std::string& slug,
+                                      long passwordVersion) const;
+    bool verifyShareAccess(const httplib::Request& req, const std::string& slug,
+                           long passwordVersion) const;
     std::string makeSessionValue(const std::string& username, int maxAgeSeconds = 28800) const;
     std::string makeSessionValueUntil(const std::string& username, long long expiry) const;
     std::string makeSessionCookie(const httplib::Request& req, const std::string& username) const;

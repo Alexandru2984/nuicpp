@@ -163,6 +163,18 @@ groups:
           summary: Repeated invalid or expired NuiGraph share-link requests
           runbook: docs/MONITORING.md#share-link-probing-or-expiry-noise
 
+      - alert: NuiGraphSharePasswordAttack
+        expr: |
+          sum(increase(nuigraph_security_events_total{
+            job="nuigraph",event="share_password",outcome=~"failed|rate_limited"
+          }[10m])) >= 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Repeated NuiGraph share-password failures were observed
+          runbook: docs/MONITORING.md#share-password-attack
+
       - alert: NuiGraphRateLimitStorageFailure
         expr: |
           increase(nuigraph_security_events_total{
