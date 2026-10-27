@@ -30,6 +30,14 @@ public:
     using std::runtime_error::runtime_error;
 };
 
+struct AdminSessionInfo {
+    std::string id;
+    std::string deviceLabel;
+    std::string createdAt;
+    std::string lastSeenAt;
+    std::string expiresAt;
+};
+
 struct IdempotencyRequest {
     std::string principalKey;
     std::string operation;
@@ -103,6 +111,13 @@ public:
                           long long windowSeconds);
     void clearRateLimit(const std::string& bucketKey);
     bool consumeAdminTotpCounter(long long counter);
+    void createAdminSession(const std::string& id, const std::string& tokenHash,
+                            const std::string& authStateHash,
+                            const std::string& deviceLabel, long long expiresAt);
+    bool validateAdminSession(const std::string& id, const std::string& tokenHash,
+                              const std::string& authStateHash);
+    std::vector<AdminSessionInfo> listAdminSessions(const std::string& authStateHash);
+    bool revokeAdminSession(const std::string& id, const std::string& authStateHash);
     DiagramCreationResult createDiagram(
         const Diagram& input, bool importMode, const std::string& ownerTokenHash = "",
         const std::optional<IdempotencyRequest>& idempotency = std::nullopt);

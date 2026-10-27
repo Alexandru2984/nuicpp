@@ -25,12 +25,16 @@ private:
                            long passwordVersion) const;
     std::string makeSessionValue(const std::string& username, int maxAgeSeconds = 28800) const;
     std::string makeSessionValueUntil(const std::string& username, long long expiry) const;
-    std::string makeSessionCookie(const httplib::Request& req, const std::string& username) const;
-    std::string makeCookie(const httplib::Request& req, const std::string& username, int maxAgeSeconds) const;
+    std::string adminAuthStateHash() const;
+    std::string makeAdminSessionPrincipal(const std::string& id,
+                                          const std::string& token,
+                                          const std::string& signingSecret) const;
     bool verifySession(const httplib::Request& req, std::string* username,
                        bool* usedPreviousKey = nullptr,
                        long long* expiryAt = nullptr,
-                       bool* usedLegacyCookie = nullptr) const;
+                       bool* usedLegacyCookie = nullptr,
+                       std::string* adminSessionId = nullptr,
+                       std::string* renewalPrincipal = nullptr) const;
     std::string csrfTokenForSession(const std::string& session) const;
     bool verifyCsrf(const httplib::Request& req) const;
     bool ensureCsrf(const httplib::Request& req, httplib::Response& res);

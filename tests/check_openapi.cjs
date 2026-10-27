@@ -31,6 +31,7 @@ inspectReferences(spec);
 
 function normaliseRoute(raw) {
   let route = raw.replaceAll("\\.json", ".json");
+  route = route.replace("([0-9a-f]{32})", "{sessionId}");
   if (route.includes("/templates/")) route = route.replace("([A-Za-z0-9-]+)", "{key}");
   else route = route.replace("([A-Za-z0-9-]+)", "{slug}");
   let numeric = 0;
@@ -74,7 +75,9 @@ for (const [route, pathItem] of Object.entries(spec.paths)) {
 }
 
 assert.deepEqual([...documented].sort(), [...implemented].sort(), "OpenAPI routes drifted from Routes.cpp");
-assert.equal(operationIds.size, 23);
+assert.equal(operationIds.size, 25);
+assert.equal(spec.info.version, "1.7.0");
+assert.equal(spec.components.schemas.AdminSessionList.properties.sessions.maxItems, 20);
 assert.equal(spec.paths["/api/trash"].get.responses["200"].$ref,
   "#/components/responses/TrashListResponse");
 assert.ok(spec.components.schemas.TrashList.allOf.some((entry) =>

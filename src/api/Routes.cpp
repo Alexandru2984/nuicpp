@@ -67,6 +67,14 @@ std::string randomHex(std::size_t bytes) {
     return bytesToHex(data.data(), data.size());
 }
 
+bool isLowerHex(const std::string& value, std::size_t length) {
+    return value.size() == length &&
+        std::all_of(value.begin(), value.end(), [](unsigned char character) {
+            return (character >= '0' && character <= '9') ||
+                   (character >= 'a' && character <= 'f');
+        });
+}
+
 bool constantTimeEquals(const std::vector<unsigned char>& a, const std::vector<unsigned char>& b) {
     if (a.size() != b.size()) return false;
     unsigned char diff = 0;
@@ -113,6 +121,15 @@ std::string trimHeaderValue(std::string value) {
         value.pop_back();
     }
     return value;
+}
+
+std::string deviceLabel(const std::string& supplied) {
+    auto label = trimHeaderValue(supplied);
+    const auto valid = !label.empty() && label.size() <= 64 &&
+        std::all_of(label.begin(), label.end(), [](unsigned char character) {
+            return character >= 0x20 && character <= 0x7e;
+        });
+    return valid ? label : "Admin session";
 }
 
 // The service binds loopback only, so the sole legitimate peer is the local
@@ -602,14 +619,6 @@ bool Routes::verifyShareAccess(
     return constantTimeEquals(expectedSignature, suppliedSignature);
 }
 
-std::string Routes::makeSessionCookie(const httplib::Request& req, const std::string& username) const {
-    return makeCookie(req, username, 28800);
-}
-
-std::string Routes::makeCookie(const httplib::Request& req, const std::string& username, int maxAgeSeconds) const {
-    return sessionCookie(req, makeSessionValue(username, maxAgeSeconds), maxAgeSeconds);
-}
-
 std::string Routes::makeSessionValue(const std::string& username, int maxAgeSeconds) const {
     auto expiry = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count() + maxAgeSeconds;
@@ -617,19 +626,28 @@ std::string Routes::makeSessionValue(const std::string& username, int maxAgeSeco
 }
 
 std::string Routes::makeSessionValueUntil(const std::string& username, long long expiry) const {
-    auto principal = username;
-    if (username == cfg_.authUsername && !cfg_.authTotpSecret.empty()) {
-        principal += "~totp~" + hmacHex(
-            cfg_.sessionSigningSecret,
-            "admin-totp-binding:v1:" + cfg_.authTotpSecret).substr(0, 32);
-    }
-    std::string payload = principal + "." + std::to_string(expiry);
+    std::string payload = username + "." + std::to_string(expiry);
     return payload + "." + hmacHex(cfg_.sessionSigningSecret, payload);
+}
+
+std::string Routes::adminAuthStateHash() const {
+    return sha256Hex("admin-auth-state:v1:" + cfg_.authPasswordHash + ":" +
+                     cfg_.authTotpSecret);
+}
+
+std::string Routes::makeAdminSessionPrincipal(
+    const std::string& id, const std::string& token,
+    const std::string& signingSecret) const {
+    const auto binding = hmacHex(
+        signingSecret, "admin-auth-binding:v1:" + cfg_.authPasswordHash + ":" +
+                           cfg_.authTotpSecret).substr(0, 32);
+    return cfg_.authUsername + "~session~" + id + "~" + token + "~auth~" + binding;
 }
 
 bool Routes::verifySession(const httplib::Request& req, std::string* username,
                            bool* usedPreviousKey, long long* expiryAt,
-                           bool* usedLegacyCookie) const {
+                           bool* usedLegacyCookie, std::string* adminSessionId,
+                           std::string* renewalPrincipal) const {
     if (usedPreviousKey) {
         *usedPreviousKey = false;
     }
@@ -666,33 +684,44 @@ bool Routes::verifySession(const httplib::Request& req, std::string* username,
         *usedPreviousKey = previousMatches && !currentMatches;
     }
     auto resolvedUsername = parts[0];
-    const auto adminTotpPrefix = cfg_.authUsername + "~totp~";
-    if (!cfg_.authTotpSecret.empty()) {
-        const auto expectedAdminPrincipal = adminTotpPrefix +
-            hmacHex(cfg_.sessionSigningSecret,
-                    "admin-totp-binding:v1:" + cfg_.authTotpSecret).substr(0, 32);
-        auto expectedPreviousAdminPrincipal = std::string{};
-        if (!cfg_.previousSessionSigningSecret.empty()) {
-            expectedPreviousAdminPrincipal = adminTotpPrefix +
-                hmacHex(cfg_.previousSessionSigningSecret,
-                        "admin-totp-binding:v1:" + cfg_.authTotpSecret).substr(0, 32);
-        }
-        if (parts[0] == expectedAdminPrincipal ||
-            (!expectedPreviousAdminPrincipal.empty() &&
-             parts[0] == expectedPreviousAdminPrincipal)) {
-            resolvedUsername = cfg_.authUsername;
-        } else if (parts[0] == cfg_.authUsername || parts[0].starts_with(adminTotpPrefix)) {
-            // Enabling or rotating MFA revokes only administrator sessions;
-            // guest ownership cookies keep their stable principal unchanged.
+    auto canonicalPrincipal = parts[0];
+    const auto adminPrefix = cfg_.authUsername + "~";
+    if (parts[0].starts_with(adminPrefix) || parts[0] == cfg_.authUsername) {
+        const auto principal = split(parts[0], '~');
+        if (principal.size() != 6 || principal[0] != cfg_.authUsername ||
+            principal[1] != "session" || !isLowerHex(principal[2], 32) ||
+            !isLowerHex(principal[3], 64) || principal[4] != "auth" ||
+            !isLowerHex(principal[5], 32)) {
+            // Deployment of server-side sessions intentionally revokes every
+            // earlier stateless administrator cookie. Guest principals cannot
+            // contain '~' because their format is fixed by the server.
             return false;
         }
-    } else if (parts[0].starts_with(adminTotpPrefix)) {
-        // Disabling MFA is a break-glass transition and also forces a fresh
-        // password login instead of silently accepting an MFA-era session.
-        return false;
+        const auto currentPrincipal = makeAdminSessionPrincipal(
+            principal[2], principal[3], cfg_.sessionSigningSecret);
+        auto previousPrincipal = std::string{};
+        if (!cfg_.previousSessionSigningSecret.empty()) {
+            previousPrincipal = makeAdminSessionPrincipal(
+                principal[2], principal[3], cfg_.previousSessionSigningSecret);
+        }
+        if (parts[0] != currentPrincipal &&
+            (previousPrincipal.empty() || parts[0] != previousPrincipal)) {
+            return false;
+        }
+        if (!storage_.validateAdminSession(
+                principal[2], sha256Hex("admin-session-token:v1:" + principal[3]),
+                adminAuthStateHash())) {
+            return false;
+        }
+        resolvedUsername = cfg_.authUsername;
+        canonicalPrincipal = currentPrincipal;
+        if (adminSessionId) {
+            *adminSessionId = principal[2];
+        }
     }
     if (username) *username = resolvedUsername;
     if (expiryAt) *expiryAt = expiry;
+    if (renewalPrincipal) *renewalPrincipal = canonicalPrincipal;
     return true;
 }
 
@@ -988,10 +1017,16 @@ void Routes::logSecurityEvent(const httplib::Request& req, const httplib::Respon
     metrics_.recordSecurityEvent(event, outcome);
     std::string username;
     std::string actor = "anonymous";
-    if (verifySession(req, &username)) {
-        actor = username == cfg_.authUsername ? "admin" : "guest";
+    try {
+        if (verifySession(req, &username)) {
+            actor = username == cfg_.authUsername ? "admin" : "guest";
+        }
+    } catch (const std::exception&) {
+        // Logging must remain available during a session-store outage and must
+        // never replace the handler's deliberately generic failure response.
     }
-    if (event == "admin_login" && outcome == "succeeded") {
+    if ((event == "admin_login" && outcome == "succeeded") ||
+        (event == "admin_session" && outcome == "revoked")) {
         actor = "admin";
     }
     auto requestId = normalizeRequestId(res.get_header_value("X-Request-ID"));
@@ -1085,6 +1120,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         applySecurityHeaders(res);
         const auto& path = req.path;
         if (path == "/" || path == "/docs" || path == "/privacy" ||
+            path == "/admin/sessions" ||
             path == "/login" || path == "/logout" ||
             path == "/health" || path == "/live" || path == "/ready" || path == "/metrics" ||
             path.starts_with("/api/") || path.starts_with("/d/")) {
@@ -1226,6 +1262,10 @@ void Routes::registerRoutes(httplib::Server& server) {
         // nor shared caches may reuse this script without fetching it again.
         serveStatic(req, res, cfg_.projectRoot + "/public/sw.js", true);
     });
+    server.Get("/admin-sessions.js", [this](const httplib::Request& req,
+                                              httplib::Response& res) {
+        serveStatic(req, res, cfg_.projectRoot + "/public/admin-sessions.js");
+    });
     server.Get(R"(/icons/([A-Za-z0-9._-]+))", [this](const httplib::Request& req, httplib::Response& res) {
         const auto name = req.matches[1].str();
         if (name.find("..") != std::string::npos) {
@@ -1296,8 +1336,30 @@ void Routes::registerRoutes(httplib::Server& server) {
                     return;
                 }
             }
+            const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            const auto expiry = now + 8 * 60 * 60;
+            const auto adminSessionId = randomHex(16);
+            const auto adminSessionToken = randomHex(32);
+            try {
+                storage_.createAdminSession(
+                    adminSessionId,
+                    sha256Hex("admin-session-token:v1:" + adminSessionToken),
+                    adminAuthStateHash(), deviceLabel(formValue(req.body, "device_label")),
+                    expiry);
+            } catch (const std::exception&) {
+                res.status = 503;
+                res.set_content(renderLoginPage(
+                    "Sign-in validation is temporarily unavailable.", assetVersion_,
+                    !cfg_.authTotpSecret.empty()), "text/html; charset=utf-8");
+                logSecurityEvent(req, res, "storage_failure", "error");
+                return;
+            }
+            const auto principal = makeAdminSessionPrincipal(
+                adminSessionId, adminSessionToken, cfg_.sessionSigningSecret);
+            const auto session = makeSessionValueUntil(principal, expiry);
             res.status = 302;
-            res.set_header("Set-Cookie", makeSessionCookie(req, username));
+            res.set_header("Set-Cookie", sessionCookie(req, session, 8 * 60 * 60));
             res.set_header("Location", "/");
             logSecurityEvent(req, res, "admin_login", "succeeded");
             try {
@@ -1315,6 +1377,18 @@ void Routes::registerRoutes(httplib::Server& server) {
     });
     server.Post("/logout", [this](const httplib::Request& req, httplib::Response& res) {
         res.set_header("X-Robots-Tag", "noindex, nofollow, noarchive");
+        std::string username;
+        std::string adminSessionId;
+        try {
+            if (verifySession(req, &username, nullptr, nullptr, nullptr,
+                              &adminSessionId) &&
+                username == cfg_.authUsername && !adminSessionId.empty()) {
+                storage_.revokeAdminSession(adminSessionId, adminAuthStateHash());
+            }
+        } catch (const std::exception&) {
+            // Cookie expiration remains available during a database outage;
+            // the database-backed session expires after at most eight hours.
+        }
         res.status = 302;
         res.set_header("Set-Cookie", sessionCookie(req, "", 0));
         if (requestIsSecure(req)) {
@@ -1335,7 +1409,9 @@ void Routes::registerRoutes(httplib::Server& server) {
             res.set_content(nuiShellPage(cfg_.projectRoot, cfg_.baseUrl, true, assetVersion_), "text/html; charset=utf-8");
             return;
         }
-        res.set_content(renderEditorPage(username, cfg_.baseUrl, true, assetVersion_), "text/html; charset=utf-8");
+        res.set_content(renderEditorPage(
+            username, cfg_.baseUrl, true, assetVersion_,
+            username == cfg_.authUsername), "text/html; charset=utf-8");
     });
     server.Get(R"(/d/([A-Za-z0-9-]+))", [this](const httplib::Request& req, httplib::Response& res) {
         // Share slugs are bearer capabilities. Search indexing would both leak
@@ -1376,7 +1452,9 @@ void Routes::registerRoutes(httplib::Server& server) {
             res.set_content(nuiShellPage(cfg_.projectRoot, cfg_.baseUrl, false, assetVersion_), "text/html; charset=utf-8");
             return;
         }
-        res.set_content(renderEditorPage("guest", cfg_.baseUrl, false, assetVersion_), "text/html; charset=utf-8");
+        res.set_content(renderEditorPage(
+            "guest", cfg_.baseUrl, false, assetVersion_, false),
+            "text/html; charset=utf-8");
     });
     server.Post(R"(/d/([A-Za-z0-9-]+)/unlock)", [this](const httplib::Request& req, httplib::Response& res) {
         res.set_header("X-Robots-Tag", "noindex, nofollow, noarchive");
@@ -1476,14 +1554,33 @@ void Routes::registerRoutes(httplib::Server& server) {
             renderPrivacyPage(cfg_.baseUrl, cfg_.trashRetentionDays, assetVersion_),
             "text/html; charset=utf-8");
     });
+    server.Get("/admin/sessions", [this](const httplib::Request& req,
+                                           httplib::Response& res) {
+        std::string username;
+        try {
+            if (!verifySession(req, &username) || username != cfg_.authUsername) {
+                res.status = 302;
+                res.set_header("Location", "/login");
+                return;
+            }
+            res.set_header("X-Robots-Tag", "noindex, nofollow, noarchive");
+            res.set_content(renderAdminSessionsPage(assetVersion_),
+                            "text/html; charset=utf-8");
+        } catch (const std::exception&) {
+            res.status = 503;
+            res.set_content("Session inventory is temporarily unavailable.",
+                            "text/plain; charset=utf-8");
+        }
+    });
 
     server.Get("/api/session", [this](const httplib::Request& req, httplib::Response& res) {
         std::string username;
         bool usedPreviousKey = false;
         bool usedLegacyCookie = false;
         long long sessionExpiry = 0;
+        std::string renewalPrincipal;
         if (!verifySession(req, &username, &usedPreviousKey, &sessionExpiry,
-                           &usedLegacyCookie)) {
+                           &usedLegacyCookie, nullptr, &renewalPrincipal)) {
             if (!cfg_.publicAccess) {
                 sendJson(res, 401, errorJson("authentication required"));
                 return;
@@ -1503,7 +1600,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             const auto now = std::chrono::duration_cast<std::chrono::seconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
             const auto maxAge = static_cast<int>(std::max(1LL, sessionExpiry - now));
-            session = makeSessionValueUntil(username, sessionExpiry);
+            session = makeSessionValueUntil(renewalPrincipal, sessionExpiry);
             res.set_header("Set-Cookie", sessionCookie(req, session, maxAge));
             if (usedLegacyCookie) {
                 res.set_header("Set-Cookie", legacySessionCookie(req, "", 0));
@@ -1514,6 +1611,61 @@ void Routes::registerRoutes(httplib::Server& server) {
             }
         }
         sendJson(res, 200, {{"username", username}, {"public_access", cfg_.publicAccess}, {"csrf_token", csrfTokenForSession(session)}});
+    });
+
+    server.Get("/api/admin/sessions", [this](const httplib::Request& req,
+                                               httplib::Response& res) {
+        std::string username;
+        std::string currentId;
+        try {
+            if (!verifySession(req, &username, nullptr, nullptr, nullptr, &currentId) ||
+                username != cfg_.authUsername) {
+                sendJson(res, 403, errorJson("administrator session required"));
+                return;
+            }
+            nlohmann::json sessions = nlohmann::json::array();
+            for (const auto& item : storage_.listAdminSessions(adminAuthStateHash())) {
+                sessions.push_back({
+                    {"id", item.id}, {"device_label", item.deviceLabel},
+                    {"created_at", item.createdAt}, {"last_seen_at", item.lastSeenAt},
+                    {"expires_at", item.expiresAt}, {"current", item.id == currentId}
+                });
+            }
+            sendJson(res, 200, {{"sessions", sessions}, {"maximum_active", 20}});
+        } catch (const std::exception&) {
+            logSecurityEvent(req, res, "storage_failure", "error");
+            sendJson(res, 503, errorJson("session inventory temporarily unavailable"));
+        }
+    });
+
+    server.Delete(R"(/api/admin/sessions/([0-9a-f]{32}))", [this](
+        const httplib::Request& req, httplib::Response& res) {
+        if (!ensureCsrf(req, res)) return;
+        std::string username;
+        std::string currentId;
+        try {
+            if (!verifySession(req, &username, nullptr, nullptr, nullptr, &currentId) ||
+                username != cfg_.authUsername) {
+                sendJson(res, 403, errorJson("administrator session required"));
+                return;
+            }
+            const auto targetId = req.matches[1].str();
+            if (!storage_.revokeAdminSession(targetId, adminAuthStateHash())) {
+                sendJson(res, 404, errorJson("active session not found"));
+                return;
+            }
+            logSecurityEvent(req, res, "admin_session", "revoked");
+            if (targetId == currentId) {
+                res.set_header("Set-Cookie", sessionCookie(req, "", 0));
+                if (requestIsSecure(req)) {
+                    res.set_header("Set-Cookie", legacySessionCookie(req, "", 0));
+                }
+            }
+            sendJson(res, 200, {{"ok", true}, {"current_revoked", targetId == currentId}});
+        } catch (const std::exception&) {
+            logSecurityEvent(req, res, "storage_failure", "error");
+            sendJson(res, 503, errorJson("session revocation temporarily unavailable"));
+        }
     });
 
     // The list used to return every row. A guest is capped by the create quota,

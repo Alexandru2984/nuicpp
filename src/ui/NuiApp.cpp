@@ -82,7 +82,8 @@ std::string renderLoginPage(const std::string& error, const std::string& assetVe
       <label>Username<input name="username" autocomplete="username" required maxlength="80"></label>
       <label>Password<input type="password" name="password" autocomplete="current-password" required maxlength="200"></label>
 )HTML" + (totpRequired ? R"HTML(      <label>Authenticator code<input name="totp" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" required></label>
-)HTML" : "") + R"HTML(      <button type="submit">Sign in</button>
+)HTML" : "") + R"HTML(      <label>Device name <span class="muted">(optional)</span><input name="device_label" autocomplete="off" maxlength="64" placeholder="Work laptop"></label>
+      <button type="submit">Sign in</button>
       <a href="/health">Health check</a>
     </form>
   </main>
@@ -120,7 +121,8 @@ std::string renderShareUnlockPage(const std::string& slug, const std::string& er
 }
 
 std::string renderEditorPage(const std::string& username, const std::string& baseUrl,
-                             bool indexable, const std::string& assetVersion) {
+                             bool indexable, const std::string& assetVersion,
+                             bool administrator) {
     const auto canonicalUrl = normalizedBaseUrl(baseUrl) + "/";
     return std::string("<!doctype html>\n<html lang=\"en\"") +
         (indexable ? " itemscope itemtype=\"https://schema.org/SoftwareApplication\"" : "") + R"HTML(>
@@ -162,8 +164,9 @@ std::string renderEditorPage(const std::string& username, const std::string& bas
         <span id="draft-status" class="draft-status">Saved</span>
         <a href="/docs">Docs</a>
         <a href="/privacy">Privacy</a>
-        <a href="/login">Admin</a>
-      </div>
+)HTML" + (administrator ? R"HTML(        <a href="/admin/sessions">Sessions</a>
+)HTML" : R"HTML(        <a href="/login">Admin</a>
+)HTML") + R"HTML(      </div>
     </header>
     <aside class="project-panel">
       <div class="panel-head">
@@ -263,6 +266,31 @@ std::string renderEditorPage(const std::string& username, const std::string& bas
 </html>)HTML";
 }
 
+std::string renderAdminSessionsPage(const std::string& assetVersion) {
+    return std::string(R"HTML(<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <title>Administrator sessions | NuiGraph Studio</title>
+  <link rel="stylesheet" href=")HTML") + assetUrl("/styles.css", assetVersion) + R"HTML(">
+</head>
+<body class="login-body">
+  <main class="session-shell">
+    <header class="session-page-head">
+      <div><p class="eyebrow">Security</p><h1>Administrator sessions</h1></div>
+      <a href="/">Back to editor</a>
+    </header>
+    <p class="muted">Review active sign-ins and revoke any session you do not recognise. Revoking this device signs it out immediately.</p>
+    <div id="session-status" role="status" aria-live="polite">Loading active sessions…</div>
+    <div id="admin-session-list" class="admin-session-list"></div>
+  </main>
+  <script src=")HTML" + assetUrl("/admin-sessions.js", assetVersion) + R"HTML(" defer></script>
+</body>
+</html>)HTML";
+}
+
 std::string renderDocsPage(const std::string& baseUrl, const std::string& assetVersion) {
     const auto canonicalUrl = normalizedBaseUrl(baseUrl) + "/docs";
     return std::string(R"HTML(<!doctype html>
@@ -292,10 +320,12 @@ std::string renderDocsPage(const std::string& baseUrl, const std::string& assetV
   "edges": [{"key":"edge_1","source":"node_1","target":"node_2","label":"calls","directed":true,"color":"#94a3b8","metadata":{}}]
 }</pre>
     <h2>API</h2>
-    <p><a href="/openapi.json">OpenAPI 3.1 contract (JSON)</a> documents request schemas, session/CSRF requirements, optimistic revision headers and response models.</p>
+    <p><a href="/openapi.json">OpenAPI 3.1 contract (JSON)</a> documents request schemas, session/CSRF requirements, optimistic revision headers and response models. Administrators can review and individually revoke database-backed sign-ins from the responsive <a href="/admin/sessions">session inventory</a>.</p>
     <pre>GET /health
 GET /live
 GET /ready
+GET /api/admin/sessions
+DELETE /api/admin/sessions/{sessionId}
 POST /api/privacy/export
 DELETE /api/privacy/data
 GET /api/templates
@@ -357,14 +387,14 @@ std::string renderPrivacyPage(const std::string& baseUrl, int trashRetentionDays
       <li>A signed, pseudonymous guest-session cookie used to keep diagrams attached to the same browser session. The cookie expires after seven days; clearing it can make guest-owned diagrams inaccessible.</li>
       <li>Diagram titles, descriptions, nodes, edges, metadata, retained versions, trash state, optional bearer share links, and whether a link is password protected. A supplied share password is retained only as a salted verifier.</li>
       <li>Request metadata needed for security and operations, including IP-derived rate-limit identifiers, timestamps, status classes, and redacted application/access logs. Metrics contain aggregate bounded labels rather than diagram content or owner identifiers.</li>
-      <li>Administrator authentication data configured by the operator. The guest self-service export does not export administrator configuration or other owners' records.</li>
+      <li>Administrator authentication data configured by the operator. Active administrator sessions retain only a token digest, operator-supplied device label and created, last-active, expiry and optional revocation timestamps; they do not retain an IP address or user-agent string. The guest self-service export does not export administrator configuration, sessions or other owners' records.</li>
     </ul>
     <h2>Purposes and legal context</h2>
     <p>Diagram and session data are processed to provide the storage, editing, sharing, recovery, export, and deletion functions requested by the visitor. Limited request and security data are processed to protect the service, enforce quotas, diagnose failures, and investigate abuse. The operator must assess and document the applicable legal basis for its deployment; this application does not use diagram content for advertising, profiling, or automated decisions with legal or similarly significant effects.</p>
     <h2>Sharing and recipients</h2>
     <p>Diagrams are private by default. Enabling sharing creates an unguessable read-only bearer URL: anyone who receives that URL can view the diagram until the owner disables, rotates, expires, trashes, or deletes it. The owner may add a password that must be supplied separately; the application stores only a salted verifier and issues a bounded unlock cookie after a successful attempt. Infrastructure recipients include Cloudflare as the public reverse proxy and the operator's VPS/hosting and PostgreSQL environment. Contact the operator for the current provider, location, transfer safeguards, and subprocessor details before relying on this page as a complete Article 13 notice.</p>
     <h2>Retention</h2>
-    <p>Active diagrams and bounded versions remain while the guest session retains them. Moving a diagram to trash revokes sharing but does not erase or release its quota. )HTML" + htmlEscape(trashPolicy) + R"HTML( Permanent deletion and “Delete my session data” remove primary PostgreSQL rows and cascaded nodes, edges, versions, and idempotency records. Those actions do not by themselves prove erasure from separately retained logs or backup media. Rate-limit rows expire within ten minutes and idempotency records within 24 hours. A fixed external log-retention period remains an operator control; request the current period from the contact above.</p>
+    <p>Active diagrams and bounded versions remain while the guest session retains them. Moving a diagram to trash revokes sharing but does not erase or release its quota. )HTML" + htmlEscape(trashPolicy) + R"HTML( Permanent deletion and “Delete my session data” remove primary PostgreSQL rows and cascaded nodes, edges, versions, and idempotency records. Those actions do not by themselves prove erasure from separately retained logs or backup media. Rate-limit rows expire within ten minutes and idempotency records within 24 hours. Expired or revoked administrator-session rows are removed after 30 days during a later administrator login. A fixed external log-retention period remains an operator control; request the current period from the contact above.</p>
     <h2>Your controls and rights</h2>
     <p>The editor's Privacy &amp; data dialog can download a machine-readable JSON copy of current and trashed diagrams plus retained versions for the current guest session. It can also irreversibly delete all diagrams owned by that session after typing the exact confirmation <code>DELETE MY DATA</code>. The export deliberately excludes internal owner hashes, share-password verifiers, and revoked historical share capabilities; it reports only whether a current link is protected. Because ownership is cookie-bound, another browser or a lost cookie cannot prove control of the same guest records through this self-service endpoint.</p>
     <p>Depending on applicable law, you may also request access, rectification, erasure, restriction, objection, or portability and lodge a complaint with a competent supervisory authority. Identity may need to be verified before records outside the current guest session can be discussed. The <a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj">official GDPR text</a> describes these rights and their conditions.</p>

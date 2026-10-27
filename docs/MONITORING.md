@@ -125,6 +125,8 @@ only when a real artifact timestamp and restore verification signal exist.
 2. Block abusive sources at the edge; do not weaken application throttling.
 3. Treat any unexplained successful login near the attack window as a potential
    credential incident and follow `docs/INCIDENT_RESPONSE.md`.
+4. Review `/admin/sessions` without copying identifiers into tickets. Revoke a
+   known suspect device individually; rotate password/TOTP when scope is unclear.
 
 ## Cross-site mutation attempts
 

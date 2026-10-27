@@ -107,6 +107,13 @@ accepted counter, closing concurrent and post-restart replay. Seed-bound signed
 admin principals invalidate pre-MFA or seed-rotation cookies without detaching
 guest-owned data. Production remains password-only until the operator provisions
 the root-owned seed, confirms NTP and rehearses the documented break-glass path.
+Administrator cookies are now backed by a bounded PostgreSQL session registry.
+The browser holds a 256-bit random token while the database retains only its
+SHA-256 digest, an operator label and timestamps; no IP or user-agent is stored.
+The responsive inventory supports individual revocation, logout revokes server
+state, restart preserves decisions, and password/TOTP changes invalidate the
+whole prior authentication context. Existing stateless admin cookies are
+deliberately rejected after deployment; guest sessions and ownership are unchanged.
 The previous trash-retention stage gate passed all 20 CTest suites against disposable PostgreSQL,
 including the dedicated cross-session trash lifecycle and real Chromium
 desktop/mobile accessibility flows; ShellCheck, Cppcheck, the repository secret
@@ -125,6 +132,12 @@ PostgreSQL 18 in 86.71 seconds, including the concurrent/restart replay
 regression, real Chromium and migration ledger. All 59 C++ tests, Cppcheck,
 ShellCheck, the 133-file secret scan, OpenAPI 23/23 validation, 30-rule promtool
 validation and high-severity npm audit passed with zero reported vulnerabilities.
+The revocable-admin-session stage gate passed all 24 suites against disposable
+PostgreSQL 18 in 101.47 seconds, including two-device selective revocation,
+restart persistence, MFA, real Chromium and the migration ledger. All 59 C++
+tests, Cppcheck, ShellCheck, the 136-file secret scan, OpenAPI 25/25 validation,
+30-rule promtool validation and high-severity npm audit passed with zero reported
+vulnerabilities.
 
 ## Executive verdict
 
@@ -257,8 +270,8 @@ paging, recovery and deployment remain outstanding.
 - **Blast radius:** an accepted administrator session can read or mutate every
   retained diagram under the application-wide default ceiling of 5,000 rows and
   512 MiB logical content. TOTP does not reduce a host/database compromise and
-  the identity is still shared, so attribution and per-device containment remain
-  open. The repository has no defensible frequency/loss inputs for a new FAIR
+  the identity is still shared, so individual attribution remains open. The
+  repository has no defensible frequency/loss inputs for a new FAIR
   value; the existing admin-takeover estimate remains illustrative only.
 - **Detection and response:** failed password, TOTP and replay attempts feed the
   existing bounded login signal and attack alert; production MTTD remains
@@ -278,6 +291,38 @@ paging, recovery and deployment remain outstanding.
 conditional on NTP, independent seed provisioning, successful enrolment, a
 tested fresh-code/replay smoke check and an approved root break-glass owner.
 Repository-wide status remains **MITIGATE THEN SHIP**.
+
+## CISO gate: revocable administrator sessions (2026-10-27)
+
+- **Threat model:** the primary paths are theft of one signed cookie
+  (medium/high), database disclosure of session rows (low/high), unbounded login
+  growth (medium/medium), revocation bypass after restart/rollback (low/high) and
+  availability loss when PostgreSQL is down (medium/medium). A 256-bit browser
+  token, digest-only storage, signed password/TOTP binding, a 20-session bound,
+  persistent revocation and fail-closed database checks constrain these paths.
+- **Blast radius:** one stolen active admin cookie still reaches every diagram,
+  but can now be contained to one device without disrupting guest ownership or
+  unrelated admin devices. A host compromise remains repository-wide; a database
+  dump alone contains no cookie-equivalent token. The shared credential still
+  prevents defensible person-level attribution.
+- **Detection and response:** creation is covered by successful-login telemetry;
+  individual revocation emits a bounded `admin_session/revoked` event. The UI
+  exposes label/created/last-active/expiry only. Live paging and a measured MTTR
+  remain absent; suspected multi-device compromise still requires password/TOTP
+  rotation, not selective revocation.
+- **Regulatory:** operator-supplied device labels and timestamps are security
+  metadata and may be personal data depending on naming. The implementation
+  avoids IP/user-agent storage, caps active rows and removes expired/revoked rows
+  after 30 days during login, but the deployment retention/access record remains
+  an operator responsibility.
+- **Supply chain and rollback:** no dependency, vendor or external data flow was
+  added. PostgreSQL is now on the authentication availability path. Rolling back
+  to a stateless binary bypasses revocation, so the runbook requires traffic
+  denial and credential rotation before reopening.
+
+**Verdict:** safe to ship after migration and a two-device revocation smoke
+test. Production remains **MITIGATE THEN SHIP** until live paging, deployment
+and recovery controls are evidenced.
 
 ## Evidence snapshot
 
@@ -331,7 +376,7 @@ Repository-wide status remains **MITIGATE THEN SHIP**.
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Denial of service | An attacker rotates guest cookies and source addresses, fills the global row/byte or active limiter-key allowance, or saturates DB workers/storage. | High | Medium | Cloudflare/nginx limits, bounded shared GCRA buckets, payload caps, pool cap, atomic per-session/global row and logical-byte quotas, explicit deletion plus opt-in bounded retention and trash telemetry | Turnstile for suspicious creation; approve retention only after recovery/paging; deploy and wire the checked-in capacity and latency alerts |
 | 2 | Information disclosure | App, DB, backups, journals, or an enabled bearer link expose private diagram content. Legacy links stay active until deliberately expired, rotated or revoked. | Medium | High | Private-by-default creation, optional DB-clock expiry, explicit rotate/revoke, 128-bit slugs, owner checks, least-privilege DB role, CSP, origin guard | Deploy the lifecycle changes; review legacy links; encrypted and access-controlled backups; retention policy |
-| 3 | Spoofing / elevation | Theft or forgery of the single admin session grants access to all diagrams. Stateless sessions have no individual revocation. | Low | High | Purpose-separated HMAC keys, bounded signing-key rollover, `__Host-` Secure/HttpOnly/SameSite cookies, PBKDF2, login throttles, optional anti-replay TOTP | Activate TOTP with tested break glass; add server-side admin session revocation and passkeys; wire the admin-login alert |
+| 3 | Spoofing / elevation | Theft of one active shared-admin device session grants access to all diagrams until it expires or is revoked. | Low | High | Purpose-separated HMAC keys, bounded signing-key rollover, `__Host-` Secure/HttpOnly/SameSite cookies, PBKDF2, login throttles, optional anti-replay TOTP, digest-only server sessions and individual revocation | Activate TOTP with tested break glass; add named identities/passkeys and tamper-resistant audit; wire the admin-login alert |
 | 4 | Tampering | Concurrent editors attempt to overwrite, delete or restore over newer work. | Low | Medium | Atomic revision increments, strong ETags, mandatory `If-Match`, `412` rejection, bounded history and local draft preservation | Add a merge/recovery UI before real-time collaboration |
 | 5 | Repudiation | A shared admin credential prevents attribution to one person, and local logs can be altered after host compromise. | Medium | Medium | Correlated nginx/app request IDs; structured actor-class login/share/auth/CSRF/quota/storage events; redacted routes | Central/tamper-resistant audit storage, retention/access policy, individual admin identities and alerts |
 | 6 | Supply chain | A compromised package source or CI account introduces a malicious dependency or substitutes build output. | Low | Medium | Immutable Nui/action/service refs; npm lock integrity and audit; native plus npm CycloneDX inventories; CodeQL, Cppcheck, ShellCheck, GitGuardian and Dependabot; root-owned releases | Add signed release provenance and independently verified reproducible-build metadata |

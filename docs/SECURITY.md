@@ -53,10 +53,13 @@ own rate-limit bucket by sending a forged header.
 
 ## Identity and sessions
 
-Sessions are stateless, signed cookies — there is no server-side session store.
+Guest sessions remain stateless signed cookies. Administrator cookies are also
+signed, but additionally contain a 256-bit random token whose SHA-256 digest and
+bounded metadata are checked in PostgreSQL on every authenticated request.
 
 ```
-__Host-ngs_session = <username>.<unix-expiry>.<HMAC-SHA256(SESSION_SIGNING_SECRET, "username.expiry")>
+guest = <username>.<unix-expiry>.<HMAC-SHA256(SESSION_SIGNING_SECRET, payload)>
+admin = <admin~session~id~token~auth~binding>.<unix-expiry>.<HMAC-SHA256(SESSION_SIGNING_SECRET, payload)>
 ```
 
 - Verification checks the expiry first, then compares the HMAC in constant time.
@@ -78,6 +81,12 @@ __Host-ngs_session = <username>.<unix-expiry>.<HMAC-SHA256(SESSION_SIGNING_SECRE
 - Guest usernames are random values minted by `/api/session`. They are not
   user-chosen and cannot collide with `AUTH_USERNAME`, which is what separates
   guest from admin.
+- At most 20 sessions are active for the current administrator authentication
+  state. A new sign-in beyond that bound atomically revokes the least recently
+  used session. The inventory exposes a user-supplied ASCII device label plus
+  created, last-active and expiry timestamps—not token hashes, IPs or user-agent
+  strings. Individual revocation and logout set `revoked_at`; a copied cookie
+  then fails immediately and remains rejected after restart.
 
 Session signing, CSRF derivation, stable guest ownership and rate-limit
 pseudonymisation use four required, mutually distinct secrets. A planned signing
@@ -104,11 +113,13 @@ PostgreSQL, emitted by an API or written to logs.
   the greatest accepted counter, so only one of two concurrent submissions can
   succeed and an accepted code stays rejected across process restarts. Public
   failures remain the generic `Invalid credentials` response.
-- The signed administrator-session principal includes a pseudorandom binding to
-  the configured seed. Enabling, disabling or rotating MFA therefore invalidates
-  existing admin cookies without changing guest principals or their ownership
-  hashes. The binding generated under a previous signing key is accepted only
-  during the same bounded planned key-rotation window, then re-signed.
+- The signed administrator-session principal binds to both the password verifier
+  and configured TOTP seed. Changing the password or enabling, disabling or
+  rotating MFA therefore invalidates existing admin cookies without changing
+  guest principals or ownership hashes. The binding generated under a previous
+  signing key is accepted only during the bounded planned rotation window, then
+  re-signed without extending expiry. Deployment of migration 014 deliberately
+  rejects every earlier stateless admin cookie and requires a fresh login.
 - Login attempts are tracked per IP: the ninth attempt in 10 minutes is blocked.
   A successful login clears that address's bucket. nginx additionally caps
   `/login` at 10 requests/minute.
@@ -629,9 +640,9 @@ These are accepted, not overlooked:
   work if their required database operations are available.
 - **Admin is a single shared identity.** Optional TOTP protects a deployment
   that activates it, but there are no recovery codes, phishing-resistant
-  passkeys, server-side device sessions, individual revocation or tamper-
-  resistant per-action audit trail. Security events identify the admin actor
-  class but not an individual person.
+  passkeys, named individual accounts or tamper-resistant per-action audit
+  trail. Device labels are operator-supplied convenience metadata, not identity
+  proof. Security events identify the admin actor class but not a person.
 - **Self-service ownership is not identity proof.** Export and delete-all cover
   only the owner derived from the current guest cookie. A lost cookie cannot be
   recovered, and an already copied stateless cookie cannot be individually
@@ -667,6 +678,10 @@ telemetry and capability/password log redaction. It also exercises the HTTPS
 `tests/check_admin_mfa.sh` races one valid code through two login requests,
 requires exactly one success, restarts the service and proves persistent replay
 rejection while keeping the seed, code and password out of logs.
+`tests/check_admin_sessions.sh` creates two labelled sign-ins, proves the raw
+token is absent from PostgreSQL and logs, revokes exactly one, restarts the
+service to prove persistence, then revokes the current device and verifies its
+cookie is immediately unusable.
 
 ```bash
 ctest --test-dir build --output-on-failure

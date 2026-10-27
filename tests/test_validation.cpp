@@ -513,6 +513,7 @@ void testMetricsStayAggregateAndBounded() {
     metrics.observeHttp("GET", 200, 0.02);
     metrics.observeHttp("PATCH", 503, 2.0);
     metrics.recordSecurityEvent("admin_login", "failed");
+    metrics.recordSecurityEvent("admin_session", "revoked");
     metrics.recordSecurityEvent("fetch_metadata_rejected", "blocked");
     metrics.recordSecurityEvent("origin_rejected", "blocked");
     metrics.recordSecurityEvent("unsupported_media_type", "blocked");
@@ -555,6 +556,8 @@ void testMetricsStayAggregateAndBounded() {
             "metrics should collapse unknown methods into a bounded label");
     require(body.find("event=\"admin_login\",outcome=\"failed\"} 1") != std::string::npos,
             "metrics should count known security outcomes");
+    require(body.find("event=\"admin_session\",outcome=\"revoked\"} 1") != std::string::npos,
+            "metrics should count administrator session revocation");
     require(body.find("event=\"fetch_metadata_rejected\",outcome=\"blocked\"} 1") !=
                 std::string::npos,
             "metrics should count rejected cross-site mutations");
@@ -1069,8 +1072,19 @@ void testSeoMetadata() {
                 mfaLogin.find("autocomplete=\"one-time-code\"") != std::string::npos &&
                 mfaLogin.find("pattern=\"[0-9]{6}\"") != std::string::npos,
             "MFA login should require an accessible six-digit authenticator input");
+    require(mfaLogin.find("name=\"device_label\"") != std::string::npos,
+            "administrator login should offer a bounded device label");
     require(renderLoginPage("").find("name=\"totp\"") == std::string::npos,
             "password-only login should not render a misleading MFA input");
+    const auto adminEditor = renderEditorPage(
+        "admin", "https://example.test", true, "", true);
+    require(adminEditor.find("href=\"/admin/sessions\"") != std::string::npos,
+            "administrator editor should link to the session inventory");
+    const auto sessionsPage = renderAdminSessionsPage("0123456789abcdef");
+    require(sessionsPage.find("Administrator sessions") != std::string::npos &&
+                sessionsPage.find("/admin-sessions.js?v=0123456789abcdef") != std::string::npos &&
+                sessionsPage.find("noindex,nofollow,noarchive") != std::string::npos,
+            "administrator session inventory should be responsive, versioned and unindexed");
 }
 
 } // namespace

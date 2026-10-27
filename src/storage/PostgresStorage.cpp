@@ -15,6 +15,7 @@ namespace nuigraph {
 namespace {
 
 constexpr long kMaxPersistentRateLimitKeys = 20000;
+constexpr long kMaxActiveAdminSessions = 20;
 const std::vector<std::string> kIdempotentCreateOperations = {
     "create", "template", "fork", "duplicate", "import"
 };
@@ -763,6 +764,106 @@ bool PostgresStorage::consumeAdminTotpCounter(long long counter) {
     )SQL", pqxx::params{counter});
     tx.commit();
     return !accepted.empty();
+}
+
+void PostgresStorage::createAdminSession(
+    const std::string& id, const std::string& tokenHash,
+    const std::string& authStateHash, const std::string& deviceLabel,
+    long long expiresAt) {
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
+    tx.exec("SELECT pg_advisory_xact_lock(hashtextextended('nuigraph:admin-sessions', 0))");
+    tx.exec(R"SQL(
+        DELETE FROM admin_sessions
+        WHERE expires_at < statement_timestamp() - interval '30 days'
+           OR revoked_at < statement_timestamp() - interval '30 days'
+    )SQL");
+    const auto active = tx.query_value<long>(R"SQL(
+        SELECT count(*) FROM admin_sessions
+        WHERE revoked_at IS NULL AND expires_at > statement_timestamp()
+          AND auth_state_hash=$1
+    )SQL", pqxx::params{authStateHash});
+    if (active >= kMaxActiveAdminSessions) {
+        tx.exec(R"SQL(
+            UPDATE admin_sessions SET revoked_at=statement_timestamp()
+            WHERE session_id=(
+                SELECT session_id FROM admin_sessions
+                WHERE revoked_at IS NULL AND expires_at > statement_timestamp()
+                  AND auth_state_hash=$1
+                ORDER BY last_seen_at, created_at
+                LIMIT 1 FOR UPDATE
+            )
+        )SQL", pqxx::params{authStateHash});
+    }
+    tx.exec(R"SQL(
+        INSERT INTO admin_sessions
+            (session_id, token_hash, auth_state_hash, device_label, expires_at)
+        VALUES ($1, $2, $3, $4, to_timestamp($5))
+    )SQL", pqxx::params{id, tokenHash, authStateHash, deviceLabel, expiresAt});
+    tx.commit();
+}
+
+bool PostgresStorage::validateAdminSession(
+    const std::string& id, const std::string& tokenHash,
+    const std::string& authStateHash) {
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
+    const auto active = tx.exec(R"SQL(
+        SELECT 1 FROM admin_sessions
+        WHERE session_id=$1 AND token_hash=$2 AND auth_state_hash=$3
+          AND revoked_at IS NULL AND expires_at > statement_timestamp()
+    )SQL", pqxx::params{id, tokenHash, authStateHash});
+    if (!active.empty()) {
+        tx.exec(R"SQL(
+            UPDATE admin_sessions SET last_seen_at=statement_timestamp()
+            WHERE session_id=$1
+              AND last_seen_at < statement_timestamp() - interval '1 minute'
+        )SQL", pqxx::params{id});
+    }
+    tx.commit();
+    return !active.empty();
+}
+
+std::vector<AdminSessionInfo> PostgresStorage::listAdminSessions(
+    const std::string& authStateHash) {
+    auto conn = pool_.acquire();
+    pqxx::read_transaction tx(conn.get());
+    const auto rows = tx.exec(R"SQL(
+        SELECT session_id, device_label,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_at,
+               to_char(last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS last_seen_at,
+               to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS expires_at
+        FROM admin_sessions
+        WHERE auth_state_hash=$1 AND revoked_at IS NULL
+          AND expires_at > statement_timestamp()
+        ORDER BY last_seen_at DESC, created_at DESC
+    )SQL", pqxx::params{authStateHash});
+    std::vector<AdminSessionInfo> sessions;
+    sessions.reserve(rows.size());
+    for (const auto& row : rows) {
+        sessions.push_back({
+            row["session_id"].as<std::string>(),
+            row["device_label"].as<std::string>(),
+            row["created_at"].as<std::string>(),
+            row["last_seen_at"].as<std::string>(),
+            row["expires_at"].as<std::string>()
+        });
+    }
+    tx.commit();
+    return sessions;
+}
+
+bool PostgresStorage::revokeAdminSession(
+    const std::string& id, const std::string& authStateHash) {
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
+    const auto revoked = tx.exec(R"SQL(
+        UPDATE admin_sessions SET revoked_at=statement_timestamp()
+        WHERE session_id=$1 AND auth_state_hash=$2 AND revoked_at IS NULL
+        RETURNING session_id
+    )SQL", pqxx::params{id, authStateHash});
+    tx.commit();
+    return !revoked.empty();
 }
 
 DiagramCreationResult PostgresStorage::createDiagram(

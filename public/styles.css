@@ -751,6 +751,61 @@ body.dirty .draft-status { color: var(--warn); }
   padding: 9px 11px;
 }
 
+.session-shell {
+  width: min(780px, 100%);
+  display: grid;
+  gap: 18px;
+  padding: clamp(18px, 4vw, 34px);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.session-page-head, .admin-session-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.session-page-head h1, .admin-session-heading h2 { margin: 0; }
+.session-page-head a { color: var(--accent); }
+.admin-session-list { display: grid; gap: 12px; }
+.admin-session-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+.admin-session-heading h2 { font-size: 17px; overflow-wrap: anywhere; }
+.session-current-badge {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--good) 18%, transparent);
+  color: var(--good);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.admin-session-details { display: grid; gap: 6px; }
+.admin-session-details > div {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  gap: 10px;
+  color: var(--muted);
+}
+.admin-session-card button { justify-self: end; min-height: var(--tap); }
+
+@media (max-width: 520px) {
+  .session-page-head { align-items: flex-start; }
+  .admin-session-heading { align-items: flex-start; }
+  .admin-session-details > div { grid-template-columns: 1fr; gap: 2px; }
+  .admin-session-card button { width: 100%; }
+}
+
 /* ------------------------------------------------------------------ docs -- */
 
 .docs-body { background: var(--bg); }

@@ -199,6 +199,10 @@ Summarised here, detailed in [`docs/SECURITY.md`](docs/SECURITY.md).
   six-digit TOTP in addition to the password. PostgreSQL atomically consumes the
   matched counter so the same code loses a concurrent race and cannot be replayed
   after an application restart.
+- Administrator sign-ins are database-backed and individually revocable from a
+  responsive device inventory. PostgreSQL stores only a SHA-256 token digest and
+  bounded timestamps/labels; password or TOTP changes invalidate the old
+  authentication context, while guest ownership cookies remain stateless.
 - Per-session ownership by HMAC-derived owner hash; read and edit both checked
   by diagram id on every path that emits diagram content, including duplicate.
 - CSRF tokens bound to the exact session cookie on authenticated JSON writes,
@@ -291,12 +295,13 @@ The build is clean under `-Wall -Wextra -Wpedantic`.
 ctest --test-dir build --output-on-failure
 ```
 
-Twenty-three suites cover unit validation, frontend assets, the nginx candidate,
+Twenty-four suites cover unit validation, frontend assets, the nginx candidate,
 Prometheus rules, incident-runbook integrity, secret scanning, CycloneDX SBOM generation, real
 Chromium behavior, live security/API behavior, shared persistent rate limits,
 concurrent row/logical-byte quota enforcement, signing-key rotation, and
 migration-ledger integrity, including isolated trash retention and guest data
-export/deletion, password-protected sharing and administrator MFA/replay lifecycles. The database-backed suites use
+export/deletion, password-protected sharing, administrator MFA/replay and
+individual administrator-session revocation lifecycles. The database-backed suites use
 a config with `APP_ENV=test` whose
 actual PostgreSQL database and login-role names both end in `_test`. Missing
 local prerequisites appear as **Not Run**, not as false passes; deployment sets
@@ -430,7 +435,7 @@ active key with different request material returns `409`. Rate limits still
 apply to retries. The browser generates a fresh 128-bit key for every creation
 action.
 
-The checked-in OpenAPI 3.1 contract documents all 23 API operations, schemas,
+The checked-in OpenAPI 3.1 contract documents all 25 API operations, schemas,
 cookie/CSRF security, conditional revision headers and retry semantics. A dependency-free CTest
 gate extracts routes and node types from the C++ sources and fails on drift,
 duplicate operation IDs, unresolved references or incomplete mutation security.

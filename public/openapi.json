@@ -3,13 +3,14 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "NuiGraph Studio API",
-    "version": "1.6.0",
-    "description": "Session-oriented API for private diagrams, trash and restore, guest data export/deletion, templates, version history and capability-based sharing with optional password protection. Start with GET /api/session and retain its HttpOnly cookie. Unsafe requests require the returned CSRF token in X-CSRF-Token. Production HTTPS uses __Host-ngs_session; loopback HTTP development uses ngs_session."
+    "version": "1.7.0",
+    "description": "Session-oriented API for private diagrams, revocable administrator devices, trash and restore, guest data export/deletion, templates, version history and capability-based sharing with optional password protection. Start with GET /api/session and retain its HttpOnly cookie. Unsafe requests require the returned CSRF token in X-CSRF-Token. Production HTTPS uses __Host-ngs_session; loopback HTTP development uses ngs_session."
   },
   "servers": [{ "url": "/", "description": "Current NuiGraph Studio origin" }],
   "externalDocs": { "description": "Application documentation", "url": "/docs" },
   "tags": [
     { "name": "Session", "description": "Guest or administrator session bootstrap" },
+    { "name": "Administrator", "description": "Administrator-only active-session inventory and revocation" },
     { "name": "Diagrams", "description": "Owned diagram lifecycle" },
     { "name": "Trash", "description": "Private soft deletion, restore and permanent deletion" },
     { "name": "Privacy", "description": "Current guest-session export and erasure controls" },
@@ -32,6 +33,34 @@
         "security": [],
         "responses": {
           "200": { "$ref": "#/components/responses/SessionResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/admin/sessions": {
+      "get": {
+        "operationId": "listAdminSessions",
+        "summary": "List active administrator sessions",
+        "description": "Returns bounded metadata only; raw cookie tokens, token hashes, IP addresses and user-agent strings are never returned.",
+        "tags": ["Administrator", "Session"],
+        "responses": {
+          "200": { "$ref": "#/components/responses/AdminSessionListResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/admin/sessions/{sessionId}": {
+      "parameters": [{ "$ref": "#/components/parameters/AdminSessionId" }],
+      "delete": {
+        "operationId": "revokeAdminSession",
+        "summary": "Revoke one administrator session",
+        "tags": ["Administrator", "Session"],
+        "security": [
+          { "sessionCookie": [], "csrfHeader": [] },
+          { "localSessionCookie": [], "csrfHeader": [] }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/AdminSessionRevocationResponse" },
           "default": { "$ref": "#/components/responses/ErrorResponse" }
         }
       }
@@ -427,6 +456,12 @@
         "required": true,
         "schema": { "type": "integer", "format": "int64", "minimum": 1 }
       },
+      "AdminSessionId": {
+        "name": "sessionId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "pattern": "^[0-9a-f]{32}$" }
+      },
       "ShareSlug": {
         "name": "slug",
         "in": "path",
@@ -516,6 +551,16 @@
         "description": "Current session and CSRF token.",
         "headers": { "X-Request-ID": { "$ref": "#/components/headers/RequestId" } },
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Session" } } }
+      },
+      "AdminSessionListResponse": {
+        "description": "Active sessions for the current administrator authentication state.",
+        "headers": { "X-Request-ID": { "$ref": "#/components/headers/RequestId" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdminSessionList" } } }
+      },
+      "AdminSessionRevocationResponse": {
+        "description": "The selected administrator session was revoked.",
+        "headers": { "X-Request-ID": { "$ref": "#/components/headers/RequestId" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdminSessionRevocation" } } }
       },
       "DiagramResponse": {
         "description": "Diagram with its current revision.",
@@ -610,6 +655,34 @@
           "username": { "type": "string" },
           "public_access": { "type": "boolean" },
           "csrf_token": { "type": "string", "pattern": "^[0-9a-f]{64}$", "readOnly": true }
+        }
+      },
+      "AdminSession": {
+        "type": "object",
+        "required": ["id", "device_label", "created_at", "last_seen_at", "expires_at", "current"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[0-9a-f]{32}$", "readOnly": true },
+          "device_label": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "created_at": { "type": "string", "format": "date-time" },
+          "last_seen_at": { "type": "string", "format": "date-time" },
+          "expires_at": { "type": "string", "format": "date-time" },
+          "current": { "type": "boolean", "readOnly": true }
+        }
+      },
+      "AdminSessionList": {
+        "type": "object",
+        "required": ["sessions", "maximum_active"],
+        "properties": {
+          "sessions": { "type": "array", "maxItems": 20, "items": { "$ref": "#/components/schemas/AdminSession" } },
+          "maximum_active": { "const": 20 }
+        }
+      },
+      "AdminSessionRevocation": {
+        "type": "object",
+        "required": ["ok", "current_revoked"],
+        "properties": {
+          "ok": { "const": true },
+          "current_revoked": { "type": "boolean" }
         }
       },
       "Node": {

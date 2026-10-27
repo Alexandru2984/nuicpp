@@ -217,6 +217,11 @@ rollback notes where applicable.
   the greatest accepted counter, so concurrent reuse and replay after restart
   fail; configuration validation, generic login errors, a responsive input and
   a dedicated live race/restart regression ship with the control.
+- Administrator sessions are now PostgreSQL-backed, token-digest-only and
+  individually revocable through a responsive device inventory. Password/TOTP
+  changes invalidate the authentication context, logout revokes server state,
+  active rows are capped at 20 and a restart/revocation regression covers the
+  full lifecycle without changing stateless guest ownership.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -247,9 +252,6 @@ High risk remain open.
 - User accounts with email verification or OIDC and passkeys/WebAuthn; convert a
   guest workspace into an account without data loss. Retain TOTP as a fallback
   after phishing-resistant administrator authentication exists.
-- Server-side admin sessions with device list, last-used metadata and individual
-  revocation while preserving the implemented `__Host-` cookie and
-  purpose-specific keys.
 - Workspaces, invitations and roles (`owner`, `editor`, `viewer`) with a central
   policy layer and negative authorization tests.
 - Complete and approve the deployment-specific controller identity, legal bases,

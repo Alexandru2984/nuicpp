@@ -57,7 +57,9 @@ is the VPS operator until another named owner takes over in the incident record.
    database re-key is part of the incident plan; rotate CSRF and rate-limit keys
    independently. If administrator TOTP material may be exposed, provision a new
    seed through the root-owned credential path; its binding invalidates existing
-   admin cookies without detaching guest-owned diagrams.
+   admin cookies without detaching guest-owned diagrams. For one lost or suspect
+   device, revoke only that entry at `/admin/sessions`; for uncertain scope,
+   rotate the admin password and TOTP seed to invalidate the whole auth context.
 3. Restore only from a verified backup into an isolated database, validate schema
    and counts, and test read/write/version flows before cutover.
 4. Run build, unit, isolated integration, security smoke, rate-limit, migration,

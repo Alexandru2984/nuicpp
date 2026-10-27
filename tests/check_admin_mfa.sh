@@ -34,7 +34,7 @@ stop_server() {
 cleanup() {
   stop_server
   psql --dbname="$DATABASE_URL" -X -qtAc \
-    "UPDATE admin_totp_state SET last_accepted_counter=-1, updated_at=NULL WHERE singleton=true; DELETE FROM rate_limit_buckets;" \
+    "UPDATE admin_totp_state SET last_accepted_counter=-1, updated_at=NULL WHERE singleton=true; DELETE FROM rate_limit_buckets; DELETE FROM admin_sessions;" \
     >/dev/null 2>&1 || true
   rm -rf "$TMP_DIR"
 }
@@ -58,7 +58,7 @@ PROJECT_ROOT=$ROOT_DIR
 ENV_EOF
 
 psql --dbname="$DATABASE_URL" -X -v ON_ERROR_STOP=1 -qtAc \
-  "UPDATE admin_totp_state SET last_accepted_counter=-1, updated_at=NULL WHERE singleton=true; DELETE FROM rate_limit_buckets;" \
+  "UPDATE admin_totp_state SET last_accepted_counter=-1, updated_at=NULL WHERE singleton=true; DELETE FROM rate_limit_buckets; DELETE FROM admin_sessions;" \
   >/dev/null
 
 start_server() {
@@ -147,9 +147,10 @@ if grep -Fq $'\tngs_session\t' "$TMP_DIR/a.cookies"; then
 else
   AUTHENTICATED_COOKIES="$TMP_DIR/b.cookies"
 fi
-grep -Fq '~totp~' "$AUTHENTICATED_COOKIES"
+grep -Fq '~session~' "$AUTHENTICATED_COOKIES"
 SESSION="$(curl --noproxy '*' -fsS -b "$AUTHENTICATED_COOKIES" "${BASE}/api/session")"
 python3 -c 'import json,sys; d=json.loads(sys.argv[1]); assert d["username"] == "admin" and "totp" not in sys.argv[1].lower()' "$SESSION"
+[[ "$(psql --dbname="$DATABASE_URL" -X -Atqc 'SELECT count(*) FROM admin_sessions WHERE revoked_at IS NULL')" == "1" ]]
 
 stored_counter="$(psql --dbname="$DATABASE_URL" -X -Atqc \
   'SELECT last_accepted_counter FROM admin_totp_state WHERE singleton=true')"

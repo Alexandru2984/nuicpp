@@ -204,6 +204,15 @@ If the authenticator is lost, clearing the value and restarting is the explicit
 break-glass downgrade; preserve incident evidence and immediately rotate the
 admin password and seed after access is restored.
 
+Migration `014_admin_sessions.sql` makes administrator sessions server-side and
+individually revocable while leaving guest cookies stateless. The first deploy
+intentionally invalidates all prior admin cookies; log in again with a distinct
+device label, open `/admin/sessions`, confirm the current device and test a
+second-session revoke. Password/TOTP changes also invalidate the old auth state.
+Twenty active sessions are retained at most; the least recently used is revoked
+when a new login crosses the bound. The database stores token digests and
+bounded labels/timestamps, never raw tokens, IP addresses or user agents.
+
 The first HTTPS request to `/api/session` also upgrades a valid legacy
 `ngs_session` to `__Host-ngs_session` without changing its identity or expiry,
 then expires the old name. Seeing upgrade events immediately after deployment
@@ -441,6 +450,11 @@ is safe to leave in place. An older binary ignores it but also stops enforcing
 TOTP, so rolling code back while `AUTH_TOTP_SECRET` is active is an authentication
 downgrade. Deny `/login` at nginx before such a rollback and restore an MFA-aware
 binary (or execute the documented break-glass decision) before reopening login.
+`014_admin_sessions.sql` is safe to leave in place on rollback, but an older
+binary ignores revocation state and would accept its own earlier stateless admin
+cookies. Deny `/login` and authenticated application traffic before rollback;
+do not reopen it until an MFA/session-aware binary is restored and credentials
+are rotated.
 `FRONTEND_SHELL` adds no database state: roll back with the prior binary while
 keeping it at `server`, or restore the previous vhost and release together if a
 Nui-specific CSP was introduced.
