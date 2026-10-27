@@ -88,10 +88,27 @@ previous key after at most seven days. In a compromise, omit it to revoke old
 cookies immediately. `OWNER_HASH_SECRET` must remain stable unless a database
 ownership migration has been designed and tested.
 
+`AUTH_TOTP_SECRET` is an optional fifth, independently generated secret. It is
+canonical unpadded uppercase Base32 rather than hex and remains only in the
+root-owned systemd credential file and process memory; it is never stored in
+PostgreSQL, emitted by an API or written to logs.
+
 ## Authentication
 
 - The admin password is stored as `pbkdf2_sha256$<iterations>$<salt>$<hash>`
   and verified with `PKCS5_PBKDF2_HMAC` plus a constant-time compare.
+- When `AUTH_TOTP_SECRET` is configured, the same login also requires the
+  interoperable [RFC 6238](https://www.rfc-editor.org/rfc/rfc6238.html)
+  HMAC-SHA1 profile: six decimal digits, a 30-second step
+  and at most one step of past/future clock drift. PostgreSQL atomically records
+  the greatest accepted counter, so only one of two concurrent submissions can
+  succeed and an accepted code stays rejected across process restarts. Public
+  failures remain the generic `Invalid credentials` response.
+- The signed administrator-session principal includes a pseudorandom binding to
+  the configured seed. Enabling, disabling or rotating MFA therefore invalidates
+  existing admin cookies without changing guest principals or their ownership
+  hashes. The binding generated under a previous signing key is accepted only
+  during the same bounded planned key-rotation window, then re-signed.
 - Login attempts are tracked per IP: the ninth attempt in 10 minutes is blocked.
   A successful login clears that address's bucket. nginx additionally caps
   `/login` at 10 requests/minute.
@@ -610,9 +627,11 @@ These are accepted, not overlooked:
 - **Rate limiting depends on PostgreSQL.** A database outage deliberately blocks
   login and writes instead of silently disabling abuse controls; reads may still
   work if their required database operations are available.
-- **Admin is a single shared credential.** There is no MFA or tamper-resistant,
-  per-action audit trail. Security events identify the admin actor class but not
-  an individual person.
+- **Admin is a single shared identity.** Optional TOTP protects a deployment
+  that activates it, but there are no recovery codes, phishing-resistant
+  passkeys, server-side device sessions, individual revocation or tamper-
+  resistant per-action audit trail. Security events identify the admin actor
+  class but not an individual person.
 - **Self-service ownership is not identity proof.** Export and delete-all cover
   only the owner derived from the current guest cookie. A lost cookie cannot be
   recovered, and an already copied stateless cookie cannot be individually
@@ -645,6 +664,9 @@ proves page/API/fork enforcement, PBKDF2-only storage, cookie attributes and
 tamper rejection, password/version revocation, rotation, throttling, aggregate
 telemetry and capability/password log redaction. It also exercises the HTTPS
 `__Host-` cookie path against the loopback test service.
+`tests/check_admin_mfa.sh` races one valid code through two login requests,
+requires exactly one success, restarts the service and proves persistent replay
+rejection while keeping the seed, code and password out of logs.
 
 ```bash
 ctest --test-dir build --output-on-failure

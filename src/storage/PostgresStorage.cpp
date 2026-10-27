@@ -749,6 +749,22 @@ void PostgresStorage::enforceLogicalStorageCapacity(
     }
 }
 
+bool PostgresStorage::consumeAdminTotpCounter(long long counter) {
+    if (counter < 0) {
+        return false;
+    }
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
+    const auto accepted = tx.exec(R"SQL(
+        UPDATE admin_totp_state
+        SET last_accepted_counter=$1, updated_at=statement_timestamp()
+        WHERE singleton=true AND last_accepted_counter < $1
+        RETURNING last_accepted_counter
+    )SQL", pqxx::params{counter});
+    tx.commit();
+    return !accepted.empty();
+}
+
 DiagramCreationResult PostgresStorage::createDiagram(
     const Diagram& input, bool importMode, const std::string& ownerTokenHash,
     const std::optional<IdempotencyRequest>& idempotency) {

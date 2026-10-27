@@ -60,7 +60,8 @@ std::string publicMetadata(const std::string& title, const std::string& canonica
 
 } // namespace
 
-std::string renderLoginPage(const std::string& error, const std::string& assetVersion) {
+std::string renderLoginPage(const std::string& error, const std::string& assetVersion,
+                            bool totpRequired) {
     return std::string(R"HTML(<!doctype html>
 <html lang="en">
 <head>
@@ -80,7 +81,8 @@ std::string renderLoginPage(const std::string& error, const std::string& assetVe
 )HTML") + (error.empty() ? "" : "<div class=\"login-error\">" + htmlEscape(error) + "</div>") + R"HTML(
       <label>Username<input name="username" autocomplete="username" required maxlength="80"></label>
       <label>Password<input type="password" name="password" autocomplete="current-password" required maxlength="200"></label>
-      <button type="submit">Sign in</button>
+)HTML" + (totpRequired ? R"HTML(      <label>Authenticator code<input name="totp" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" required></label>
+)HTML" : "") + R"HTML(      <button type="submit">Sign in</button>
       <a href="/health">Health check</a>
     </form>
   </main>

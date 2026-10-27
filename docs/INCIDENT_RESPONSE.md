@@ -55,7 +55,9 @@ is the VPS operator until another named owner takes over in the incident record.
    fails immediately. Use that previous-key window only for planned rotation and
    remove it within seven days. Keep `OWNER_HASH_SECRET` stable unless a tested
    database re-key is part of the incident plan; rotate CSRF and rate-limit keys
-   independently.
+   independently. If administrator TOTP material may be exposed, provision a new
+   seed through the root-owned credential path; its binding invalidates existing
+   admin cookies without detaching guest-owned diagrams.
 3. Restore only from a verified backup into an isolated database, validate schema
    and counts, and test read/write/version flows before cutover.
 4. Run build, unit, isolated integration, security smoke, rate-limit, migration,

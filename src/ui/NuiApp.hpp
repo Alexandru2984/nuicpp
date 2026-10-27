@@ -4,7 +4,8 @@
 
 namespace nuigraph {
 
-std::string renderLoginPage(const std::string& error, const std::string& assetVersion = "");
+std::string renderLoginPage(const std::string& error, const std::string& assetVersion = "",
+                            bool totpRequired = false);
 std::string renderShareUnlockPage(const std::string& slug, const std::string& error,
                                   const std::string& assetVersion = "");
 std::string renderEditorPage(const std::string& username, const std::string& baseUrl,

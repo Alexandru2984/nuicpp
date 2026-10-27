@@ -149,6 +149,7 @@ operator's exported variables cannot override the files being checked.
 | `DATABASE_URL` | `postgresql://nuigraph_app:…@localhost/nuigraph_studio` | Runtime role, never the owner role |
 | `AUTH_USERNAME` | admin login name | Guest usernames are `guest_<hex>` and cannot collide |
 | `AUTH_PASSWORD_HASH` | `pbkdf2_sha256$<iters>$<salt>$<hash>` | |
+| `AUTH_TOTP_SECRET` | empty or 20–64 random bytes in unpadded uppercase Base32 | Optional RFC 6238 administrator second factor; provision separately from the password |
 | `SESSION_SIGNING_SECRET` | 32+ random bytes, hex | Current cookie-signing key |
 | `SESSION_SIGNING_SECRET_PREVIOUS` | empty normally | Old signing key during a planned rotation, for 7 days maximum |
 | `CSRF_SECRET` | distinct 32+ random bytes, hex | CSRF derivation only |
@@ -171,7 +172,7 @@ operator's exported variables cannot override the files being checked.
 | `DB_POOL_SIZE` | `8` | Pooled connections; see sizing below |
 | `PROJECT_ROOT` | `/opt/nuigraph-studio/current` | Root-owned release/static root |
 
-All four active secrets must be distinct. For the first split-key deployment,
+All active secrets, including an enabled TOTP seed, must be distinct. For the first split-key deployment,
 copy the old `SESSION_SECRET` value into both `OWNER_HASH_SECRET` and
 `SESSION_SIGNING_SECRET_PREVIOUS`, generate fresh signing/CSRF/rate-limit keys,
 and remove the legacy variable (the app rejects it). Equality between the
@@ -180,6 +181,28 @@ old cookies are re-signed without extending their original expiry on
 `/api/session`; remove the previous signing key after seven days.
 During a signing-key compromise, do not configure the previous key: immediate
 revocation takes priority over session continuity.
+
+Administrator TOTP is optional at configuration level so an existing deployment
+does not lock out its operator during an unattended upgrade. To activate it,
+first confirm the host clock is synchronised, generate an independent seed in a
+trusted terminal, enrol it manually in the operator's authenticator, and retain
+an approved break-glass path to the root-owned credential file:
+
+```bash
+timedatectl show -p NTPSynchronized --value   # expect yes
+openssl rand 20 | base32 | tr -d '=\n'; printf '\n'
+```
+
+Put the resulting value in `AUTH_TOTP_SECRET` in `app.env` without placing it in
+source control, shell history, a URL, ticket or chat. Validate the candidate
+configuration before restart. Enabling, disabling or rotating this value
+invalidates existing administrator cookies through a signed seed binding while
+leaving guest ownership sessions intact. After activation, verify password-only
+login fails, a fresh authenticator code succeeds, and reusing that code fails.
+The database clock is not used to generate codes: maintain NTP on the app host.
+If the authenticator is lost, clearing the value and restarting is the explicit
+break-glass downgrade; preserve incident evidence and immediately rotate the
+admin password and seed after access is restored.
 
 The first HTTPS request to `/api/session` also upgrades a valid legacy
 `ngs_session` to `__Host-ngs_session` without changing its identity or expiry,
@@ -413,6 +436,11 @@ rolling back across it, deny `/d/` and `/api/diagrams/slug/` at nginx (including
 unlock and fork suffixes), then restore a password-aware binary before reopening
 traffic. Do not clear verifiers, reset password versions or drop the columns as
 a rollback; those actions silently weaken or revoke owner-selected protection.
+`013_admin_totp_replay.sql` stores only the greatest accepted time counter and
+is safe to leave in place. An older binary ignores it but also stops enforcing
+TOTP, so rolling code back while `AUTH_TOTP_SECRET` is active is an authentication
+downgrade. Deny `/login` at nginx before such a rollback and restore an MFA-aware
+binary (or execute the documented break-glass decision) before reopening login.
 `FRONTEND_SHELL` adds no database state: roll back with the prior binary while
 keeping it at `server`, or restore the previous vhost and release together if a
 Nui-specific CSP was introduced.
@@ -425,6 +453,7 @@ Nui-specific CSP was introduced.
 | 403 on everything | Origin guard: traffic did not arrive via Cloudflare, or CF is in DNS-only mode |
 | 429 during normal use | Edge zones in `nuicpp-rate-limit.conf`, then active pseudonymous rows in `rate_limit_buckets`; do not clear a production bucket without confirming the caller and abuse signal |
 | Login/write returns 503 | Check PostgreSQL readiness, pool saturation and the `rate_limit_storage` event; the abuse control deliberately fails closed |
+| Correct admin password is rejected | If MFA is configured, confirm the host clock is synchronised, use a new six-digit code and verify the same code was not already accepted; never print the seed or code into logs |
 | Nui mode refuses startup | Confirm `FRONTEND_SHELL=nui`, inspect regular files under `public/nui/`, then re-run `scripts/build_nui_frontend.sh`; never replace the gate with a symlink |
 | "storage unavailable" | Correlate the response `X-Request-ID` with the generic `storage_failure` journal event and PostgreSQL logs; raw connection errors are deliberately not journaled |
 | Save/trash/restore/permanent delete returns 412 | Another client won the revision; reopen or refresh, then retry deliberately |

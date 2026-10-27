@@ -1,17 +1,22 @@
 #include "utils/Security.hpp"
 
+#include <openssl/evp.h>
+#include <openssl/hmac.h>
 #include <openssl/rand.h>
 
 #include <arpa/inet.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cctype>
 #include <ctime>
 #include <iomanip>
+#include <optional>
 #include <sstream>
 #include <string_view>
+#include <vector>
 
 namespace nuigraph {
 namespace {
@@ -40,6 +45,83 @@ std::string normalizedToken(std::string value) {
 bool isSafeHttpMethod(const std::string& method) {
     const auto normalized = normalizedToken(method);
     return normalized == "get" || normalized == "head" || normalized == "options";
+}
+
+std::vector<unsigned char> decodeBase32(const std::string& encoded) {
+    if (encoded.empty() || encoded.size() > 104) {
+        return {};
+    }
+    std::vector<unsigned char> decoded;
+    decoded.reserve((encoded.size() * 5) / 8);
+    unsigned int buffer = 0;
+    int bits = 0;
+    for (const unsigned char character : encoded) {
+        unsigned int value = 0;
+        if (character >= 'A' && character <= 'Z') {
+            value = character - 'A';
+        } else if (character >= '2' && character <= '7') {
+            value = character - '2' + 26;
+        } else {
+            return {};
+        }
+        buffer = (buffer << 5) | value;
+        bits += 5;
+        if (bits >= 8) {
+            bits -= 8;
+            decoded.push_back(static_cast<unsigned char>((buffer >> bits) & 0xffU));
+            buffer &= bits == 0 ? 0U : (1U << bits) - 1U;
+        }
+    }
+    if (bits > 0 && buffer != 0) {
+        return {};
+    }
+    const auto canonicalLength = (decoded.size() * 8 + 4) / 5;
+    if (encoded.size() != canonicalLength) {
+        return {};
+    }
+    return decoded;
+}
+
+std::optional<std::string> totpAtCounter(
+    const std::vector<unsigned char>& secret, std::uint64_t counter) {
+    std::array<unsigned char, 8> message{};
+    for (int index = 7; index >= 0; --index) {
+        message[static_cast<std::size_t>(index)] =
+            static_cast<unsigned char>(counter & 0xffU);
+        counter >>= 8;
+    }
+
+    std::array<unsigned char, EVP_MAX_MD_SIZE> digest{};
+    unsigned int digestLength = 0;
+    if (HMAC(EVP_sha1(), secret.data(), static_cast<int>(secret.size()),
+             message.data(), message.size(), digest.data(), &digestLength) == nullptr ||
+        digestLength != 20) {
+        return std::nullopt;
+    }
+    const auto offset = static_cast<std::size_t>(digest[19] & 0x0fU);
+    if (offset + 3 >= digestLength) {
+        return std::nullopt;
+    }
+    const std::uint32_t binary =
+        (static_cast<std::uint32_t>(digest[offset] & 0x7fU) << 24) |
+        (static_cast<std::uint32_t>(digest[offset + 1]) << 16) |
+        (static_cast<std::uint32_t>(digest[offset + 2]) << 8) |
+        static_cast<std::uint32_t>(digest[offset + 3]);
+    std::ostringstream rendered;
+    rendered << std::setw(6) << std::setfill('0') << (binary % 1000000U);
+    return rendered.str();
+}
+
+bool constantTimeTextEquals(const std::string& left, const std::string& right) {
+    if (left.size() != right.size()) {
+        return false;
+    }
+    unsigned char difference = 0;
+    for (std::size_t index = 0; index < left.size(); ++index) {
+        difference |= static_cast<unsigned char>(left[index]) ^
+                      static_cast<unsigned char>(right[index]);
+    }
+    return difference == 0;
 }
 
 bool isValidDnsHost(const std::string& host) {
@@ -300,6 +382,45 @@ bool shouldRejectRequestOrigin(const std::string& method,
     }
     const auto canonical = canonicalHttpOrigin(origin);
     return canonical.empty() || canonical != expectedOrigin;
+}
+
+bool isValidTotpSecret(const std::string& base32Secret) {
+    const auto decoded = decodeBase32(base32Secret);
+    return decoded.size() >= 20 && decoded.size() <= 64;
+}
+
+std::optional<std::int64_t> matchingTotpCounter(
+    const std::string& base32Secret, const std::string& code,
+    std::int64_t unixTimeSeconds) {
+    if (unixTimeSeconds < 0 || code.size() != 6 ||
+        !std::all_of(code.begin(), code.end(), [](unsigned char character) {
+            return std::isdigit(character) != 0;
+        })) {
+        return std::nullopt;
+    }
+    const auto secret = decodeBase32(base32Secret);
+    if (secret.size() < 20 || secret.size() > 64) {
+        return std::nullopt;
+    }
+
+    const auto current = unixTimeSeconds / 30;
+    std::optional<std::int64_t> matched;
+    for (const auto offset : {-1, 0, 1}) {
+        const auto candidate = current + offset;
+        if (candidate < 0) {
+            continue;
+        }
+        const auto expected = totpAtCounter(
+            secret, static_cast<std::uint64_t>(candidate));
+        if (expected.has_value() && constantTimeTextEquals(*expected, code)) {
+            // A collision inside the three-step window is unlikely, but using
+            // the greatest match keeps the monotonic replay state fail-closed.
+            if (!matched.has_value() || candidate > *matched) {
+                matched = candidate;
+            }
+        }
+    }
+    return matched;
 }
 
 } // namespace nuigraph

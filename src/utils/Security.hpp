@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+#include <optional>
 #include <string>
 
 namespace nuigraph {
@@ -38,5 +40,14 @@ bool shouldRejectRequestOrigin(const std::string& method,
                                const std::string& origin,
                                std::size_t originCount,
                                const std::string& expectedOrigin);
+
+// RFC 6238 TOTP support for the optional administrator second factor. Secrets
+// are canonical, unpadded Base32 and codes use the interoperable SHA-1/6-digit/
+// 30-second profile. A matching counter is returned so storage can consume it
+// atomically and reject replay.
+bool isValidTotpSecret(const std::string& base32Secret);
+std::optional<std::int64_t> matchingTotpCounter(
+    const std::string& base32Secret, const std::string& code,
+    std::int64_t unixTimeSeconds);
 
 } // namespace nuigraph

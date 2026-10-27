@@ -212,6 +212,11 @@ rollback notes where applicable.
   and password version. Password replacement, link rotation, disable and trash
   revoke prior access; owner UI, protected mobile page, Chromium/live negative
   tests, aggregate alerts and complete capability-log redaction ship together.
+- Optional administrator TOTP MFA follows the RFC 6238 SHA-1/6-digit/30-second
+  profile with a one-step clock window. A PostgreSQL compare-and-swap consumes
+  the greatest accepted counter, so concurrent reuse and replay after restart
+  fail; configuration validation, generic login errors, a responsive input and
+  a dedicated live race/restart regression ship with the control.
 
 The latest application commits remain local until explicitly pushed and deployed.
 Offsite backup work is intentionally deferred by the operator; its P0 item and
@@ -239,8 +244,9 @@ High risk remain open.
   plain-HTTP name only for local development and tests.
 - Add an explicitly indexed `public` visibility distinct from the implemented
   private and unlisted-link states.
-- User accounts with email verification or OIDC, passkeys/WebAuthn and MFA for
-  the administrator; convert a guest workspace into an account without data loss.
+- User accounts with email verification or OIDC and passkeys/WebAuthn; convert a
+  guest workspace into an account without data loss. Retain TOTP as a fallback
+  after phishing-resistant administrator authentication exists.
 - Server-side admin sessions with device list, last-used metadata and individual
   revocation while preserving the implemented `__Host-` cookie and
   purpose-specific keys.

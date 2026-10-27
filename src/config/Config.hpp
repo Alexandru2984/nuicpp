@@ -20,6 +20,7 @@ struct Config {
     std::string databaseUrl;
     std::string authUsername = "admin";
     std::string authPasswordHash;
+    std::string authTotpSecret;
     std::string sessionSigningSecret;
     std::string previousSessionSigningSecret;
     std::string csrfSecret;

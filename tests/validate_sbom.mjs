@@ -80,7 +80,8 @@ for (const [label, bom] of [["native", nativeBom], ["npm", npmBom]]) {
     "CSRF_SECRET",
     "OWNER_HASH_SECRET",
     "RATE_LIMIT_SECRET",
-    "AUTH_PASSWORD_HASH"
+    "AUTH_PASSWORD_HASH",
+    "AUTH_TOTP_SECRET"
   ]) {
     requireValue(!serialized.includes(secretName), `${label} SBOM contains configuration secret name ${secretName}`);
   }

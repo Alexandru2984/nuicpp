@@ -120,6 +120,7 @@ grep -Fq 'id="prop-trust-zone"' src/ui/NuiApp.cpp
 grep -Fq 'id = "prop-trust-zone"' nui-frontend/frontend/source/frontend/main_page.cpp
 grep -Fq 'data-trust-zone' public/editor.js
 grep -Fq '<h1>NuiGraph Studio</h1>' src/ui/NuiApp.cpp
+grep -Fq 'name="totp" autocomplete="one-time-code" inputmode="numeric"' src/ui/NuiApp.cpp
 grep -Fq 'h1{}("NuiGraph Studio")' nui-frontend/frontend/source/frontend/main_page.cpp
 grep -Fq 'schema.org/SoftwareApplication' public/nui/index.html
 grep -Fq 'schema.org/SoftwareApplication' nui-frontend/static/index.html

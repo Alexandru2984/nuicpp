@@ -100,6 +100,13 @@ raw slugs could reach application/nginx logs on `/unlock` and `/fork` suffixes.
 Both redactors and their static/live regressions now cover every share route.
 The public contract is now OpenAPI 1.6 and exposes only the protection boolean;
 the verifier and plaintext are never response fields.
+Optional administrator MFA now follows RFC 6238 with a canonical Base32 seed,
+six-digit/30-second codes, the existing persistent login throttle and generic
+failure responses. A singleton PostgreSQL compare-and-swap consumes the greatest
+accepted counter, closing concurrent and post-restart replay. Seed-bound signed
+admin principals invalidate pre-MFA or seed-rotation cookies without detaching
+guest-owned data. Production remains password-only until the operator provisions
+the root-owned seed, confirms NTP and rehearses the documented break-glass path.
 The previous trash-retention stage gate passed all 20 CTest suites against disposable PostgreSQL,
 including the dedicated cross-session trash lifecycle and real Chromium
 desktop/mobile accessibility flows; ShellCheck, Cppcheck, the repository secret
@@ -113,6 +120,11 @@ PostgreSQL 18 database in 88.99 seconds, including the dedicated password test,
 real Chromium and migration ledger. All 57 C++ tests, Cppcheck, ShellCheck,
 the 131-file secret scan, OpenAPI 23/23 validation, 30-rule promtool validation
 and high-severity npm audit also passed with zero reported vulnerabilities.
+The administrator-MFA stage gate passed all 23 suites against disposable
+PostgreSQL 18 in 86.71 seconds, including the concurrent/restart replay
+regression, real Chromium and migration ledger. All 59 C++ tests, Cppcheck,
+ShellCheck, the 133-file secret scan, OpenAPI 23/23 validation, 30-rule promtool
+validation and high-severity npm audit passed with zero reported vulnerabilities.
 
 ## Executive verdict
 
@@ -233,6 +245,40 @@ still deferred; the feature must not be represented as complete legal compliance
 passed. The repository-wide verdict remains **MITIGATE THEN SHIP** because live
 paging, recovery and deployment remain outstanding.
 
+## CISO gate: administrator TOTP MFA (2026-10-27)
+
+- **Threat model:** the leading risks are remote credential stuffing with a
+  stolen password (medium likelihood, critical impact), online guessing of a
+  six-digit code (medium/high without throttling), replay inside a 30-second
+  window (medium/high), seed theft from host configuration (low/critical) and
+  operator lockout from clock drift or device loss (medium/high). Edge and
+  database throttles, a three-counter maximum window, atomic monotonic replay
+  state, a root-only seed and seed-bound admin cookies constrain those paths.
+- **Blast radius:** an accepted administrator session can read or mutate every
+  retained diagram under the application-wide default ceiling of 5,000 rows and
+  512 MiB logical content. TOTP does not reduce a host/database compromise and
+  the identity is still shared, so attribution and per-device containment remain
+  open. The repository has no defensible frequency/loss inputs for a new FAIR
+  value; the existing admin-takeover estimate remains illustrative only.
+- **Detection and response:** failed password, TOTP and replay attempts feed the
+  existing bounded login signal and attack alert; production MTTD remains
+  effectively unbounded until live paging is exercised. Seed activation/rotation
+  revokes admin cookies only. The root-owned break-glass downgrade, password/seed
+  rotation and evidence steps are documented, but this exact lockout/compromise
+  scenario has not been tabletop-tested and no measured MTTR exists.
+- **Regulatory:** the seed and last accepted time counter are authentication
+  security data, not diagram content; neither is exported or logged. Access to
+  the root credential and database state still belongs in the operator's access
+  and retention records. This control is not a compliance certification.
+- **Supply chain:** no package, vendor, subprocessor or network data flow was
+  added. The implementation uses the existing OpenSSL and PostgreSQL runtime;
+  compatibility is checked against the official RFC vector.
+
+**Verdict:** safe to ship disabled by default. Production activation is
+conditional on NTP, independent seed provisioning, successful enrolment, a
+tested fresh-code/replay smoke check and an approved root break-glass owner.
+Repository-wide status remains **MITIGATE THEN SHIP**.
+
 ## Evidence snapshot
 
 - `main` was clean and three commits ahead of `origin/main` at assessment start.
@@ -285,7 +331,7 @@ paging, recovery and deployment remain outstanding.
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Denial of service | An attacker rotates guest cookies and source addresses, fills the global row/byte or active limiter-key allowance, or saturates DB workers/storage. | High | Medium | Cloudflare/nginx limits, bounded shared GCRA buckets, payload caps, pool cap, atomic per-session/global row and logical-byte quotas, explicit deletion plus opt-in bounded retention and trash telemetry | Turnstile for suspicious creation; approve retention only after recovery/paging; deploy and wire the checked-in capacity and latency alerts |
 | 2 | Information disclosure | App, DB, backups, journals, or an enabled bearer link expose private diagram content. Legacy links stay active until deliberately expired, rotated or revoked. | Medium | High | Private-by-default creation, optional DB-clock expiry, explicit rotate/revoke, 128-bit slugs, owner checks, least-privilege DB role, CSP, origin guard | Deploy the lifecycle changes; review legacy links; encrypted and access-controlled backups; retention policy |
-| 3 | Spoofing / elevation | Theft or forgery of the single admin session grants access to all diagrams. Stateless sessions have no individual revocation. | Low | High | Purpose-separated HMAC keys, bounded signing-key rollover, `__Host-` Secure/HttpOnly/SameSite cookies, PBKDF2, login throttles | Server-side admin session revocation; MFA/passkey; alert on admin login |
+| 3 | Spoofing / elevation | Theft or forgery of the single admin session grants access to all diagrams. Stateless sessions have no individual revocation. | Low | High | Purpose-separated HMAC keys, bounded signing-key rollover, `__Host-` Secure/HttpOnly/SameSite cookies, PBKDF2, login throttles, optional anti-replay TOTP | Activate TOTP with tested break glass; add server-side admin session revocation and passkeys; wire the admin-login alert |
 | 4 | Tampering | Concurrent editors attempt to overwrite, delete or restore over newer work. | Low | Medium | Atomic revision increments, strong ETags, mandatory `If-Match`, `412` rejection, bounded history and local draft preservation | Add a merge/recovery UI before real-time collaboration |
 | 5 | Repudiation | A shared admin credential prevents attribution to one person, and local logs can be altered after host compromise. | Medium | Medium | Correlated nginx/app request IDs; structured actor-class login/share/auth/CSRF/quota/storage events; redacted routes | Central/tamper-resistant audit storage, retention/access policy, individual admin identities and alerts |
 | 6 | Supply chain | A compromised package source or CI account introduces a malicious dependency or substitutes build output. | Low | Medium | Immutable Nui/action/service refs; npm lock integrity and audit; native plus npm CycloneDX inventories; CodeQL, Cppcheck, ShellCheck, GitGuardian and Dependabot; root-owned releases | Add signed release provenance and independently verified reproducible-build metadata |

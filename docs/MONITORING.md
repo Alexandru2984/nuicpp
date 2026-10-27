@@ -120,6 +120,8 @@ only when a real artifact timestamp and restore verification signal exist.
 ## Authentication attack
 
 1. Correlate the alert with redacted `admin_login` events and Cloudflare data.
+   Password, missing/invalid TOTP and replay failures deliberately share the
+   same public response and bounded failed-login outcome.
 2. Block abusive sources at the edge; do not weaken application throttling.
 3. Treat any unexplained successful login near the attack window as a potential
    credential incident and follow `docs/INCIDENT_RESPONSE.md`.

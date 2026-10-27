@@ -276,6 +276,10 @@ void validateConfig(const Config& cfg) {
         throw std::runtime_error("AUTH_USERNAME contains unsupported characters");
     }
     validatePasswordHash(cfg.authPasswordHash);
+    if (!cfg.authTotpSecret.empty() && !isValidTotpSecret(cfg.authTotpSecret)) {
+        throw std::runtime_error(
+            "AUTH_TOTP_SECRET must be 20 to 64 random bytes in canonical unpadded uppercase Base32");
+    }
     validateSecret("SESSION_SIGNING_SECRET", cfg.sessionSigningSecret);
     validateSecret("SESSION_SIGNING_SECRET_PREVIOUS", cfg.previousSessionSigningSecret, true);
     validateSecret("CSRF_SECRET", cfg.csrfSecret);
@@ -291,12 +295,16 @@ void validateConfig(const Config& cfg) {
             throw std::runtime_error("security secrets must be distinct");
         }
     }
+    if (!cfg.authTotpSecret.empty() && !secrets.insert(cfg.authTotpSecret).second) {
+        throw std::runtime_error("security secrets must be distinct");
+    }
     if (!cfg.previousSessionSigningSecret.empty() &&
         (cfg.previousSessionSigningSecret == cfg.sessionSigningSecret ||
          cfg.previousSessionSigningSecret == cfg.csrfSecret ||
-         cfg.previousSessionSigningSecret == cfg.rateLimitSecret)) {
+         cfg.previousSessionSigningSecret == cfg.rateLimitSecret ||
+         cfg.previousSessionSigningSecret == cfg.authTotpSecret)) {
         throw std::runtime_error(
-            "SESSION_SIGNING_SECRET_PREVIOUS must differ from signing, CSRF and rate-limit secrets");
+            "SESSION_SIGNING_SECRET_PREVIOUS must differ from signing, CSRF, rate-limit and TOTP secrets");
     }
     if (cfg.projectRoot.empty() || cfg.projectRoot.front() != '/') {
         throw std::runtime_error("PROJECT_ROOT must be an absolute path");
@@ -336,6 +344,7 @@ Config Config::load(const std::string& envPath) {
     cfg.databaseUrl = getValue(file, "DATABASE_URL");
     cfg.authUsername = getValue(file, "AUTH_USERNAME", cfg.authUsername);
     cfg.authPasswordHash = getValue(file, "AUTH_PASSWORD_HASH");
+    cfg.authTotpSecret = getValue(file, "AUTH_TOTP_SECRET");
     if (!getValue(file, "SESSION_SECRET").empty()) {
         throw std::runtime_error(
             "SESSION_SECRET is no longer supported; configure the four purpose-specific secrets");

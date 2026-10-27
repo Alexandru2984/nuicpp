@@ -16,6 +16,7 @@
 #include <array>
 #include <cctype>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
@@ -616,7 +617,13 @@ std::string Routes::makeSessionValue(const std::string& username, int maxAgeSeco
 }
 
 std::string Routes::makeSessionValueUntil(const std::string& username, long long expiry) const {
-    std::string payload = username + "." + std::to_string(expiry);
+    auto principal = username;
+    if (username == cfg_.authUsername && !cfg_.authTotpSecret.empty()) {
+        principal += "~totp~" + hmacHex(
+            cfg_.sessionSigningSecret,
+            "admin-totp-binding:v1:" + cfg_.authTotpSecret).substr(0, 32);
+    }
+    std::string payload = principal + "." + std::to_string(expiry);
     return payload + "." + hmacHex(cfg_.sessionSigningSecret, payload);
 }
 
@@ -658,7 +665,33 @@ bool Routes::verifySession(const httplib::Request& req, std::string* username,
     if (usedPreviousKey) {
         *usedPreviousKey = previousMatches && !currentMatches;
     }
-    if (username) *username = parts[0];
+    auto resolvedUsername = parts[0];
+    const auto adminTotpPrefix = cfg_.authUsername + "~totp~";
+    if (!cfg_.authTotpSecret.empty()) {
+        const auto expectedAdminPrincipal = adminTotpPrefix +
+            hmacHex(cfg_.sessionSigningSecret,
+                    "admin-totp-binding:v1:" + cfg_.authTotpSecret).substr(0, 32);
+        auto expectedPreviousAdminPrincipal = std::string{};
+        if (!cfg_.previousSessionSigningSecret.empty()) {
+            expectedPreviousAdminPrincipal = adminTotpPrefix +
+                hmacHex(cfg_.previousSessionSigningSecret,
+                        "admin-totp-binding:v1:" + cfg_.authTotpSecret).substr(0, 32);
+        }
+        if (parts[0] == expectedAdminPrincipal ||
+            (!expectedPreviousAdminPrincipal.empty() &&
+             parts[0] == expectedPreviousAdminPrincipal)) {
+            resolvedUsername = cfg_.authUsername;
+        } else if (parts[0] == cfg_.authUsername || parts[0].starts_with(adminTotpPrefix)) {
+            // Enabling or rotating MFA revokes only administrator sessions;
+            // guest ownership cookies keep their stable principal unchanged.
+            return false;
+        }
+    } else if (parts[0].starts_with(adminTotpPrefix)) {
+        // Disabling MFA is a break-glass transition and also forces a fresh
+        // password login instead of silently accepting an MFA-era session.
+        return false;
+    }
+    if (username) *username = resolvedUsername;
     if (expiryAt) *expiryAt = expiry;
     return true;
 }
@@ -1205,7 +1238,9 @@ void Routes::registerRoutes(httplib::Server& server) {
 
     server.Get("/login", [this](const httplib::Request&, httplib::Response& res) {
         res.set_header("X-Robots-Tag", "noindex, nofollow, noarchive");
-        res.set_content(renderLoginPage("", assetVersion_), "text/html; charset=utf-8");
+        res.set_content(
+            renderLoginPage("", assetVersion_, !cfg_.authTotpSecret.empty()),
+            "text/html; charset=utf-8");
     });
     server.Post("/login", [this](const httplib::Request& req, httplib::Response& res) {
         res.set_header("X-Robots-Tag", "noindex, nofollow, noarchive");
@@ -1214,19 +1249,53 @@ void Routes::registerRoutes(httplib::Server& server) {
         try {
             if (!storage_.consumeRateLimit(limiterKey, 8, kLoginFailureWindow)) {
                 res.status = 429;
-                res.set_content(renderLoginPage("Too many login attempts. Try again later.", assetVersion_), "text/html; charset=utf-8");
+                res.set_content(renderLoginPage(
+                    "Too many login attempts. Try again later.", assetVersion_,
+                    !cfg_.authTotpSecret.empty()), "text/html; charset=utf-8");
                 logSecurityEvent(req, res, "admin_login", "rate_limited");
                 return;
             }
         } catch (const std::exception&) {
             res.status = 503;
-            res.set_content(renderLoginPage("Sign-in validation is temporarily unavailable.", assetVersion_), "text/html; charset=utf-8");
+            res.set_content(renderLoginPage(
+                "Sign-in validation is temporarily unavailable.", assetVersion_,
+                !cfg_.authTotpSecret.empty()), "text/html; charset=utf-8");
             logSecurityEvent(req, res, "rate_limit_storage", "error");
             return;
         }
         auto username = formValue(req.body, "username");
         auto password = formValue(req.body, "password");
-        if (username == cfg_.authUsername && verifyPassword(password)) {
+        const auto credentialsValid = req.body.size() <= 1024 &&
+            username == cfg_.authUsername && verifyPassword(password);
+        std::optional<std::int64_t> totpCounter;
+        if (credentialsValid && !cfg_.authTotpSecret.empty()) {
+            const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            totpCounter = matchingTotpCounter(
+                cfg_.authTotpSecret, formValue(req.body, "totp"), now);
+        }
+        const auto authenticationValid = credentialsValid &&
+            (cfg_.authTotpSecret.empty() || totpCounter.has_value());
+        if (authenticationValid) {
+            if (totpCounter.has_value()) {
+                try {
+                    if (!storage_.consumeAdminTotpCounter(*totpCounter)) {
+                        res.status = 401;
+                        res.set_content(renderLoginPage(
+                            "Invalid credentials", assetVersion_, true),
+                            "text/html; charset=utf-8");
+                        logSecurityEvent(req, res, "admin_login", "failed");
+                        return;
+                    }
+                } catch (const std::exception&) {
+                    res.status = 503;
+                    res.set_content(renderLoginPage(
+                        "Sign-in validation is temporarily unavailable.",
+                        assetVersion_, true), "text/html; charset=utf-8");
+                    logSecurityEvent(req, res, "storage_failure", "error");
+                    return;
+                }
+            }
             res.status = 302;
             res.set_header("Set-Cookie", makeSessionCookie(req, username));
             res.set_header("Location", "/");
@@ -1238,7 +1307,9 @@ void Routes::registerRoutes(httplib::Server& server) {
             }
         } else {
             res.status = 401;
-            res.set_content(renderLoginPage("Invalid credentials", assetVersion_), "text/html; charset=utf-8");
+            res.set_content(renderLoginPage(
+                "Invalid credentials", assetVersion_, !cfg_.authTotpSecret.empty()),
+                "text/html; charset=utf-8");
             logSecurityEvent(req, res, "admin_login", "failed");
         }
     });

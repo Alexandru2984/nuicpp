@@ -102,6 +102,7 @@ public:
     bool consumeRateLimit(const std::string& bucketKey, std::size_t maxRequests,
                           long long windowSeconds);
     void clearRateLimit(const std::string& bucketKey);
+    bool consumeAdminTotpCounter(long long counter);
     DiagramCreationResult createDiagram(
         const Diagram& input, bool importMode, const std::string& ownerTokenHash = "",
         const std::optional<IdempotencyRequest>& idempotency = std::nullopt);

@@ -195,6 +195,10 @@ Summarised here, detailed in [`docs/SECURITY.md`](docs/SECURITY.md).
   browser-enforced `__Host-` cookie, while signing-key and legacy-name rollover
   transparently preserve active 8-hour admin and 7-day guest sessions.
 - PBKDF2-SHA256 admin password with constant-time comparison.
+- Optional RFC 6238 authenticator MFA for the administrator uses a 30-second,
+  six-digit TOTP in addition to the password. PostgreSQL atomically consumes the
+  matched counter so the same code loses a concurrent race and cannot be replayed
+  after an application restart.
 - Per-session ownership by HMAC-derived owner hash; read and edit both checked
   by diagram id on every path that emits diagram content, including duplicate.
 - CSRF tokens bound to the exact session cookie on authenticated JSON writes,
@@ -233,7 +237,7 @@ Summarised here, detailed in [`docs/SECURITY.md`](docs/SECURITY.md).
 - cpp-httplib for HTTP serving
 - libpqxx 7.10+ / libpq for PostgreSQL
 - nlohmann/json
-- OpenSSL for PBKDF2, HMAC-SHA256, SHA-256, and CSPRNG
+- OpenSSL for PBKDF2, HMAC-SHA256, RFC 6238 HMAC-SHA1, SHA-256, and CSPRNG
 - PostgreSQL 18
 - nginx reverse proxy behind Cloudflare, Certbot TLS
 
@@ -287,12 +291,12 @@ The build is clean under `-Wall -Wextra -Wpedantic`.
 ctest --test-dir build --output-on-failure
 ```
 
-Twenty-two suites cover unit validation, frontend assets, the nginx candidate,
+Twenty-three suites cover unit validation, frontend assets, the nginx candidate,
 Prometheus rules, incident-runbook integrity, secret scanning, CycloneDX SBOM generation, real
 Chromium behavior, live security/API behavior, shared persistent rate limits,
 concurrent row/logical-byte quota enforcement, signing-key rotation, and
 migration-ledger integrity, including isolated trash retention and guest data
-export/deletion and password-protected sharing lifecycles. The database-backed suites use
+export/deletion, password-protected sharing and administrator MFA/replay lifecycles. The database-backed suites use
 a config with `APP_ENV=test` whose
 actual PostgreSQL database and login-role names both end in `_test`. Missing
 local prerequisites appear as **Not Run**, not as false passes; deployment sets
@@ -336,7 +340,7 @@ values are documented in [`docs/DEPLOY.md`](docs/DEPLOY.md#2-environment):
 
 ```
 APP_ENV  APP_HOST  APP_PORT  APP_BASE_URL  DATABASE_URL
-AUTH_USERNAME  AUTH_PASSWORD_HASH  SESSION_SIGNING_SECRET
+AUTH_USERNAME  AUTH_PASSWORD_HASH  AUTH_TOTP_SECRET  SESSION_SIGNING_SECRET
 SESSION_SIGNING_SECRET_PREVIOUS  CSRF_SECRET  OWNER_HASH_SECRET
 RATE_LIMIT_SECRET  PUBLIC_ACCESS  FRONTEND_SHELL
 MAX_NODES_PER_DIAGRAM  MAX_EDGES_PER_DIAGRAM  MAX_VERSIONS_PER_DIAGRAM

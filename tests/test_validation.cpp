@@ -8,6 +8,8 @@
 #include "utils/Security.hpp"
 #include "validation/DiagramValidator.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -63,6 +65,10 @@ const std::string kValidSigningSecret(64, 'c');
 const std::string kValidCsrfSecret(64, 'd');
 const std::string kValidOwnerSecret(64, 'e');
 const std::string kValidRateLimitSecret(64, 'f');
+
+std::string totpSeed() {
+    return std::string("GEZDGNBV") + "GY3TQOJQ" + "GEZDGNBV" + "GY3TQOJQ";
+}
 
 std::string validSecrets() {
     return "SESSION_SIGNING_SECRET=" + kValidSigningSecret + "\n"
@@ -389,6 +395,50 @@ void testConfigRejectsWeakSecrets() {
         "the previous signing key must differ from the current signing key");
     require(configThrows(validConfig("AUTH_PASSWORD_HASH=pbkdf2_sha256$1$aa$bb\n")),
             "weak password hashes should throw");
+}
+
+void testTotpConfigValidation() {
+    const auto path = tmpEnvPath();
+    writeEnvFile(path, validConfig("AUTH_TOTP_SECRET=" + totpSeed() + "\n"));
+    const auto cfg = Config::load(path);
+    require(cfg.authTotpSecret == totpSeed(),
+            "canonical administrator TOTP seed should load");
+    std::remove(path.c_str());
+
+    require(configThrows(validConfig("AUTH_TOTP_SECRET=SHORT\n")),
+            "short TOTP seed should be rejected");
+    auto lower = totpSeed();
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    require(configThrows(validConfig("AUTH_TOTP_SECRET=" + lower + "\n")),
+            "non-canonical lowercase TOTP seed should be rejected");
+    require(configThrows(validConfig("AUTH_TOTP_SECRET=" + totpSeed() + "=\n")),
+            "padded TOTP seed should be rejected");
+    const auto reusedSecret = std::string(64, 'A');
+    require(configThrows(validConfig(
+                "AUTH_TOTP_SECRET=" + reusedSecret + "\n"
+                "SESSION_SIGNING_SECRET=" + reusedSecret + "\n")),
+            "TOTP and purpose-specific HMAC secrets must be independent");
+    require(configThrows(validConfig(
+                "AUTH_TOTP_SECRET=" + reusedSecret + "\n"
+                "SESSION_SIGNING_SECRET_PREVIOUS=" + reusedSecret + "\n")),
+            "TOTP and previous signing secrets must be independent");
+}
+
+void testTotpRfcVectorAndWindow() {
+    const auto match = matchingTotpCounter(totpSeed(), "287082", 59);
+    require(match.has_value() && *match == 1,
+            "six-digit RFC 6238 SHA-1 vector should match counter one");
+    require(matchingTotpCounter(totpSeed(), "287082", 89).has_value(),
+            "one previous 30-second step should be accepted for transmission delay");
+    require(!matchingTotpCounter(totpSeed(), "287082", 120).has_value(),
+            "codes outside the one-step window should be rejected");
+    require(!matchingTotpCounter(totpSeed(), "28a082", 59).has_value() &&
+                !matchingTotpCounter(totpSeed(), "2870820", 59).has_value(),
+            "TOTP input must contain exactly six decimal digits");
+    require(!isValidTotpSecret("SHORT") && isValidTotpSecret(totpSeed()),
+            "TOTP seed validation should enforce canonical key material");
 }
 
 void testProductionConfigRequiresSafePathsAndHttps() {
@@ -1014,6 +1064,13 @@ void testSeoMetadata() {
             "privacy notice should explain the self-service controls and link to the official law");
     require(renderLoginPage("").find("noindex, nofollow, noarchive") != std::string::npos,
             "login page should opt out of indexing");
+    const auto mfaLogin = renderLoginPage("", "", true);
+    require(mfaLogin.find("name=\"totp\"") != std::string::npos &&
+                mfaLogin.find("autocomplete=\"one-time-code\"") != std::string::npos &&
+                mfaLogin.find("pattern=\"[0-9]{6}\"") != std::string::npos,
+            "MFA login should require an accessible six-digit authenticator input");
+    require(renderLoginPage("").find("name=\"totp\"") == std::string::npos,
+            "password-only login should not render a misleading MFA input");
 }
 
 } // namespace
@@ -1043,6 +1100,8 @@ int main() {
         testConfigRejectsUnsafeLimits();
         testTrashRetentionRequiresExplicitSafePolicy();
         testConfigRejectsWeakSecrets();
+        testTotpConfigValidation();
+        testTotpRfcVectorAndWindow();
         testProductionConfigRequiresSafePathsAndHttps();
         testFrontendShellDefaultsAndRejectsUnknownModes();
         testNuiShellRequiresACompleteRegularBundle();
@@ -1086,6 +1145,6 @@ int main() {
         std::cerr << "test failed: " << e.what() << '\n';
         return EXIT_FAILURE;
     }
-    std::cout << "nuigraph validation tests passed (57 tests)\n";
+    std::cout << "nuigraph validation tests passed (59 tests)\n";
     return EXIT_SUCCESS;
 }
