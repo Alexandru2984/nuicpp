@@ -37,6 +37,7 @@ struct Diagram {
     std::string updatedAt;
     long revision = 0;
     bool sharingEnabled = false;
+    bool publiclyListed = false;
     std::string shareExpiresAt;
     bool shareExpired = false;
     bool sharePasswordProtected = false;

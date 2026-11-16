@@ -55,6 +55,7 @@ Nui::ElementRenderer MainPage::render() {
                     button{id = "zoom-label", title = "Actual size (Shift+1)", AttributeFactory("aria-label") = "100% zoom; reset to 100%"}("100%"),
                     button{id = "zoom-in", title = "Zoom in"}("+"),
                     span{id = "draft-status", class_ = "draft-status"}("Saved"),
+                    a{href = "/gallery"}("Gallery"),
                     a{href = "/docs"}("Docs"),
                     a{href = "/privacy"}("Privacy"),
                     a{href = "/login"}("Admin")

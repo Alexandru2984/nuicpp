@@ -21,6 +21,7 @@ nui_prepare_emscripten_target(
     TARGET
         ${PROJECT_NAME}
     NO_INLINE
+    UNPACKED_MODE TRUE
     PARCEL_ARGS
         ${PARCEL_ARGS}
     NPM_INSTALL_ARGS
@@ -29,6 +30,7 @@ nui_prepare_emscripten_target(
     EMSCRIPTEN_LINK_OPTIONS
         -sEXPORTED_FUNCTIONS=_frontendMain
         -sALLOW_MEMORY_GROWTH=1
+        -sDYNAMIC_EXECUTION=0
         -sWASM_BIGINT
         -fexceptions
         -O2

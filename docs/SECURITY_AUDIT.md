@@ -114,6 +114,15 @@ The responsive inventory supports individual revocation, logout revokes server
 state, restart preserves decisions, and password/TOTP changes invalidate the
 whole prior authentication context. Existing stateless admin cookies are
 deliberately rejected after deployment; guest sessions and ownership are unchanged.
+Explicit public discovery now forms a third state beside private and unlisted.
+Only an owner-authorised, CSRF-protected and ETag-conditional action can publish
+an active passwordless diagram. Public queries re-check visibility, sharing,
+expiry, deletion and password state; database constraints enforce the two most
+important invariants. Unpublish rotates the slug atomically, while expiry,
+disable and trash remove catalog/page/API access. The escaped responsive gallery,
+per-diagram canonical metadata, no-store policy, public API bounds, privacy
+notice, OpenAPI 1.8 contract, aggregate alert and live lifecycle regression ship
+together. Search-engine or visitor copies remain an unavoidable residual.
 The previous trash-retention stage gate passed all 20 CTest suites against disposable PostgreSQL,
 including the dedicated cross-session trash lifecycle and real Chromium
 desktop/mobile accessibility flows; ShellCheck, Cppcheck, the repository secret
@@ -138,6 +147,51 @@ restart persistence, MFA, real Chromium and the migration ledger. All 59 C++
 tests, Cppcheck, ShellCheck, the 136-file secret scan, OpenAPI 25/25 validation,
 30-rule promtool validation and high-severity npm audit passed with zero reported
 vulnerabilities.
+
+## CISO gate: explicit public discovery (2026-10-27)
+
+1. **Security value:** the feature prevents the more dangerous ambiguity where
+   every bearer link might be treated as public. Existing rows remain private or
+   unlisted; publication needs explicit owner authority, CSRF and the latest ETag.
+2. **Adversary view:** a stolen owner/admin session can publish diagrams it may
+   edit; a normal attacker can submit hostile titles/descriptions to their own
+   catalog entries, probe public slugs, scrape content or create catalog/query
+   load. Output escaping, CSP, random slugs, bounded pagination/offsets, quotas
+   and existing write controls mitigate those paths.
+3. **Blast radius:** compromised administrator authority could publish every
+   active passwordless diagram, bounded by the configured global row/content
+   ceilings (5,000 rows and 512 MiB by default). A guest compromise is bounded
+   to that cookie's diagrams. Each public item exposes its full current content,
+   title and description, not versions or ownership identifiers.
+4. **Failure modes and false confidence:** unpublish revokes this service's old
+   URL but cannot recall crawler caches, archives, downloads, screenshots or
+   forks. `no-store` limits browser/CDN retention only when Cloudflare honours
+   origin headers. A local Prometheus rule is not detection until deployed and
+   routed to a tested receiver.
+5. **Regulatory/vendor boundary:** publishing may disclose personal data and
+   introduces visitors/search engines as intended recipients in addition to
+   Cloudflare and the VPS. The controller must assess lawful basis, notice,
+   removal and breach duties; GDPR's 72-hour supervisory-authority decision
+   window may apply after an unintended disclosure. No new paid dependency or
+   application credential was introduced.
+6. **Detection and response:** ten publishes in ten minutes sustained for one
+   minute raises `NuiGraphPublicPublishSpike`, giving an intended 11-minute MTTD
+   after rule deployment. Response preserves aggregate/request-ID evidence,
+   blocks ongoing writes if needed, unpublishes/disables/trashes affected rows,
+   verifies old routes return `404`, and records unavoidable third-party copies.
+
+**Gate verdict: MITIGATE THEN SHIP.** The implementation controls are adequate
+for merge. Production activation remains conditioned on migration/release gates,
+the existing Cloudflare cache correction and live alert routing; offsite backup
+remains deferred by the operator and is not represented as complete.
+
+Verification on 16 November 2026 passed all 26 CTest suites against disposable
+PostgreSQL 18, including publication/revocation, expiry/trash, password exclusion,
+browser accessibility and offline-cache behavior. Public pages load without
+private-workspace requests. Native and regenerated Nui/WebAssembly builds passed;
+the Nui browser smoke confirmed CSP compliance and gallery navigation. Security
+event counters now cover all 43 labels with a compile-time size check and a
+regression proving privacy events cannot overwrite creation counters.
 
 ## Executive verdict
 
@@ -375,7 +429,7 @@ and recovery controls are evidenced.
 | Rank | STRIDE | Scenario | Likelihood | Impact | Existing controls | Required treatment |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Denial of service | An attacker rotates guest cookies and source addresses, fills the global row/byte or active limiter-key allowance, or saturates DB workers/storage. | High | Medium | Cloudflare/nginx limits, bounded shared GCRA buckets, payload caps, pool cap, atomic per-session/global row and logical-byte quotas, explicit deletion plus opt-in bounded retention and trash telemetry | Turnstile for suspicious creation; approve retention only after recovery/paging; deploy and wire the checked-in capacity and latency alerts |
-| 2 | Information disclosure | App, DB, backups, journals, or an enabled bearer link expose private diagram content. Legacy links stay active until deliberately expired, rotated or revoked. | Medium | High | Private-by-default creation, optional DB-clock expiry, explicit rotate/revoke, 128-bit slugs, owner checks, least-privilege DB role, CSP, origin guard | Deploy the lifecycle changes; review legacy links; encrypted and access-controlled backups; retention policy |
+| 2 | Information disclosure | App, DB, backups, journals, an enabled bearer link or accidental public publication exposes private diagram content. Legacy links stay active until deliberately expired, rotated or revoked; third-party public copies cannot be recalled. | Medium | High | Private-by-default creation, distinct explicit public state, password exclusion, DB-clock expiry, atomic unpublish rotation, explicit rotate/revoke, 128-bit slugs, owner checks, escaped rendering, least-privilege DB role, CSP, origin guard | Deploy the lifecycle changes; review legacy/public links; wire publish alerts; encrypted and access-controlled backups; retention/removal policy |
 | 3 | Spoofing / elevation | Theft of one active shared-admin device session grants access to all diagrams until it expires or is revoked. | Low | High | Purpose-separated HMAC keys, bounded signing-key rollover, `__Host-` Secure/HttpOnly/SameSite cookies, PBKDF2, login throttles, optional anti-replay TOTP, digest-only server sessions and individual revocation | Activate TOTP with tested break glass; add named identities/passkeys and tamper-resistant audit; wire the admin-login alert |
 | 4 | Tampering | Concurrent editors attempt to overwrite, delete or restore over newer work. | Low | Medium | Atomic revision increments, strong ETags, mandatory `If-Match`, `412` rejection, bounded history and local draft preservation | Add a merge/recovery UI before real-time collaboration |
 | 5 | Repudiation | A shared admin credential prevents attribution to one person, and local logs can be altered after host compromise. | Medium | Medium | Correlated nginx/app request IDs; structured actor-class login/share/auth/CSRF/quota/storage events; redacted routes | Central/tamper-resistant audit storage, retention/access policy, individual admin identities and alerts |
@@ -484,6 +538,7 @@ costs.
 | Secret/token exposure | Secret scan or bearer token appears in non-redacted application logs | Before merge / 15 minutes runtime | Maintainer |
 | Idempotency misuse | 10 malformed or conflicting key events within 10 minutes for 2 minutes | 12 minutes | VPS operator |
 | Share-password guessing | 10 failed or rate-limited unlocks within 10 minutes for 2 minutes | 12 minutes | VPS operator |
+| Unexpected publication | 10 publish transitions within 10 minutes sustained for 1 minute | 11 minutes | VPS operator |
 
 Current MTTD is effectively unbounded for silent disclosure and bounded only by
 manual journal inspection for most other scenarios.

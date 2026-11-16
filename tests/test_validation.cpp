@@ -195,6 +195,11 @@ void testJsonRoundTrip() {
     require(!parsed.shareExpired, "active share should not round trip as expired");
     require(parsed.sharePasswordProtected,
             "share password protection should round trip without a verifier");
+    d.publiclyListed = true;
+    d.sharePasswordProtected = false;
+    parsed = diagramFromJson(diagramToJson(d));
+    require(parsed.publiclyListed && diagramToJson(parsed)["visibility"] == "public",
+            "explicit public visibility should round trip");
 }
 
 void testFormUrlDecode() {
@@ -524,7 +529,12 @@ void testMetricsStayAggregateAndBounded() {
     metrics.recordSecurityEvent("diagram_trash", "restored");
     metrics.recordSecurityEvent("diagram_trash", "permanently_deleted");
     metrics.recordSecurityEvent("sharing_change", "password_updated");
+    metrics.recordSecurityEvent("sharing_change", "published");
+    metrics.recordSecurityEvent("sharing_change", "unpublished");
     metrics.recordSecurityEvent("share_password", "failed");
+    metrics.recordSecurityEvent("privacy_data", "exported");
+    metrics.recordSecurityEvent("privacy_data", "deleted");
+    metrics.recordSecurityEvent("privacy_data", "blocked");
     metrics.recordSecurityEvent("attacker-controlled-label", "ignored");
     metrics.recordDiagramCreated("import");
     metrics.recordDiagramCreated("attacker-controlled-source");
@@ -590,6 +600,21 @@ void testMetricsStayAggregateAndBounded() {
                 body.find("event=\"share_password\",outcome=\"failed\"} 1") !=
                     std::string::npos,
             "metrics should count bounded share-password lifecycle events");
+    require(body.find("event=\"sharing_change\",outcome=\"published\"} 1") !=
+                std::string::npos &&
+                body.find("event=\"sharing_change\",outcome=\"unpublished\"} 1") !=
+                    std::string::npos,
+            "metrics should count bounded public-visibility lifecycle events");
+    for (const auto* outcome : {"exported", "deleted", "blocked"}) {
+        require(body.find(std::string("event=\"privacy_data\",outcome=\"") +
+                          outcome + "\"} 1") != std::string::npos,
+                "metrics should count the final security events independently");
+    }
+    for (const auto* source : {"blank", "template", "duplicate"}) {
+        require(body.find(std::string("source=\"") + source + "\"} 0") !=
+                    std::string::npos,
+                "security events must not overwrite diagram creation counters");
+    }
     require(body.find("nuigraph_storage_objects{kind=\"trashed_diagrams\"} 2") !=
                 std::string::npos,
             "metrics should expose the aggregate trash backlog");
@@ -862,6 +887,11 @@ void testSensitivePathsAreRedacted() {
     require(redactRequestPath("/api/diagrams/slug/private-capability-123/fork") ==
                 "/api/diagrams/slug/<redacted>/fork",
             "share fork capability should be redacted");
+    require(redactRequestPath("/p/published-capability-123") == "/p/<redacted>",
+            "published diagram slugs should be redacted from application logs");
+    require(redactRequestPath("/api/public/diagrams/slug/published-capability-123") ==
+                "/api/public/diagrams/slug/<redacted>",
+            "public API diagram slugs should be redacted from application logs");
     require(redactRequestPath("/api/diagrams/42") == "/api/diagrams/42",
             "ordinary route should be preserved");
     require(redactRequestPath("/d/") == "/d/", "empty share route should be preserved");
@@ -1036,6 +1066,35 @@ void testSeoMetadata() {
             "public editor should identify its Open Graph locale");
     require(editor.find("<h1>NuiGraph Studio</h1>") != std::string::npos,
             "public editor should have one semantic primary heading");
+    require(editor.find("href=\"/gallery\"") != std::string::npos,
+            "editor should expose the public gallery");
+
+    const auto publicDiagram = renderEditorPage(
+        "guest", "https://example.test/", true, "", false,
+        "/p/public-safe", "Unsafe <title> | NuiGraph Studio",
+        "Description \" onmouseover=\"alert(1)", false);
+    require(publicDiagram.find(
+                "rel=\"canonical\" href=\"https://example.test/p/public-safe\"") !=
+                std::string::npos &&
+            publicDiagram.find("Unsafe &lt;title&gt; | NuiGraph Studio") !=
+                std::string::npos &&
+            publicDiagram.find("onmouseover=&quot;alert(1)") != std::string::npos &&
+            publicDiagram.find("schema.org/SoftwareApplication") == std::string::npos,
+            "public diagram metadata should be canonical, escaped and not impersonate the app schema");
+
+    const nlohmann::json galleryItems = nlohmann::json::array({{
+        {"slug", "public-safe"}, {"title", "<script>unsafe</script>"},
+        {"description", "\"><img src=x>"}, {"updated_at", "2030-01-02T03:04:05Z"},
+        {"node_count", 2}, {"edge_count", 1}
+    }});
+    const auto gallery = renderGalleryPage(
+        "https://example.test/", galleryItems, 1, 0, 24, "asset-v1");
+    require(gallery.find("href=\"https://example.test/gallery\"") != std::string::npos &&
+                gallery.find("href=\"/p/public-safe\"") != std::string::npos &&
+                gallery.find("&lt;script&gt;unsafe&lt;/script&gt;") != std::string::npos &&
+                gallery.find("&quot;&gt;&lt;img src=x&gt;") != std::string::npos &&
+                gallery.find("<script>unsafe</script>") == std::string::npos,
+            "gallery should emit canonical metadata and escape persisted content");
 
     const auto privateShare = renderEditorPage("guest", "https://example.test", false);
     require(privateShare.find("noindex, nofollow, noarchive") != std::string::npos,

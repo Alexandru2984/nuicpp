@@ -55,7 +55,9 @@ self.addEventListener("fetch", (event) => {
       url.pathname === "/logout" ||
       url.pathname === "/health" ||
       url.pathname === "/live" ||
-      url.pathname === "/ready") {
+      url.pathname === "/ready" ||
+      url.pathname === "/gallery" ||
+      url.pathname.startsWith("/p/")) {
     return;
   }
 

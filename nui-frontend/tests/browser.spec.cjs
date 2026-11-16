@@ -931,6 +931,57 @@ test.describe("desktop security and offline lifecycle", () => {
       await expect(protectedShare.locator("#canvas")).toBeVisible();
       await protectedShare.close();
 
+      page.once("dialog", (dialog) => dialog.accept());
+      await sharingDialog.getByRole("button", { name: "Remove password", exact: true }).click();
+      await expect(sharingDialog.getByLabel("Optional share password", { exact: true })).toBeVisible();
+      const publish = sharingDialog.getByRole("button", { name: "Publish to gallery", exact: true });
+      await expect(publish).toBeEnabled();
+      page.once("dialog", (dialog) => dialog.accept());
+      await publish.click();
+      await expect(sharingDialog.getByText("Public and indexable", { exact: true })).toBeVisible();
+      const publicInput = sharingDialog.getByRole("textbox", { name: "Public diagram URL" });
+      const publicLink = await publicInput.inputValue();
+      expect(publicLink).toMatch(/\/p\/[a-z0-9-]+-[0-9a-f]{32}$/);
+      expect(new URL(publicLink).pathname.replace(/^\/p\//, "/d/")).toBe(new URL(firstLink).pathname);
+
+      const publicPage = await context.newPage();
+      let privateWorkspaceRequests = 0;
+      await publicPage.route(/\/api\/(?:templates|diagrams)(?:\?|$)/, (route) => {
+        privateWorkspaceRequests += 1;
+        return route.fulfill({ status: 401, json: { error: "authentication required" } });
+      });
+      await publicPage.goto(publicLink, { waitUntil: "networkidle" });
+      await expect(publicPage.locator("#canvas")).toBeVisible();
+      await expect(publicPage.locator("body")).toHaveClass(/read-only/);
+      expect(privateWorkspaceRequests).toBe(0);
+      await expect(publicPage.locator('meta[name="robots"]')).toHaveAttribute("content", "index, follow");
+      await expectNoHighImpactAccessibilityViolations(publicPage, testInfo, "public-diagram");
+      await waitForControlledWorker(publicPage);
+      const discoveryPaths = [new URL(publicLink).pathname, "/gallery"];
+      await publicPage.evaluate(async (paths) => {
+        await Promise.all(paths.map((path) => fetch(path)));
+      }, discoveryPaths);
+      await context.setOffline(true);
+      try {
+        const offlineDiscovery = await publicPage.evaluate(async (paths) =>
+          Promise.all(paths.map((path) => fetch(path).then((response) => response.status).catch(() => null))),
+        discoveryPaths);
+        expect(offlineDiscovery).toEqual([null, null]);
+      } finally {
+        await context.setOffline(false);
+      }
+      await publicPage.close();
+
+      page.once("dialog", (dialog) => dialog.accept());
+      await sharingDialog.getByRole("button", { name: "Make unlisted", exact: true }).click();
+      await expect(sharingDialog.getByText("Unlisted link", { exact: true })).toBeVisible();
+      const unlistedAfterPublic = await shareInput.inputValue();
+      expect(unlistedAfterPublic).toMatch(/\/d\/[a-z0-9-]+-[0-9a-f]{32}$/);
+      expect(unlistedAfterPublic).not.toBe(firstLink);
+      const oldPublicStatus = await page.evaluate(async (link) =>
+        (await fetch(new URL(link).pathname, { credentials: "same-origin" })).status, publicLink);
+      expect(oldPublicStatus).toBe(404);
+
       await lifetime.selectOption("never");
       await sharingDialog.getByRole("button", { name: "Update expiry" }).click();
       await expect(sharingDialog.getByText(/no automatic expiry/i)).toBeVisible();
@@ -946,8 +997,8 @@ test.describe("desktop security and offline lifecycle", () => {
       const revokedStatuses = await page.evaluate(async (links) => Promise.all(links.map(async (link) => {
         const path = new URL(link).pathname.replace(/^\/d\//, "/api/diagrams/slug/");
         return (await fetch(path, { credentials: "same-origin" })).status;
-      })), [firstLink, rotatedLink]);
-      expect(revokedStatuses).toEqual([404, 404]);
+      })), [firstLink, unlistedAfterPublic, rotatedLink]);
+      expect(revokedStatuses).toEqual([404, 404, 404]);
       await sharingDialog.getByRole("button", { name: "Close" }).click();
 
       const browserTrashSource = page.locator("#diagram-list .diagram-item")

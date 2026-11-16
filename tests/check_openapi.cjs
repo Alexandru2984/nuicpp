@@ -75,8 +75,8 @@ for (const [route, pathItem] of Object.entries(spec.paths)) {
 }
 
 assert.deepEqual([...documented].sort(), [...implemented].sort(), "OpenAPI routes drifted from Routes.cpp");
-assert.equal(operationIds.size, 25);
-assert.equal(spec.info.version, "1.7.0");
+assert.equal(operationIds.size, 27);
+assert.equal(spec.info.version, "1.8.0");
 assert.equal(spec.components.schemas.AdminSessionList.properties.sessions.maxItems, 20);
 assert.equal(spec.paths["/api/trash"].get.responses["200"].$ref,
   "#/components/responses/TrashListResponse");
@@ -88,8 +88,22 @@ assert.equal(spec.components.requestBodies.OwnerDataDeletion.content["applicatio
   .schema.properties.confirmation.const, "DELETE MY DATA");
 assert.ok(spec.components.schemas.SharingRequest.properties.action.enum.includes("set_password"));
 assert.ok(spec.components.schemas.SharingRequest.properties.action.enum.includes("remove_password"));
+assert.ok(spec.components.schemas.SharingRequest.properties.action.enum.includes("publish"));
+assert.ok(spec.components.schemas.SharingRequest.properties.action.enum.includes("unpublish"));
 assert.equal(spec.components.schemas.SharingRequest.properties.password.writeOnly, true);
 assert.ok(spec.components.schemas.DiagramSnapshot.allOf[1].required.includes("share_password_protected"));
+assert.ok(spec.components.schemas.DiagramSnapshot.allOf[1].required.includes("visibility"));
+assert.deepEqual(spec.paths["/api/public/diagrams"].get.security, []);
+assert.deepEqual(spec.paths["/api/public/diagrams/slug/{slug}"].get.security, []);
+assert.equal(
+  Object.hasOwn(spec.components.responses.PublicDiagramResponse.headers, "ETag"),
+  false,
+  "public responses must not leak the internal diagram id through ETag"
+);
+assert.equal(spec.paths["/api/public/diagrams"].get.responses["200"].$ref,
+  "#/components/responses/PublicDiagramListResponse");
+assert.equal(spec.components.schemas.PublicDiagram.allOf[1]
+  .properties.share_password_protected.const, false);
 
 const revisionSafe = new Set([
   "PUT /api/diagrams/{id}",

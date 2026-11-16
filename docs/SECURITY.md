@@ -225,7 +225,18 @@ Two subtleties worth preserving:
    revision. Protected page, API and fork paths also require the same signed
    password-unlock cookie. Do not reintroduce a predictable suffix, bypass that
    second check on one path, or use an application-clock expiry on only one path.
-4. **Forking does not weaken ID authorization.** The owner-only
+4. **Public visibility is a separate owner decision.** An active passwordless
+   share remains unlisted until its owner sends `publish` with valid session,
+   CSRF and current ETag. Public catalog/page/API queries require all of
+   `publicly_listed`, active sharing, no deletion, no password and no expiry.
+   PostgreSQL checks also forbid public rows without sharing or with a password.
+   Imports, restores and re-enables reset to non-public. `unpublish` rotates the
+   slug in the same transaction, so a URL already known to crawlers never
+   becomes a private bearer capability. Disable, expiry and trash also remove
+   discovery immediately. Search engines, archives and visitors may retain
+   copies after the service returns `404`; this residual cannot be revoked by
+   application code.
+5. **Forking does not weaken ID authorization.** The owner-only
    `POST /api/diagrams/{id}/duplicate` remains protected against IDOR. A visitor
    may instead fork only through `POST /api/diagrams/slug/{slug}/fork`, which
    first resolves an active capability, applies creation rate/quota controls,
@@ -557,7 +568,10 @@ Two rules that are security-relevant, not just performance:
   individual handler forgets; these responses are session-, capability- or
   operational-state-specific.
 - The service worker (`public/sw.js`) never touches `/api/`, `/login`,
-  `/logout`, `/health`, `/live`, or `/ready`. The Cache API is origin-wide and
+  `/logout`, `/health`, `/live`, `/ready`, `/gallery`, `/p/{slug}` or a JSON API.
+  Public discovery pages are deliberately indexable but still `no-store`, so a
+  CDN or shared browser cache cannot continue serving content after unpublish,
+  expiry or trash. The Cache API is origin-wide and
   outlives the session cookie, so caching those would hand one visitor's diagrams
   to the next person using the same browser profile. Only eleven static
   shell/offline assets are cached.
@@ -647,6 +661,9 @@ These are accepted, not overlooked:
   only the owner derived from the current guest cookie. A lost cookie cannot be
   recovered, and an already copied stateless cookie cannot be individually
   revoked before its normal expiry.
+- **Publication cannot recall third-party copies.** Unpublish rotates the live
+  URL and immediately removes service-side discovery, but crawlers, archives,
+  browser downloads, screenshots and forks are outside that revocation boundary.
 
 ## Verifying the model
 
@@ -682,6 +699,11 @@ rejection while keeping the seed, code and password out of logs.
 token is absent from PostgreSQL and logs, revokes exactly one, restarts the
 service to prove persistence, then revokes the current device and verifies its
 cookie is immediately unusable.
+`tests/check_public_gallery.sh` proves private and unlisted omission, owner-only
+CSRF/ETag publication, password exclusion, escaped SEO/gallery output,
+unauthenticated bounded reads, `no-store`, public-slug log redaction, atomic
+unpublish rotation, expiry and trash removal, database constraints and bounded
+publication telemetry.
 
 ```bash
 ctest --test-dir build --output-on-failure

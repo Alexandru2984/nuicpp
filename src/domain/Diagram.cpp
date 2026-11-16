@@ -48,6 +48,8 @@ nlohmann::json diagramToJson(const Diagram& diagram) {
         {"updated_at", diagram.updatedAt},
         {"revision", diagram.revision},
         {"sharing_enabled", diagram.sharingEnabled},
+        {"visibility", diagram.publiclyListed ? "public" :
+            (diagram.sharingEnabled ? "unlisted" : "private")},
         {"share_expired", diagram.shareExpired},
         {"share_password_protected", diagram.sharePasswordProtected},
         {"nodes", nodes},
@@ -93,6 +95,7 @@ Diagram diagramFromJson(const nlohmann::json& value) {
     diagram.description = value.value("description", "");
     diagram.revision = value.value("revision", 0L);
     diagram.sharingEnabled = value.value("sharing_enabled", false);
+    diagram.publiclyListed = value.value("visibility", "private") == "public";
     diagram.shareExpiresAt = value.contains("share_expires_at") && value["share_expires_at"].is_string()
         ? value["share_expires_at"].get<std::string>()
         : "";

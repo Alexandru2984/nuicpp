@@ -175,6 +175,18 @@ groups:
           summary: Repeated NuiGraph share-password failures were observed
           runbook: docs/MONITORING.md#share-password-attack
 
+      - alert: NuiGraphPublicPublishSpike
+        expr: |
+          sum(increase(nuigraph_security_events_total{
+            job="nuigraph",event="sharing_change",outcome="published"
+          }[10m])) >= 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: At least 10 NuiGraph diagrams were published in 10 minutes
+          runbook: docs/MONITORING.md#unexpected-publication-activity
+
       - alert: NuiGraphRateLimitStorageFailure
         expr: |
           increase(nuigraph_security_events_total{
