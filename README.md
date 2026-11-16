@@ -295,7 +295,7 @@ The build is clean under `-Wall -Wextra -Wpedantic`.
 ctest --test-dir build --output-on-failure
 ```
 
-Twenty-four suites cover unit validation, frontend assets, the nginx candidate,
+Test suites cover unit validation, HTTP request timing, frontend assets, the nginx candidate,
 Prometheus rules, incident-runbook integrity, secret scanning, CycloneDX SBOM generation, real
 Chromium behavior, live security/API behavior, shared persistent rate limits,
 concurrent row/logical-byte quota enforcement, signing-key rotation, and

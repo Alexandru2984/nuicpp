@@ -25,10 +25,12 @@ node scripts/generate_sbom.mjs build/sbom
 bash tests/check_sbom.sh
 ```
 
-Generation requires Node/npm, `pkg-config`, Git and the native dependencies used
+Generation requires Node.js 24/npm 11, `pkg-config`, Git and the native dependencies used
 by the build. `ldd` plus `dpkg-query` enrich the result on Ubuntu; if they are not
 available, the direct C++ dependency inventory is still generated. npm reads the
 lockfile with `--package-lock-only` and does not need to execute package scripts.
+CI uses the same Node/npm major versions: npm 10 can emit duplicate CycloneDX
+component references for nested copies of a package, which the validator rejects.
 
 The validation gate checks CycloneDX structure, unique component references,
 dependency edges, source commit metadata, the required native components, a

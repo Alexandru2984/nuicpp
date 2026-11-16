@@ -1,4 +1,5 @@
 #include "App.hpp"
+#include "observability/HttpRequestTiming.hpp"
 #include "utils/Security.hpp"
 
 #include <atomic>
@@ -71,11 +72,8 @@ int App::run() {
         if (ip.empty()) {
             ip = req.remote_addr;
         }
-        double durationSeconds = 0.0;
-        if (req.start_time_ != (std::chrono::steady_clock::time_point::min)()) {
-            durationSeconds = std::chrono::duration<double>(
-                std::chrono::steady_clock::now() - req.start_time_).count();
-        }
+        const double durationSeconds = httpRequestTiming.finish(
+            res.get_header_value("X-Request-ID"));
         metrics_.observeHttp(req.method, res.status, durationSeconds);
         std::cout << logTimestamp()
                   << " level=info method=" << sanitizeLogField(req.method)

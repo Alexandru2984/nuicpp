@@ -1,4 +1,5 @@
 #include "api/Routes.hpp"
+#include "observability/HttpRequestTiming.hpp"
 
 #include "domain/Diagram.hpp"
 #include "domain/Templates.hpp"
@@ -1069,6 +1070,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             requestId = generateRequestId();
         }
         res.set_header("X-Request-ID", requestId);
+        httpRequestTiming.begin(requestId);
 
         if (shouldRejectCrossSiteMutation(req.method,
                                           req.get_header_value("Sec-Fetch-Site"))) {

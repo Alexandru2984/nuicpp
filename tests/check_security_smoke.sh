@@ -465,6 +465,11 @@ do
     exit 1
   fi
 done
+if ! awk '$1 == "nuigraph_http_request_duration_seconds_sum" && $2 > 0 { found = 1 }
+          END { exit !found }' <<<"$metrics_body"; then
+  echo "metrics scrape did not record positive HTTP response latency" >&2
+  exit 1
+fi
 if ! grep -q '^nuigraph_database_up 1$' <<<"$metrics_body"; then
   echo "metrics scrape did not confirm a working database connection" >&2
   exit 1

@@ -158,7 +158,7 @@ std::string Metrics::render(FrontendShell shell, const OperationalMetrics& opera
         }
     }
 
-    out << "# HELP nuigraph_http_request_duration_seconds End-to-end HTTP response latency.\n"
+    out << "# HELP nuigraph_http_request_duration_seconds HTTP latency from pre-routing through response writing.\n"
         << "# TYPE nuigraph_http_request_duration_seconds histogram\n";
     for (std::size_t i = 0; i < kLatencyBounds.size(); ++i) {
         out << "nuigraph_http_request_duration_seconds_bucket{le=\"" << kLatencyLabels[i]
