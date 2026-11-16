@@ -53,6 +53,13 @@ target_compile_options(nuigraph-studio PRIVATE -Wall -Wextra -Wpedantic)
 
 enable_testing()
 
+find_package(Threads REQUIRED)
+add_executable(nuigraph-http-timing-tests tests/test_http_request_timing.cpp)
+target_include_directories(nuigraph-http-timing-tests PRIVATE src)
+target_link_libraries(nuigraph-http-timing-tests PRIVATE Threads::Threads)
+target_compile_options(nuigraph-http-timing-tests PRIVATE -Wall -Wextra -Wpedantic)
+add_test(NAME nuigraph-http-timing COMMAND nuigraph-http-timing-tests)
+
 add_executable(nuigraph-tests
     tests/test_validation.cpp
     src/domain/Diagram.cpp

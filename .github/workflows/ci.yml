@@ -96,7 +96,7 @@ jobs:
           --suppress=missingIncludeSystem
           -Isrc
           src
-          tests/test_validation.cpp
+          tests/*.cpp
 
       - name: Audit frontend dependencies
         run: |

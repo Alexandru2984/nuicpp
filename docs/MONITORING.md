@@ -87,6 +87,10 @@ only when a real artifact timestamp and restore verification signal exist.
 
 ## Elevated errors or latency
 
+HTTP latency runs from the pre-routing hook through response writing. It excludes
+request-line and header parsing; requests rejected before routing contribute a
+zero duration while still counting toward HTTP response totals.
+
 1. Split the symptom by 5xx ratio, p95 latency, DB readiness and pool timeouts.
 2. Correlate the window with deploys, migrations, restarts and create traffic.
 3. Use aggregate PostgreSQL activity and slow-query evidence; do not inspect
