@@ -137,6 +137,11 @@ admin account for maintenance.
   Only a salted PBKDF2-SHA256 verifier is stored; per-link/IP persistent
   throttling protects unlock attempts, and replacing the password or rotating
   the URL invalidates every prior eight-hour unlock cookie.
+- Active passwordless links can be explicitly published to a responsive public
+  gallery and indexable `/p/{slug}` page. Public visibility is never inferred
+  from sharing or imports. Making a diagram unlisted rotates its slug so the
+  known public URL cannot become a private bearer capability; expiry, disable
+  and trash remove it immediately. Search engines or visitors may retain copies.
 - Trash immediately revokes sharing and hides content from normal ID, slug,
   version, duplicate and export paths. Restores stay private; trash continues to
   count against row and logical-byte quotas until permanent deletion.
@@ -176,8 +181,9 @@ admin account for maintenance.
   release digest; matching assets are immutable, while the worker is never
   stored and its registration bypasses the HTTP cache for updates.
 - Search metadata, canonical URLs, `robots.txt`, and `sitemap.xml` cover the
-  public editor, documentation and plain-language privacy notice; bearer share
-  links, auth, API, and probes are explicitly excluded from indexing.
+  public editor, responsive diagram gallery, explicitly published diagram pages,
+  documentation and plain-language privacy notice; bearer share links, auth,
+  JSON APIs and probes are explicitly excluded from indexing.
 - Separate `/live` process and PostgreSQL-backed `/ready` probes; `/health`
   remains a compatibility alias for liveness. Dependency errors are not exposed.
 - Loopback-only Prometheus telemetry for bounded HTTP/security/create, latency,
@@ -300,8 +306,9 @@ Prometheus rules, incident-runbook integrity, secret scanning, CycloneDX SBOM ge
 Chromium behavior, live security/API behavior, shared persistent rate limits,
 concurrent row/logical-byte quota enforcement, signing-key rotation, and
 migration-ledger integrity, including isolated trash retention and guest data
-export/deletion, password-protected sharing, administrator MFA/replay and
-individual administrator-session revocation lifecycles. The database-backed suites use
+export/deletion, password-protected sharing, explicit public discovery,
+administrator MFA/replay and individual administrator-session revocation
+lifecycles. The database-backed suites use
 a config with `APP_ENV=test` whose
 actual PostgreSQL database and login-role names both end in `_test`. Missing
 local prerequisites appear as **Not Run**, not as false passes; deployment sets
@@ -398,11 +405,14 @@ sites, so never restart nginx.
 | `GET` | `/` |
 | `GET` | `/docs` |
 | `GET` | `/privacy` |
+| `GET` | `/gallery`, `/p/{slug}` |
 | `GET` | `/robots.txt`, `/sitemap.xml` |
 | `GET` | `/openapi.json` |
 | `GET` | `/.well-known/security.txt` |
 | `GET` | `/d/{slug}` |
 | `GET` | `/api/session` |
+| `GET` | `/api/public/diagrams` |
+| `GET` | `/api/public/diagrams/slug/{slug}` |
 | `POST` | `/api/privacy/export` |
 | `DELETE` | `/api/privacy/data` |
 | `GET` | `/api/diagrams` |
@@ -435,7 +445,7 @@ active key with different request material returns `409`. Rate limits still
 apply to retries. The browser generates a fresh 128-bit key for every creation
 action.
 
-The checked-in OpenAPI 3.1 contract documents all 25 API operations, schemas,
+The checked-in OpenAPI 3.1 contract documents all 27 API operations, schemas,
 cookie/CSRF security, conditional revision headers and retry semantics. A dependency-free CTest
 gate extracts routes and node types from the C++ sources and fails on drift,
 duplicate operation IDs, unresolved references or incomplete mutation security.
@@ -447,11 +457,13 @@ preconditions return `428`; stale revisions return `412` with
 monotonically increasing `revision` value.
 
 `POST /api/diagrams/{id}/sharing` accepts an `action` of `enable`, `rotate` or
-`disable`, plus expiry and password actions. Enable and rotate always mint a new
+`disable`, plus expiry, password, `publish` and `unpublish` actions. Enable and rotate always mint a new
 capability; disable makes the current `/d/{slug}` and slug API paths return `404`
 immediately. `set_password` accepts a write-only 10–128 byte password and
 `remove_password` returns the active link to bearer-only access. Passwords must
-be supplied separately from the URL.
+be supplied separately from the URL. Publishing requires an active passwordless
+link and exposes its complete content in the unauthenticated catalog. Unpublish
+atomically removes public visibility and rotates to a fresh unlisted URL.
 
 The privacy endpoints are guest-session-only. Export returns active and trashed
 diagrams plus retained versions for that cookie-bound owner; deletion requires

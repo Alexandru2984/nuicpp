@@ -1684,9 +1684,12 @@
           revision: state.current.revision,
           can_edit: state.current.can_edit,
           sharing_enabled: state.current.sharing_enabled,
+          visibility: state.current.visibility,
           share_expires_at: state.current.share_expires_at,
           share_expired: state.current.share_expired,
-          share_url: state.current.share_url
+          share_password_protected: state.current.share_password_protected, // Boolean metadata; secret-scan: allow
+          share_url: state.current.share_url,
+          public_url: state.current.public_url
         };
         state.current = { ...draft.diagram, ...serverMeta };
         state.dirty = true;
@@ -1725,7 +1728,7 @@
   }
 
   function sharedSlugFromPath() {
-    const match = location.pathname.match(/^\/d\/([A-Za-z0-9-]+)$/);
+    const match = location.pathname.match(/^\/(?:d|p)\/([A-Za-z0-9-]+)$/);
     return match ? match[1] : null;
   }
 
@@ -3169,7 +3172,7 @@
   function shareDiagram() {
     if (!state.current) return;
     if (state.readOnly) {
-      copyShareLink(state.current.share_url || location.href);
+      copyShareLink(state.current.public_url || state.current.share_url || location.href);
       return;
     }
     closeDialog(".command-palette-overlay");
@@ -3222,10 +3225,12 @@
       state.current.updated_at = updated.updated_at;
       state.current.slug = updated.slug;
       state.current.sharing_enabled = updated.sharing_enabled;
+      state.current.visibility = updated.visibility;
       state.current.share_expires_at = updated.share_expires_at;
       state.current.share_expired = updated.share_expired;
       state.current.share_password_protected = protectionEnabled;
       state.current.share_url = updated.share_url;
+      state.current.public_url = updated.public_url;
     };
 
     const changeSharing = async (action, expiresIn = undefined, password = undefined) => {
@@ -3262,7 +3267,11 @@
                 ? "Share password updated. Previous unlocks no longer work."
                 : action === "remove_password"
                   ? "Share password removed. The bearer link is sufficient again."
-                  : "Sharing enabled with a new link.";
+                  : action === "publish"
+                    ? "Published. The diagram is now discoverable and indexable."
+                    : action === "unpublish"
+                      ? "Unpublished. The public URL was revoked and a new unlisted link was created."
+                      : "Sharing enabled with a new link.";
       } catch (error) {
         if (!handleRevisionConflict(
           error,
@@ -3275,6 +3284,10 @@
         }
       } finally {
         dialog.querySelectorAll("button").forEach((button) => { button.disabled = false; });
+        const publishButton = dialog.querySelector('[data-action="publish"]');
+        if (publishButton) {
+          publishButton.disabled = Boolean(state.current?.share_password_protected);
+        }
         const passwordInput = dialog.querySelector(".sharing-password input");
         const passwordButton = dialog.querySelector(".sharing-password button");
         if (passwordInput && passwordButton) {
@@ -3320,12 +3333,19 @@
     const renderContent = () => {
       content.replaceChildren();
       const expired = Boolean(state.current.share_expired);
+      const publiclyListed = state.current.visibility === "public";
       const status = document.createElement("div");
-      status.className = `sharing-status ${state.current.sharing_enabled ? "shared" : expired ? "expired" : "private"}`;
+      status.className = `sharing-status ${publiclyListed ? "public" : state.current.sharing_enabled ? "shared" : expired ? "expired" : "private"}`;
       const statusTitle = document.createElement("strong");
-      statusTitle.textContent = state.current.sharing_enabled ? "Shared by link" : expired ? "Share link expired" : "Private";
+      statusTitle.textContent = publiclyListed
+        ? "Public and indexable"
+        : state.current.sharing_enabled ? "Unlisted link" : expired ? "Share link expired" : "Private";
       const explanation = document.createElement("p");
-      explanation.textContent = state.current.sharing_enabled
+      explanation.textContent = publiclyListed
+        ? state.current.share_expires_at
+          ? `Anyone can discover, view, copy and fork this diagram until ${new Date(state.current.share_expires_at).toLocaleString()}. Search engines and archives may retain copies after it is unpublished.`
+          : "Anyone can discover, view, copy and fork this diagram. Search engines and archives may retain copies after it is unpublished."
+        : state.current.sharing_enabled
         ? state.current.share_expires_at
           ? `${state.current.share_password_protected ? "Anyone with this link and its separately supplied password" : "Anyone with this unguessable link"} can view and fork the diagram until ${new Date(state.current.share_expires_at).toLocaleString()}.`
           : `${state.current.share_password_protected ? "Anyone with this link and its separately supplied password" : "Anyone with this unguessable link"} can view and fork the diagram. It has no automatic expiry.`
@@ -3348,12 +3368,14 @@
         link.className = "sharing-link";
         link.type = "url";
         link.readOnly = true;
-        link.value = state.current.share_url;
-        link.setAttribute("aria-label", "Active share link");
+        const activeUrl = publiclyListed
+          ? state.current.public_url : state.current.share_url;
+        link.value = activeUrl;
+        link.setAttribute("aria-label", publiclyListed ? "Public diagram URL" : "Active share link");
         content.appendChild(link);
 
         const copy = mobileBarButton("Copy link", "primary");
-        copy.onclick = () => copyShareLink(state.current.share_url);
+        copy.onclick = () => copyShareLink(activeUrl);
         const rotate = mobileBarButton("Rotate link");
         rotate.onclick = () => {
           if (confirm("Rotate this link? The current URL will stop working immediately.")) {
@@ -3375,40 +3397,63 @@
           }
         };
 
-        const passwordLabel = document.createElement("label");
-        passwordLabel.className = "sharing-password";
-        const passwordCaption = document.createElement("span");
-        passwordCaption.textContent = state.current.share_password_protected
-          ? "Replace share password"
-          : "Optional share password";
-        const passwordInput = document.createElement("input");
-        passwordInput.type = "password";
-        passwordInput.autocomplete = "new-password";
-        passwordInput.minLength = 10;
-        passwordInput.maxLength = 128;
-        passwordInput.setAttribute("aria-label", passwordCaption.textContent);
-        passwordInput.placeholder = "10–128 UTF-8 bytes";
-        const setPassword = mobileBarButton(
-          state.current.share_password_protected ? "Replace password" : "Add password");
-        setPassword.disabled = true;
-        passwordInput.oninput = () => {
-          const passwordBytes = new TextEncoder().encode(passwordInput.value).length;
-          setPassword.disabled = passwordBytes < 10 || passwordBytes > 128;
-        };
-        setPassword.onclick = () => changeSharing(
-          "set_password", undefined, passwordInput.value);
-        passwordLabel.append(passwordCaption, passwordInput, setPassword);
-        content.appendChild(passwordLabel);
-
         actions.append(copy, rotate, updateExpiry);
-        if (state.current.share_password_protected) {
-          const removePassword = mobileBarButton("Remove password", "danger");
-          removePassword.onclick = () => {
-            if (confirm("Remove the password? Anyone with the current link will be able to open it.")) {
-              changeSharing("remove_password");
+        if (publiclyListed) {
+          const unpublish = mobileBarButton("Make unlisted");
+          unpublish.onclick = () => {
+            if (confirm("Make this diagram unlisted? Its public URL will stop working immediately and a new private bearer link will be created. Search engines or archives may retain earlier copies.")) {
+              changeSharing("unpublish");
             }
           };
-          actions.appendChild(removePassword);
+          actions.appendChild(unpublish);
+        } else {
+          const publish = mobileBarButton("Publish to gallery", "primary");
+          publish.dataset.action = "publish";
+          publish.disabled = Boolean(state.current.share_password_protected);
+          publish.title = state.current.share_password_protected
+            ? "Remove the share password before publishing"
+            : "Make this diagram publicly discoverable";
+          publish.onclick = () => {
+            if (confirm("Publish this diagram? Its title, description and complete content will be visible without a password, listed in the public gallery and eligible for search indexing. Copies may remain after unpublishing.")) {
+              changeSharing("publish");
+            }
+          };
+          actions.appendChild(publish);
+
+          const passwordLabel = document.createElement("label");
+          passwordLabel.className = "sharing-password";
+          const passwordCaption = document.createElement("span");
+          passwordCaption.textContent = state.current.share_password_protected
+            ? "Replace share password"
+            : "Optional share password";
+          const passwordInput = document.createElement("input");
+          passwordInput.type = "password";
+          passwordInput.autocomplete = "new-password";
+          passwordInput.minLength = 10;
+          passwordInput.maxLength = 128;
+          passwordInput.setAttribute("aria-label", passwordCaption.textContent);
+          passwordInput.placeholder = "10–128 UTF-8 bytes";
+          const setPassword = mobileBarButton(
+            state.current.share_password_protected ? "Replace password" : "Add password");
+          setPassword.disabled = true;
+          passwordInput.oninput = () => {
+            const passwordBytes = new TextEncoder().encode(passwordInput.value).length;
+            setPassword.disabled = passwordBytes < 10 || passwordBytes > 128;
+          };
+          setPassword.onclick = () => changeSharing(
+            "set_password", undefined, passwordInput.value);
+          passwordLabel.append(passwordCaption, passwordInput, setPassword);
+          content.appendChild(passwordLabel);
+
+          if (state.current.share_password_protected) {
+            const removePassword = mobileBarButton("Remove password", "danger");
+            removePassword.onclick = () => {
+              if (confirm("Remove the password? Anyone with the current link will be able to open it.")) {
+                changeSharing("remove_password");
+              }
+            };
+            actions.appendChild(removePassword);
+          }
         }
         actions.appendChild(disable);
       }
@@ -4374,7 +4419,10 @@
 
   async function openDiagramBySlug(slug) {
     endKeyboardNudge();
-    state.current = await api(`/api/diagrams/slug/${slug}`);
+    const endpoint = location.pathname.startsWith("/p/")
+      ? `/api/public/diagrams/slug/${slug}`
+      : `/api/diagrams/slug/${slug}`;
+    state.current = await api(endpoint);
     setReadOnly(state.current.can_edit === false);
     maybeRestoreDraft();
     state.history = [];
@@ -5123,11 +5171,15 @@
   initTheme();
   initGridSize();
   initSearch();
-  Promise.all([loadTemplates(), loadDiagrams()])
-    .then(() => {
+  // Public pages load independently of the visitor's private workspace, which
+  // may require sign-in even while published diagrams remain readable.
+  const publicSlug = location.pathname.startsWith("/p/") ? sharedSlugFromPath() : null;
+  const startup = publicSlug
+    ? openDiagramBySlug(publicSlug)
+    : Promise.all([loadTemplates(), loadDiagrams()]).then(() => {
       const slug = sharedSlugFromPath();
       if (slug) return openDiagramBySlug(slug);
-    })
-    .catch((err) => toast(err.message, "error"));
+    });
+  startup.catch((err) => toast(err.message, "error"));
   render();
 })();

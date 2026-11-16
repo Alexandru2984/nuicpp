@@ -80,11 +80,14 @@ std::uint64_t logicalDiagramBytes(const Diagram& diagram) {
 
 nlohmann::json diagramSummaryJson(const pqxx::row& row) {
     const auto sharingEnabled = row["sharing_enabled"].as<bool>();
+    const auto publiclyListed = sharingEnabled && row["publicly_listed"].as<bool>();
     nlohmann::json result = {
         {"id", row["id"].as<long>()},
         {"title", rowString(row, "title")},
         {"slug", sharingEnabled ? rowString(row, "slug") : ""},
         {"sharing_enabled", sharingEnabled},
+        {"visibility", publiclyListed ? "public" :
+            (sharingEnabled ? "unlisted" : "private")},
         {"share_expired", row["share_expired"].as<bool>()},
         {"share_password_protected", row["share_password_protected"].as<bool>()},
         {"description", rowString(row, "description")},
@@ -192,6 +195,8 @@ std::vector<nlohmann::json> PostgresStorage::listDiagrams(long limit, long offse
         SELECT d.id, d.title, d.slug, d.description, d.revision,
                (d.sharing_enabled AND
                 (d.share_expires_at IS NULL OR d.share_expires_at > now())) AS sharing_enabled,
+               (d.publicly_listed AND d.sharing_enabled AND
+                (d.share_expires_at IS NULL OR d.share_expires_at > now())) AS publicly_listed,
                (d.share_password_hash IS NOT NULL) AS share_password_protected,
                (d.sharing_enabled AND d.share_expires_at IS NOT NULL AND
                 d.share_expires_at <= now()) AS share_expired,
@@ -225,6 +230,8 @@ std::vector<nlohmann::json> PostgresStorage::listDiagramsForOwner(const std::str
         SELECT d.id, d.title, d.slug, d.description, d.revision,
                (d.sharing_enabled AND
                 (d.share_expires_at IS NULL OR d.share_expires_at > now())) AS sharing_enabled,
+               (d.publicly_listed AND d.sharing_enabled AND
+                (d.share_expires_at IS NULL OR d.share_expires_at > now())) AS publicly_listed,
                (d.share_password_hash IS NOT NULL) AS share_password_protected,
                (d.sharing_enabled AND d.share_expires_at IS NOT NULL AND
                 d.share_expires_at <= now()) AS share_expired,
@@ -248,12 +255,56 @@ std::vector<nlohmann::json> PostgresStorage::listDiagramsForOwner(const std::str
     return out;
 }
 
+std::vector<nlohmann::json> PostgresStorage::listPublicDiagrams(long limit, long offset) {
+    auto conn = pool_.acquire();
+    pqxx::read_transaction tx(conn.get());
+    const auto rows = tx.exec(R"SQL(
+        SELECT d.id, d.title, d.slug, d.description,
+               to_char(d.updated_at AT TIME ZONE 'UTC',
+                       'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS updated_at,
+               (SELECT count(*) FROM nodes n WHERE n.diagram_id=d.id) AS node_count,
+               (SELECT count(*) FROM edges e WHERE e.diagram_id=d.id) AS edge_count
+        FROM diagrams d
+        WHERE d.publicly_listed=true AND d.sharing_enabled=true
+          AND d.deleted_at IS NULL
+          AND d.share_password_hash IS NULL
+          AND (d.share_expires_at IS NULL OR d.share_expires_at > statement_timestamp())
+        ORDER BY d.updated_at DESC, d.id DESC
+        LIMIT $1 OFFSET $2
+    )SQL", pqxx::params{limit, offset});
+    std::vector<nlohmann::json> result;
+    result.reserve(rows.size());
+    for (const auto& row : rows) {
+        result.push_back({
+            {"title", rowString(row, "title")},
+            {"slug", rowString(row, "slug")},
+            {"description", rowString(row, "description")},
+            {"updated_at", rowString(row, "updated_at")},
+            {"node_count", row["node_count"].as<long>()},
+            {"edge_count", row["edge_count"].as<long>()}
+        });
+    }
+    return result;
+}
+
+long PostgresStorage::countPublicDiagrams() {
+    auto conn = pool_.acquire();
+    pqxx::read_transaction tx(conn.get());
+    return tx.query_value<long>(R"SQL(
+        SELECT count(*) FROM diagrams
+        WHERE publicly_listed=true AND sharing_enabled=true
+          AND deleted_at IS NULL AND share_password_hash IS NULL
+          AND (share_expires_at IS NULL OR share_expires_at > statement_timestamp())
+    )SQL");
+}
+
 std::vector<nlohmann::json> PostgresStorage::listDeletedDiagrams(long limit, long offset) {
     auto conn = pool_.acquire();
     pqxx::read_transaction tx(conn.get());
     const auto rows = tx.exec(R"SQL(
         SELECT d.id, d.title, ''::text AS slug, d.description, d.revision,
-               false AS sharing_enabled, false AS share_expired,
+               false AS sharing_enabled, false AS publicly_listed,
+               false AS share_expired,
                (d.share_password_hash IS NOT NULL) AS share_password_protected,
                NULL::text AS share_expires_at,
                to_char(d.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
@@ -282,7 +333,8 @@ std::vector<nlohmann::json> PostgresStorage::listDeletedDiagramsForOwner(
     pqxx::read_transaction tx(conn.get());
     const auto rows = tx.exec(R"SQL(
         SELECT d.id, d.title, ''::text AS slug, d.description, d.revision,
-               false AS sharing_enabled, false AS share_expired,
+               false AS sharing_enabled, false AS publicly_listed,
+               false AS share_expired,
                (d.share_password_hash IS NOT NULL) AS share_password_protected,
                NULL::text AS share_expires_at,
                to_char(d.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at,
@@ -325,6 +377,24 @@ Diagram PostgresStorage::getDiagramBySlug(
         pqxx::params{slug, authorizedPasswordVersion});
     if (rows.empty()) {
         throw std::runtime_error("diagram not found");
+    }
+    auto diagram = getDiagram(tx, rows[0]["id"].as<long>());
+    tx.commit();
+    return diagram;
+}
+
+std::optional<Diagram> PostgresStorage::getPublicDiagramBySlug(const std::string& slug) {
+    auto conn = pool_.acquire();
+    pqxx::work tx(conn.get());
+    const auto rows = tx.exec(R"SQL(
+        SELECT id FROM diagrams
+        WHERE slug=$1 AND publicly_listed=true AND sharing_enabled=true
+          AND deleted_at IS NULL AND share_password_hash IS NULL
+          AND (share_expires_at IS NULL OR share_expires_at > statement_timestamp())
+        FOR SHARE
+    )SQL", pqxx::params{slug});
+    if (rows.empty()) {
+        return std::nullopt;
     }
     auto diagram = getDiagram(tx, rows[0]["id"].as<long>());
     tx.commit();
@@ -436,6 +506,10 @@ nlohmann::json PostgresStorage::exportDataForOwner(const std::string& ownerToken
                (d.deleted_at IS NULL AND d.sharing_enabled AND
                 (d.share_expires_at IS NULL OR d.share_expires_at > statement_timestamp()))
                    AS sharing_active,
+               (d.deleted_at IS NULL AND d.publicly_listed AND d.sharing_enabled AND
+                d.share_password_hash IS NULL AND
+                (d.share_expires_at IS NULL OR d.share_expires_at > statement_timestamp()))
+                   AS publicly_listed,
                (d.share_password_hash IS NOT NULL) AS share_password_protected,
                (d.sharing_enabled AND d.share_expires_at IS NOT NULL AND
                 d.share_expires_at <= statement_timestamp()) AS share_expired,
@@ -481,6 +555,7 @@ nlohmann::json PostgresStorage::exportDataForOwner(const std::string& ownerToken
     nlohmann::json diagrams = nlohmann::json::array();
     for (const auto& row : rows) {
         const bool sharingActive = row["sharing_active"].as<bool>();
+        const bool publiclyListed = sharingActive && row["publicly_listed"].as<bool>();
         const auto deletedAt = rowString(row, "deleted_at");
         nlohmann::json diagram = {
             {"id", row["id"].as<long>()},
@@ -489,6 +564,8 @@ nlohmann::json PostgresStorage::exportDataForOwner(const std::string& ownerToken
             {"description", rowString(row, "description")},
             {"revision", row["revision"].as<long>()},
             {"sharing_enabled", sharingActive},
+            {"visibility", publiclyListed ? "public" :
+                (sharingActive ? "unlisted" : "private")},
             {"share_password_protected", row["share_password_protected"].as<bool>()},
             {"share_expired", row["share_expired"].as<bool>()},
             {"created_at", rowString(row, "created_at")},
@@ -508,9 +585,11 @@ nlohmann::json PostgresStorage::exportDataForOwner(const std::string& ownerToken
             // content. Exclude them even after they have been revoked.
             snapshot["slug"] = "";
             snapshot["sharing_enabled"] = false;
+            snapshot["visibility"] = "private";
             snapshot["share_password_protected"] = false;
             snapshot["share_expires_at"] = nullptr;
             snapshot.erase("share_url");
+            snapshot.erase("public_url");
             snapshot.erase("can_edit");
         }
 
@@ -629,7 +708,7 @@ void PostgresStorage::clearRateLimit(const std::string& bucketKey) {
 
 Diagram PostgresStorage::getDiagram(pqxx::work& tx, long id) {
     auto rows = tx.exec(R"SQL(
-        SELECT id, title, slug, description, revision,
+        SELECT id, title, slug, description, revision, publicly_listed,
                (sharing_enabled AND
                 (share_expires_at IS NULL OR share_expires_at > now())) AS sharing_enabled,
                (share_password_hash IS NOT NULL) AS share_password_protected,
@@ -655,6 +734,7 @@ Diagram PostgresStorage::getDiagram(pqxx::work& tx, long id) {
     diagram.updatedAt = rowString(d, "updated_at");
     diagram.revision = d["revision"].as<long>();
     diagram.sharingEnabled = d["sharing_enabled"].as<bool>();
+    diagram.publiclyListed = diagram.sharingEnabled && d["publicly_listed"].as<bool>();
     diagram.shareExpiresAt = rowString(d, "share_expires_at");
     diagram.shareExpired = d["share_expired"].as<bool>();
     diagram.sharePasswordProtected = d["share_password_protected"].as<bool>();
@@ -1031,7 +1111,8 @@ Diagram PostgresStorage::updateSharing(long id, ShareAction action, long expecte
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
     const auto rows = tx.exec(R"SQL(
-        SELECT title, sharing_enabled,
+        SELECT title, sharing_enabled, publicly_listed,
+               (share_password_hash IS NOT NULL) AS password_protected,
                (sharing_enabled AND
                 (share_expires_at IS NULL OR share_expires_at > now())) AS sharing_active,
                revision
@@ -1061,12 +1142,40 @@ Diagram PostgresStorage::updateSharing(long id, ShareAction action, long expecte
         }
         tx.exec(R"SQL(
             UPDATE diagrams
-            SET sharing_enabled=false, share_expires_at=NULL,
+            SET sharing_enabled=false, publicly_listed=false, share_expires_at=NULL,
                 share_password_hash=NULL,
                 share_password_version=share_password_version+1,
                 updated_at=now(), revision=revision+1
             WHERE id=$1
         )SQL", pqxx::params{id});
+    } else if (action == ShareAction::Publish) {
+        if (!currentlyActive) {
+            throw std::invalid_argument("cannot publish an inactive share link");
+        }
+        if (rows[0]["publicly_listed"].as<bool>()) {
+            throw std::invalid_argument("diagram is already public");
+        }
+        if (rows[0]["password_protected"].as<bool>()) {
+            throw std::invalid_argument("remove share password before publishing");
+        }
+        tx.exec(R"SQL(
+            UPDATE diagrams
+            SET publicly_listed=true, updated_at=now(), revision=revision+1
+            WHERE id=$1
+        )SQL", pqxx::params{id});
+    } else if (action == ShareAction::Unpublish) {
+        if (!rows[0]["publicly_listed"].as<bool>()) {
+            throw std::invalid_argument("diagram is not public");
+        }
+        // Public URLs may have escaped into crawlers, archives and referrer
+        // logs. Never turn that known URL into an unlisted bearer capability.
+        const auto slug = uniqueSlug(tx, rowString(rows[0], "title"));
+        tx.exec(R"SQL(
+            UPDATE diagrams
+            SET slug=$1, publicly_listed=false,
+                updated_at=now(), revision=revision+1
+            WHERE id=$2
+        )SQL", pqxx::params{slug, id});
     } else if (action == ShareAction::SetExpiry) {
         if (!currentlyActive) {
             throw std::invalid_argument("cannot change expiry for an inactive share link");
@@ -1099,6 +1208,10 @@ Diagram PostgresStorage::updateSharing(long id, ShareAction action, long expecte
         // become valid again merely because sharing was re-enabled later. The
         // same rule applies when an expired link is enabled again.
         const auto slug = uniqueSlug(tx, rowString(rows[0], "title"));
+        if (action == ShareAction::Enable) {
+            tx.exec("UPDATE diagrams SET publicly_listed=false WHERE id=$1",
+                    pqxx::params{id});
+        }
         if (expiry.preserve) {
             tx.exec(R"SQL(
                 UPDATE diagrams
@@ -1141,7 +1254,7 @@ Diagram PostgresStorage::updateSharePassword(
     auto conn = pool_.acquire();
     pqxx::work tx(conn.get());
     const auto rows = tx.exec(R"SQL(
-        SELECT revision, sharing_enabled,
+        SELECT revision, sharing_enabled, publicly_listed,
                (share_expires_at IS NULL OR share_expires_at > now()) AS not_expired,
                (share_password_hash IS NOT NULL) AS password_protected
         FROM diagrams
@@ -1160,6 +1273,9 @@ Diagram PostgresStorage::updateSharePassword(
     if (!rows[0]["sharing_enabled"].as<bool>() ||
         !rows[0]["not_expired"].as<bool>()) {
         throw std::invalid_argument("cannot change password for an inactive share link");
+    }
+    if (passwordHash.has_value() && rows[0]["publicly_listed"].as<bool>()) {
+        throw std::invalid_argument("unpublish the diagram before adding a share password");
     }
     const auto currentlyProtected = rows[0]["password_protected"].as<bool>();
     if (!passwordHash.has_value() && !currentlyProtected) {
@@ -1193,6 +1309,7 @@ void PostgresStorage::trashDiagram(long id, long expectedRevision) {
     const auto moved = tx.exec(R"SQL(
         UPDATE diagrams
         SET deleted_at=statement_timestamp(), sharing_enabled=false,
+            publicly_listed=false,
             share_expires_at=NULL, share_password_hash=NULL,
             share_password_version=share_password_version+1,
             updated_at=statement_timestamp(),
@@ -1220,7 +1337,8 @@ Diagram PostgresStorage::restoreDiagramFromTrash(long id, long expectedRevision)
     pqxx::work tx(conn.get());
     const auto restored = tx.exec(R"SQL(
         UPDATE diagrams
-        SET deleted_at=NULL, sharing_enabled=false, share_expires_at=NULL,
+        SET deleted_at=NULL, sharing_enabled=false, publicly_listed=false,
+            share_expires_at=NULL,
             updated_at=statement_timestamp(), revision=revision+1
         WHERE id=$1 AND revision=$2 AND deleted_at IS NOT NULL
         RETURNING id

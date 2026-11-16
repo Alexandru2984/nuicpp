@@ -3,8 +3,8 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "NuiGraph Studio API",
-    "version": "1.7.0",
-    "description": "Session-oriented API for private diagrams, revocable administrator devices, trash and restore, guest data export/deletion, templates, version history and capability-based sharing with optional password protection. Start with GET /api/session and retain its HttpOnly cookie. Unsafe requests require the returned CSRF token in X-CSRF-Token. Production HTTPS uses __Host-ngs_session; loopback HTTP development uses ngs_session."
+    "version": "1.8.0",
+    "description": "Session-oriented API for private diagrams, explicit public discovery, revocable administrator devices, trash and restore, guest data export/deletion, templates, version history and capability-based sharing with optional password protection. Public catalog reads require no session. Owned operations start with GET /api/session and retain its HttpOnly cookie. Unsafe requests require the returned CSRF token in X-CSRF-Token. Production HTTPS uses __Host-ngs_session; loopback HTTP development uses ngs_session."
   },
   "servers": [{ "url": "/", "description": "Current NuiGraph Studio origin" }],
   "externalDocs": { "description": "Application documentation", "url": "/docs" },
@@ -15,6 +15,7 @@
     { "name": "Trash", "description": "Private soft deletion, restore and permanent deletion" },
     { "name": "Privacy", "description": "Current guest-session export and erasure controls" },
     { "name": "Sharing", "description": "Read-only bearer-link lifecycle" },
+    { "name": "Public", "description": "Explicitly published, passwordless diagram discovery" },
     { "name": "Templates", "description": "Curated diagram templates" },
     { "name": "Versions", "description": "Bounded immutable diagram snapshots" },
     { "name": "Import and export", "description": "Portable diagram JSON" }
@@ -33,6 +34,37 @@
         "security": [],
         "responses": {
           "200": { "$ref": "#/components/responses/SessionResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/public/diagrams": {
+      "get": {
+        "operationId": "listPublicDiagrams",
+        "summary": "List explicitly published diagrams",
+        "description": "Returns only active, non-expired, passwordless diagrams whose owners explicitly selected public visibility.",
+        "tags": ["Public"],
+        "security": [],
+        "parameters": [
+          { "$ref": "#/components/parameters/PublicLimit" },
+          { "$ref": "#/components/parameters/Offset" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/PublicDiagramListResponse" },
+          "default": { "$ref": "#/components/responses/ErrorResponse" }
+        }
+      }
+    },
+    "/api/public/diagrams/slug/{slug}": {
+      "parameters": [{ "$ref": "#/components/parameters/ShareSlug" }],
+      "get": {
+        "operationId": "getPublicDiagram",
+        "summary": "Get one explicitly published diagram",
+        "description": "No cookie or password is required. Unpublishing, expiry, disabling or trashing removes this representation immediately.",
+        "tags": ["Public"],
+        "security": [],
+        "responses": {
+          "200": { "$ref": "#/components/responses/PublicDiagramResponse" },
           "default": { "$ref": "#/components/responses/ErrorResponse" }
         }
       }
@@ -494,6 +526,11 @@
         "in": "query",
         "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 100 }
       },
+      "PublicLimit": {
+        "name": "limit",
+        "in": "query",
+        "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 24 }
+      },
       "Offset": {
         "name": "offset",
         "in": "query",
@@ -600,6 +637,17 @@
       "DiagramListResponse": {
         "description": "Paginated diagram list.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DiagramList" } } }
+      },
+      "PublicDiagramListResponse": {
+        "description": "Paginated explicitly public catalog.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicDiagramList" } } }
+      },
+      "PublicDiagramResponse": {
+        "description": "Complete read-only content of an explicitly published diagram.",
+        "headers": {
+          "X-Request-ID": { "$ref": "#/components/headers/RequestId" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicDiagram" } } }
       },
       "TrashListResponse": {
         "description": "Paginated private trash with the active automatic-retention policy.",
@@ -736,7 +784,7 @@
           { "$ref": "#/components/schemas/DiagramInput" },
           {
             "type": "object",
-            "required": ["id", "slug", "created_at", "updated_at", "revision", "sharing_enabled", "share_expires_at", "share_expired", "share_password_protected"],
+            "required": ["id", "slug", "created_at", "updated_at", "revision", "sharing_enabled", "visibility", "share_expires_at", "share_expired", "share_password_protected"],
             "properties": {
               "id": { "type": "integer", "format": "int64", "minimum": 1 },
               "slug": { "type": "string" },
@@ -744,6 +792,7 @@
               "updated_at": { "type": "string", "format": "date-time" },
               "revision": { "type": "integer", "format": "int64", "minimum": 1 },
               "sharing_enabled": { "type": "boolean" },
+              "visibility": { "type": "string", "enum": ["private", "unlisted", "public"] },
               "share_expires_at": { "type": ["string", "null"], "format": "date-time" },
               "share_expired": { "type": "boolean" },
               "share_password_protected": { "type": "boolean", "readOnly": true }
@@ -756,22 +805,24 @@
           { "$ref": "#/components/schemas/DiagramSnapshot" },
           {
             "type": "object",
-            "required": ["can_edit", "share_url"],
+            "required": ["can_edit", "share_url", "public_url"],
             "properties": {
               "can_edit": { "type": "boolean", "readOnly": true },
-              "share_url": { "type": "string", "readOnly": true }
+              "share_url": { "type": "string", "readOnly": true },
+              "public_url": { "type": "string", "readOnly": true }
             }
           }
         ]
       },
       "DiagramSummary": {
         "type": "object",
-        "required": ["id", "title", "slug", "sharing_enabled", "share_expires_at", "share_expired", "share_password_protected", "description", "created_at", "updated_at", "deleted_at", "revision", "node_count", "edge_count"],
+        "required": ["id", "title", "slug", "sharing_enabled", "visibility", "share_expires_at", "share_expired", "share_password_protected", "description", "created_at", "updated_at", "deleted_at", "revision", "node_count", "edge_count"],
         "properties": {
           "id": { "type": "integer", "format": "int64", "minimum": 1 },
           "title": { "type": "string", "maxLength": 120 },
           "slug": { "type": "string" },
           "sharing_enabled": { "type": "boolean" },
+          "visibility": { "type": "string", "enum": ["private", "unlisted", "public"] },
           "share_expires_at": { "type": ["string", "null"], "format": "date-time" },
           "share_expired": { "type": "boolean" },
           "share_password_protected": { "type": "boolean", "readOnly": true },
@@ -794,6 +845,67 @@
           "offset": { "type": "integer", "minimum": 0 },
           "has_more": { "type": "boolean" }
         }
+      },
+      "PublicDiagramSummary": {
+        "type": "object",
+        "required": ["title", "slug", "description", "updated_at", "node_count", "edge_count", "visibility", "public_url"],
+        "properties": {
+          "title": { "type": "string", "maxLength": 120 },
+          "slug": { "type": "string", "pattern": "^[A-Za-z0-9-]{1,140}$" },
+          "description": { "type": "string", "maxLength": 1000 },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "node_count": { "type": "integer", "minimum": 0 },
+          "edge_count": { "type": "integer", "minimum": 0 },
+          "visibility": { "const": "public" },
+          "public_url": { "type": "string", "format": "uri", "readOnly": true }
+        }
+      },
+      "PublicDiagramList": {
+        "type": "object",
+        "required": ["diagrams", "total", "limit", "offset", "has_more"],
+        "properties": {
+          "diagrams": { "type": "array", "items": { "$ref": "#/components/schemas/PublicDiagramSummary" } },
+          "total": { "type": "integer", "minimum": 0 },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+          "offset": { "type": "integer", "minimum": 0 },
+          "has_more": { "type": "boolean" }
+        }
+      },
+      "PublicDiagram": {
+        "allOf": [
+          { "$ref": "#/components/schemas/DiagramInput" },
+          {
+            "type": "object",
+            "required": [
+              "slug",
+              "created_at",
+              "updated_at",
+              "revision",
+              "sharing_enabled",
+              "visibility",
+              "share_expires_at",
+              "share_expired",
+              "share_password_protected",
+              "can_edit",
+              "share_url",
+              "public_url"
+            ],
+            "properties": {
+              "slug": { "type": "string", "pattern": "^[A-Za-z0-9-]{1,140}$" },
+              "created_at": { "type": "string", "format": "date-time" },
+              "updated_at": { "type": "string", "format": "date-time" },
+              "revision": { "type": "integer", "format": "int64", "minimum": 1 },
+              "sharing_enabled": { "const": true },
+              "visibility": { "const": "public" },
+              "share_expires_at": { "type": ["string", "null"], "format": "date-time" },
+              "share_expired": { "const": false },
+              "share_password_protected": { "const": false },
+              "can_edit": { "const": false },
+              "share_url": { "type": "string", "format": "uri", "readOnly": true },
+              "public_url": { "type": "string", "format": "uri", "readOnly": true }
+            }
+          }
+        ]
       },
       "TrashList": {
         "allOf": [
@@ -894,7 +1006,7 @@
         "additionalProperties": false,
         "required": ["action"],
         "properties": {
-          "action": { "type": "string", "enum": ["enable", "disable", "rotate", "set_expiry", "set_password", "remove_password"] },
+          "action": { "type": "string", "enum": ["enable", "disable", "rotate", "set_expiry", "set_password", "remove_password", "publish", "unpublish"] },
           "expires_in": { "type": ["integer", "null"], "enum": [300, 3600, 86400, 604800, 2592000, null] },
           "password": { "type": "string", "minLength": 10, "maxLength": 128, "writeOnly": true, "description": "Supplied separately from the link and accepted only by set_password; the server enforces 10–128 UTF-8 bytes and never returns or logs it." }
         }

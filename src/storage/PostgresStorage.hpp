@@ -70,7 +70,9 @@ enum class ShareAction {
     Enable,
     Disable,
     Rotate,
-    SetExpiry
+    SetExpiry,
+    Publish,
+    Unpublish
 };
 
 struct ShareExpiry {
@@ -92,12 +94,15 @@ public:
     OperationalMetrics operationalMetrics();
     std::vector<nlohmann::json> listDiagrams(long limit, long offset);
     std::vector<nlohmann::json> listDiagramsForOwner(const std::string& ownerTokenHash, long limit, long offset);
+    std::vector<nlohmann::json> listPublicDiagrams(long limit, long offset);
+    long countPublicDiagrams();
     std::vector<nlohmann::json> listDeletedDiagrams(long limit, long offset);
     std::vector<nlohmann::json> listDeletedDiagramsForOwner(
         const std::string& ownerTokenHash, long limit, long offset);
     Diagram getDiagram(long id);
     Diagram getDiagramBySlug(const std::string& slug,
                              long authorizedPasswordVersion = -1);
+    std::optional<Diagram> getPublicDiagramBySlug(const std::string& slug);
     std::optional<ShareAccessPolicy> shareAccessPolicy(const std::string& slug);
     std::string ownerHashForDiagram(long id);
     std::string ownerHashForDeletedDiagram(long id);

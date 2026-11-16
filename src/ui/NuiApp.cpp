@@ -1,6 +1,8 @@
 #include "ui/NuiApp.hpp"
 #include "utils/Json.hpp"
 
+#include <algorithm>
+
 namespace nuigraph {
 namespace {
 
@@ -22,9 +24,11 @@ std::string assetUrl(const std::string& path, const std::string& assetVersion) {
 }
 
 std::string publicMetadata(const std::string& title, const std::string& canonicalUrl,
-                           bool indexable, bool softwareApplication = false) {
+                           bool indexable, bool softwareApplication = false,
+                           const std::string& description = kDescription) {
+    const auto escapedDescription = htmlEscape(description.empty() ? kDescription : description);
     std::string metadata =
-        "  <meta name=\"description\" content=\"" + std::string(kDescription) + "\">\n" +
+        "  <meta name=\"description\" content=\"" + escapedDescription + "\">\n" +
         "  <meta name=\"robots\" content=\"" +
         (indexable ? "index, follow" : "noindex, nofollow, noarchive") + "\">\n";
     if (!indexable) {
@@ -39,17 +43,17 @@ std::string publicMetadata(const std::string& title, const std::string& canonica
         "  <meta property=\"og:site_name\" content=\"NuiGraph Studio\">\n"
         "  <meta property=\"og:locale\" content=\"en_US\">\n"
         "  <meta property=\"og:title\" content=\"" + escapedTitle + "\">\n"
-        "  <meta property=\"og:description\" content=\"" + std::string(kDescription) + "\">\n"
+        "  <meta property=\"og:description\" content=\"" + escapedDescription + "\">\n"
         "  <meta property=\"og:url\" content=\"" + escapedUrl + "\">\n"
         "  <meta name=\"twitter:card\" content=\"summary\">\n"
         "  <meta name=\"twitter:title\" content=\"" + escapedTitle + "\">\n"
-        "  <meta name=\"twitter:description\" content=\"" + std::string(kDescription) + "\">\n"
+        "  <meta name=\"twitter:description\" content=\"" + escapedDescription + "\">\n"
         "  <link rel=\"alternate\" hreflang=\"en\" href=\"" + escapedUrl + "\">\n"
         "  <link rel=\"alternate\" hreflang=\"x-default\" href=\"" + escapedUrl + "\">\n";
     if (softwareApplication) {
         metadata +=
             "  <meta itemprop=\"name\" content=\"NuiGraph Studio\">\n"
-            "  <meta itemprop=\"description\" content=\"" + std::string(kDescription) + "\">\n"
+            "  <meta itemprop=\"description\" content=\"" + escapedDescription + "\">\n"
             "  <meta itemprop=\"applicationCategory\" content=\"DesignApplication\">\n"
             "  <meta itemprop=\"operatingSystem\" content=\"Any modern browser\">\n"
             "  <meta itemprop=\"isAccessibleForFree\" content=\"true\">\n"
@@ -122,15 +126,22 @@ std::string renderShareUnlockPage(const std::string& slug, const std::string& er
 
 std::string renderEditorPage(const std::string& username, const std::string& baseUrl,
                              bool indexable, const std::string& assetVersion,
-                             bool administrator) {
-    const auto canonicalUrl = normalizedBaseUrl(baseUrl) + "/";
+                             bool administrator, const std::string& canonicalPath,
+                             const std::string& pageTitle,
+                             const std::string& pageDescription,
+                             bool softwareApplication) {
+    const auto title = pageTitle.empty()
+        ? "NuiGraph Studio — Browser Diagram Editor" : pageTitle;
+    const auto canonicalUrl = normalizedBaseUrl(baseUrl) + canonicalPath;
     return std::string("<!doctype html>\n<html lang=\"en\"") +
-        (indexable ? " itemscope itemtype=\"https://schema.org/SoftwareApplication\"" : "") + R"HTML(>
+        (indexable && softwareApplication
+            ? " itemscope itemtype=\"https://schema.org/SoftwareApplication\"" : "") + R"HTML(>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NuiGraph Studio — Browser Diagram Editor</title>
-)HTML" + publicMetadata("NuiGraph Studio — Browser Diagram Editor", canonicalUrl, indexable, indexable) + R"HTML(  <meta name="theme-color" content="#0b0f14">
+  <title>)HTML" + htmlEscape(title) + R"HTML(</title>
+)HTML" + publicMetadata(title, canonicalUrl, indexable, softwareApplication,
+                         pageDescription.empty() ? kDescription : pageDescription) + R"HTML(  <meta name="theme-color" content="#0b0f14">
   <link rel="stylesheet" href=")HTML" + assetUrl("/styles.css", assetVersion) + R"HTML(">
   <link rel="manifest" href=")HTML" + assetUrl("/manifest.webmanifest", assetVersion) + R"HTML(">
   <link rel="icon" href=")HTML" + assetUrl("/icons/icon.svg", assetVersion) + R"HTML(" type="image/svg+xml">
@@ -162,6 +173,7 @@ std::string renderEditorPage(const std::string& username, const std::string& bas
         <button id="zoom-label" title="Actual size (Shift+1)" aria-label="100% zoom; reset to 100%">100%</button>
         <button id="zoom-in" title="Zoom in">+</button>
         <span id="draft-status" class="draft-status">Saved</span>
+        <a href="/gallery">Gallery</a>
         <a href="/docs">Docs</a>
         <a href="/privacy">Privacy</a>
 )HTML" + (administrator ? R"HTML(        <a href="/admin/sessions">Sessions</a>
@@ -266,6 +278,62 @@ std::string renderEditorPage(const std::string& username, const std::string& bas
 </html>)HTML";
 }
 
+std::string renderGalleryPage(const std::string& baseUrl,
+                              const nlohmann::json& diagrams,
+                              long total, long offset, long limit,
+                              const std::string& assetVersion) {
+    const auto canonicalPath = offset > 0
+        ? "/gallery?offset=" + std::to_string(offset) : "/gallery";
+    const auto canonicalUrl = normalizedBaseUrl(baseUrl) + canonicalPath;
+    std::string cards;
+    for (const auto& diagram : diagrams) {
+        const auto slug = diagram.value("slug", "");
+        const auto title = diagram.value("title", "Untitled diagram");
+        const auto description = diagram.value("description", "");
+        const auto updatedAt = diagram.value("updated_at", "");
+        cards +=
+            "<article class=\"gallery-card\"><h2><a href=\"/p/" +
+            htmlEscape(slug) + "\">" + htmlEscape(title) + "</a></h2><p>" +
+            htmlEscape(description.empty() ? "Public NuiGraph diagram" : description) +
+            "</p><div class=\"gallery-meta\"><span>" +
+            std::to_string(diagram.value("node_count", 0L)) + " nodes</span><span>" +
+            std::to_string(diagram.value("edge_count", 0L)) +
+            " edges</span><time datetime=\"" + htmlEscape(updatedAt) + "\">" +
+            htmlEscape(updatedAt) + "</time></div></article>";
+    }
+    if (cards.empty()) {
+        cards = "<p class=\"gallery-empty\">No diagrams have been published yet.</p>";
+    }
+    std::string pagination;
+    if (offset > 0) {
+        pagination += "<a href=\"/gallery?offset=" +
+            std::to_string(std::max(0L, offset - limit)) + "\">Newer</a>";
+    }
+    if (offset + static_cast<long>(diagrams.size()) < total) {
+        pagination += "<a href=\"/gallery?offset=" +
+            std::to_string(offset + limit) + "\">Older</a>";
+    }
+    return std::string(R"HTML(<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Public diagram gallery | NuiGraph Studio</title>
+)HTML") + publicMetadata("Public diagram gallery | NuiGraph Studio", canonicalUrl, true,
+                          false, "Browse diagrams their owners explicitly published for public discovery.") +
+        R"HTML(  <link rel="stylesheet" href=")HTML" + assetUrl("/styles.css", assetVersion) + R"HTML(">
+</head>
+<body class="docs-body">
+  <main class="gallery-shell">
+    <header class="gallery-head"><div><p class="eyebrow">Discover</p><h1>Public diagrams</h1></div><a href="/">Open editor</a></header>
+    <p class="muted">Only diagrams deliberately published by their owners appear here. Public pages can be indexed and copied by search engines or other visitors.</p>
+    <div class="gallery-grid">)HTML" + cards + R"HTML(</div>
+    <nav class="gallery-pagination" aria-label="Gallery pages">)HTML" + pagination + R"HTML(</nav>
+  </main>
+</body>
+</html>)HTML";
+}
+
 std::string renderAdminSessionsPage(const std::string& assetVersion) {
     return std::string(R"HTML(<!doctype html>
 <html lang="en">
@@ -303,9 +371,9 @@ std::string renderDocsPage(const std::string& baseUrl, const std::string& assetV
 </head>
 <body class="docs-body">
   <main class="docs">
-    <a href="/">Back to editor</a>
+    <a href="/">Back to editor</a> · <a href="/gallery">Public gallery</a>
     <h1>NuiGraph Studio</h1>
-    <p>NuiGraph Studio is a C++ powered graph and diagram editor for flowcharts, architecture maps, service graphs, and node-link diagrams. Diagrams start private. Owners can enable an unguessable read-only link, optionally add a separately supplied password, rotate it, or disable it immediately; authorised visitors can fork an active shared diagram into their own session.</p>
+    <p>NuiGraph Studio is a C++ powered graph and diagram editor for flowcharts, architecture maps, service graphs, and node-link diagrams. Diagrams start private. Owners can enable an unguessable read-only link, optionally add a separately supplied password, rotate it, or disable it immediately; authorised visitors can fork an active shared diagram into their own session. An owner may separately publish an active passwordless link to the <a href="/gallery">public gallery</a>. Publishing is explicit and indexable; making it unlisted rotates the URL immediately, although third-party copies and search caches cannot be recalled.</p>
     <h2>Canvas Controls</h2>
     <p>Select nodes and edges with the Select tool. Shift-click nodes for basic multi-select, or drag on empty canvas to rubber-band everything the band touches; hold Shift while dragging to add to the current selection instead of replacing it. Drag nodes to move them; edges and centres latch onto nearby nodes and a guide line shows what lined up. Choose an 8, 16, 32 or 64 pixel grid to change both the visual spacing and snap interval. Adaptive coordinate rulers follow pan and zoom; toggle them from Commands or a pinned mobile action. Arrow keys move selected nodes by one grid step and Shift+Arrow moves five; key repeat is grouped into one undo. Multi-node selections can align left, centre, right, top, middle or bottom, and three or more nodes can distribute equal centre spacing through the command palette. The multi-selection inspector summarises type, colour and bounds, then applies shared type, colour or size changes as one undoable edit. Press Shift+1 for actual size (100%), Shift+2 to frame the selected nodes or both endpoints of a selected edge, Shift+P for the edit-safe full-viewport presentation mode, or Ctrl/Cmd+P for the clean A4 landscape print/PDF layout. A single selected node gets eight resize handles; the opposite edge stays anchored and sizes are held between 72x48 and 600x400, the same range the server enforces. Double-click a node or edge, or select it and press F2 or Enter, to edit its label directly on the canvas; the same action can be pinned on mobile. Use the Node tool to create nodes, Edge to connect two nodes, and Pan or middle mouse drag to move the canvas. Delete removes the selected object. Press / to search nodes by title, type, trust zone or key and centre a result. Ctrl+K (or Cmd+K) opens the searchable command palette; Ctrl+S saves, Ctrl+C/Ctrl+V copy and paste selected nodes, Ctrl+Z/Ctrl+Y undo and redo, and Esc closes transient UI or clears selection. Actual size, Zoom to fit, Snap, Layout, viewport/embeddable/selection SVG, opaque/transparent PNG, cropped selection PNG, Mermaid and Sample are available from the palette. Diagram Review checks structure locally in the browser for orphan nodes, invalid or duplicate edges, missing titles or labels, self-loops and directed cycles. Once a node is assigned an internet, edge, application, data or management trust zone, the same review flags incomplete classification, unlabelled boundary crossings and direct internet-to-data relationships; Focus centres the affected object and SARIF exports the findings for CI. On phones a compact bottom bar keeps the canvas large; choose Customize mobile action bar from the palette to pin up to two preferred actions. Unsaved browser drafts are stored locally and can be restored when reopening the same diagram.</p>
     <h2>Node Types</h2>
@@ -326,6 +394,8 @@ GET /live
 GET /ready
 GET /api/admin/sessions
 DELETE /api/admin/sessions/{sessionId}
+GET /api/public/diagrams
+GET /api/public/diagrams/slug/{slug}
 POST /api/privacy/export
 DELETE /api/privacy/data
 GET /api/templates
@@ -377,7 +447,7 @@ std::string renderPrivacyPage(const std::string& baseUrl, int trashRetentionDays
 </head>
 <body class="docs-body">
   <main class="docs">
-    <a href="/">Back to editor</a>
+    <a href="/">Back to editor</a> · <a href="/gallery">Public gallery</a>
     <h1>Privacy notice</h1>
     <p><strong>Last updated:</strong> 27 October 2026. This notice describes the repository's current application behavior; it does not claim that every external infrastructure or legal obligation is fully documented.</p>
     <h2>Controller and contact</h2>
@@ -392,7 +462,7 @@ std::string renderPrivacyPage(const std::string& baseUrl, int trashRetentionDays
     <h2>Purposes and legal context</h2>
     <p>Diagram and session data are processed to provide the storage, editing, sharing, recovery, export, and deletion functions requested by the visitor. Limited request and security data are processed to protect the service, enforce quotas, diagnose failures, and investigate abuse. The operator must assess and document the applicable legal basis for its deployment; this application does not use diagram content for advertising, profiling, or automated decisions with legal or similarly significant effects.</p>
     <h2>Sharing and recipients</h2>
-    <p>Diagrams are private by default. Enabling sharing creates an unguessable read-only bearer URL: anyone who receives that URL can view the diagram until the owner disables, rotates, expires, trashes, or deletes it. The owner may add a password that must be supplied separately; the application stores only a salted verifier and issues a bounded unlock cookie after a successful attempt. Infrastructure recipients include Cloudflare as the public reverse proxy and the operator's VPS/hosting and PostgreSQL environment. Contact the operator for the current provider, location, transfer safeguards, and subprocessor details before relying on this page as a complete Article 13 notice.</p>
+    <p>Diagrams are private by default. Enabling sharing creates an unguessable read-only bearer URL: anyone who receives that URL can view the diagram until the owner disables, rotates, expires, trashes, or deletes it. The owner may add a password that must be supplied separately; the application stores only a salted verifier and issues a bounded unlock cookie after a successful attempt. An owner may instead make an active passwordless diagram public. Its title, description and complete content then appear without authentication in the public gallery and API and may be processed, indexed, cached, copied or archived by visitors and search engines. Unpublishing rotates the application URL and removes the diagram from this service's catalog, but cannot erase copies already held by third parties. Infrastructure recipients include Cloudflare as the public reverse proxy and the operator's VPS/hosting and PostgreSQL environment. Contact the operator for the current provider, location, transfer safeguards, and subprocessor details before relying on this page as a complete Article 13 notice.</p>
     <h2>Retention</h2>
     <p>Active diagrams and bounded versions remain while the guest session retains them. Moving a diagram to trash revokes sharing but does not erase or release its quota. )HTML" + htmlEscape(trashPolicy) + R"HTML( Permanent deletion and “Delete my session data” remove primary PostgreSQL rows and cascaded nodes, edges, versions, and idempotency records. Those actions do not by themselves prove erasure from separately retained logs or backup media. Rate-limit rows expire within ten minutes and idempotency records within 24 hours. Expired or revoked administrator-session rows are removed after 30 days during a later administrator login. A fixed external log-retention period remains an operator control; request the current period from the contact above.</p>
     <h2>Your controls and rights</h2>

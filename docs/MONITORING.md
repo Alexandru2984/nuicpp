@@ -208,6 +208,21 @@ zero duration while still counting toward HTTP response totals.
    use an explicit revoking transition and verify protected page, API and fork
    routes all reject the old cookie.
 
+## Unexpected publication activity
+
+1. `NuiGraphPublicPublishSpike` means at least ten owner-authorised publish
+   transitions occurred within ten minutes; it does not expose diagram titles,
+   IDs, slugs or owners. Confirm whether a planned demo/import explains them.
+2. If unexplained, preserve the bounded event counts, request IDs and approved
+   edge evidence. Treat the pattern as possible guest-session or administrator
+   compromise and use the incident runbook's maintenance deny if it continues.
+3. An owner can select **Make unlisted** to rotate the public URL immediately,
+   or disable/trash the diagram. Verify `/p/<old-slug>` and the public API return
+   `404` and the gallery omits it; never paste the raw slug into the incident log.
+4. Search engines, archives and visitors may already hold copies. Record that
+   residual exposure, request removal from relevant third parties where
+   appropriate, and assess personal-data breach notification obligations.
+
 ## Destructive trash activity
 
 1. Treat ten permanent deletions in ten minutes as potentially destructive even

@@ -9,7 +9,8 @@ EMCMAKE="${EMCMAKE:-/home/micu/emsdk/upstream/emscripten/emcmake}"
   -DCMAKE_CXX_SCAN_FOR_MODULES=OFF
 
 cmake --build "$ROOT_DIR/build/nui-frontend" --config Release -j "$(nproc)"
-cmake --build "$ROOT_DIR/build/nui-frontend" --target nuigraph-nui-frontend-parcel --config Release -j "$(nproc)"
+# The server combines the Emscripten module with public/nui/index.html and
+# bootstrap.js, so install the module's original loader and external binary.
 install -m 0644 "$ROOT_DIR/build/nui-frontend/bin/index.js" "$ROOT_DIR/public/nui/index.js"
 
 # index.js is only the Emscripten loader; it calls createWasm() to fetch the
@@ -17,7 +18,7 @@ install -m 0644 "$ROOT_DIR/build/nui-frontend/bin/index.js" "$ROOT_DIR/public/nu
 # never start, so FRONTEND_SHELL=nui rejects the release during config checks.
 WASM_SRC="$ROOT_DIR/build/nui-frontend/bin/index.wasm"
 if [[ ! -f "$WASM_SRC" ]]; then
-  echo "build_nui_frontend: expected $WASM_SRC after the parcel build" >&2
+  echo "build_nui_frontend: expected $WASM_SRC after the Emscripten build" >&2
   exit 1
 fi
 install -m 0644 "$WASM_SRC" "$ROOT_DIR/public/nui/index.wasm"

@@ -99,6 +99,7 @@ add_test(NAME nuigraph-privacy-data COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check
 add_test(NAME nuigraph-share-passwords COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_share_passwords.sh)
 add_test(NAME nuigraph-admin-mfa COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_admin_mfa.sh)
 add_test(NAME nuigraph-admin-sessions COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_admin_sessions.sh)
+add_test(NAME nuigraph-public-gallery COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_public_gallery.sh)
 add_test(NAME nuigraph-key-rotation COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_key_rotation.sh)
 add_test(NAME nuigraph-migrations COMMAND bash ${CMAKE_SOURCE_DIR}/tests/check_migrations.sh)
 set_tests_properties(
@@ -127,6 +128,7 @@ set_tests_properties(
     nuigraph-share-passwords
     nuigraph-admin-mfa
     nuigraph-admin-sessions
+    nuigraph-public-gallery
     nuigraph-key-rotation
     nuigraph-migrations
     PROPERTIES

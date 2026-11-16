@@ -455,6 +455,13 @@ binary ignores revocation state and would accept its own earlier stateless admin
 cookies. Deny `/login` and authenticated application traffic before rollback;
 do not reopen it until an MFA/session-aware binary is restored and credentials
 are rotated.
+`015_public_visibility.sql` is additive, but an older binary ignores public
+catalog semantics and cannot execute a safe unpublish rotation. Before rolling
+back, deny `/gallery`, `/p/`, `/api/public/` and sharing mutations at nginx.
+Keep the column, constraints and index; dropping or clearing them is not a
+rollback and can destroy publication evidence. Restore a visibility-aware binary,
+then verify a public diagram is discoverable and an unpublished old URL returns
+`404` before reopening traffic.
 `FRONTEND_SHELL` adds no database state: roll back with the prior binary while
 keeping it at `server`, or restore the previous vhost and release together if a
 Nui-specific CSP was introduced.
@@ -476,6 +483,7 @@ Nui-specific CSP was introduced.
 | Guest export/delete alert | Preserve request/edge evidence without content or owner hashes, contain ongoing writes if unexplained, and follow the privacy-data runbook; deleted rows cannot be restored by an application rollback |
 | Protected share stays at 401 | Confirm the password was supplied to `/d/<slug>/unlock`, cookies are enabled, and the link was not rotated or its password replaced; never put the password in the URL or logs |
 | Protected-share unlock returns 429 | Keep the database limiter enabled, check the password-attack alert/runbook and edge evidence, and wait for the ten-minute window or deliberately rotate/disable the link after assessing abuse |
+| Unexpected public-publication alert | Preserve bounded/request-ID evidence, stop writes if activity is unexplained, unpublish or disable affected diagrams, verify old `/p/<slug>` paths return `404`, and follow the publication runbook; external copies may remain |
 | Migration checksum mismatch | Restore the committed historical file; put the intended change in a new numbered migration |
 | CSS or JS looks stale | Check the Cloudflare Cache Rule above, purge once, then confirm the origin revalidation headers |
 | Guest lost edit rights | Expected after 7 days or a cookie clear; ownership is session-bound by design |

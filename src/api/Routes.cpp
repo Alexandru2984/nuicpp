@@ -270,6 +270,8 @@ std::string makeSharePasswordHash(const std::string& password) {
 // whole list in one request and only the admin view ever pages.
 constexpr long kDefaultListLimit = 100;
 constexpr long kMaxListLimit = 200;
+constexpr long kDefaultPublicListLimit = 24;
+constexpr long kMaxPublicListLimit = 100;
 // OFFSET makes PostgreSQL walk and discard every skipped row, so a huge value is
 // a cheap way to make the server work hard. Cap it; anyone legitimately past
 // this many diagrams needs keyset pagination, not a bigger offset.
@@ -996,6 +998,20 @@ nlohmann::json Routes::diagramResponse(const httplib::Request& req, const Diagra
     body["share_url"] = diagram.sharingEnabled
         ? cfg_.baseUrl + "/d/" + diagram.slug
         : "";
+    body["public_url"] = diagram.publiclyListed
+        ? cfg_.baseUrl + "/p/" + diagram.slug
+        : "";
+    return body;
+}
+
+nlohmann::json Routes::publicDiagramResponse(const Diagram& diagram) const {
+    auto body = diagramToJson(diagram);
+    // Sequential database identifiers are neither required by the read-only
+    // client nor part of the public discovery contract.
+    body.erase("id");
+    body["can_edit"] = false;
+    body["share_url"] = cfg_.baseUrl + "/p/" + diagram.slug;
+    body["public_url"] = cfg_.baseUrl + "/p/" + diagram.slug;
     return body;
 }
 
@@ -1122,6 +1138,7 @@ void Routes::registerRoutes(httplib::Server& server) {
         applySecurityHeaders(res);
         const auto& path = req.path;
         if (path == "/" || path == "/docs" || path == "/privacy" ||
+            path == "/gallery" || path.starts_with("/p/") ||
             path == "/admin/sessions" ||
             path == "/login" || path == "/logout" ||
             path == "/health" || path == "/live" || path == "/ready" || path == "/metrics" ||
@@ -1196,6 +1213,7 @@ void Routes::registerRoutes(httplib::Server& server) {
             "  <url><loc>" + baseUrl + "/</loc></url>\n"
             "  <url><loc>" + baseUrl + "/docs</loc></url>\n"
             "  <url><loc>" + baseUrl + "/privacy</loc></url>\n"
+            "  <url><loc>" + baseUrl + "/gallery</loc></url>\n"
             "</urlset>\n";
         res.set_header("Cache-Control", "public, max-age=3600");
         res.set_content(body, "application/xml; charset=utf-8");
@@ -1414,6 +1432,52 @@ void Routes::registerRoutes(httplib::Server& server) {
         res.set_content(renderEditorPage(
             username, cfg_.baseUrl, true, assetVersion_,
             username == cfg_.authUsername), "text/html; charset=utf-8");
+    });
+    server.Get("/gallery", [this](const httplib::Request& req,
+                                     httplib::Response& res) {
+        constexpr long pageSize = kDefaultPublicListLimit;
+        const long offset = clampQueryParam(req, "offset", 0, 0, kMaxListOffset);
+        try {
+            const auto diagrams = storage_.listPublicDiagrams(pageSize, offset);
+            const auto total = storage_.countPublicDiagrams();
+            res.set_content(
+                renderGalleryPage(cfg_.baseUrl, diagrams, total, offset,
+                                  pageSize, assetVersion_),
+                "text/html; charset=utf-8");
+        } catch (const std::exception&) {
+            res.status = 503;
+            res.set_content("Public gallery is temporarily unavailable.",
+                            "text/plain; charset=utf-8");
+            logSecurityEvent(req, res, "storage_failure", "error");
+        }
+    });
+    server.Get(R"(/p/([A-Za-z0-9-]+))", [this](const httplib::Request& req,
+                                                    httplib::Response& res) {
+        const auto slug = req.matches[1].str();
+        if (!safeSlug(slug)) {
+            res.status = 404;
+            res.set_content("not found", "text/plain; charset=utf-8");
+            return;
+        }
+        try {
+            const auto diagram = storage_.getPublicDiagramBySlug(slug);
+            if (!diagram.has_value()) {
+                res.status = 404;
+                res.set_content("not found", "text/plain; charset=utf-8");
+                return;
+            }
+            res.set_content(
+                renderEditorPage(
+                    "guest", cfg_.baseUrl, true, assetVersion_, false,
+                    "/p/" + slug, diagram->title + " | NuiGraph Studio",
+                    diagram->description, false),
+                "text/html; charset=utf-8");
+        } catch (const std::exception&) {
+            res.status = 503;
+            res.set_content("Public diagram is temporarily unavailable.",
+                            "text/plain; charset=utf-8");
+            logSecurityEvent(req, res, "storage_failure", "error");
+        }
     });
     server.Get(R"(/d/([A-Za-z0-9-]+))", [this](const httplib::Request& req, httplib::Response& res) {
         // Share slugs are bearer capabilities. Search indexing would both leak
@@ -1667,6 +1731,52 @@ void Routes::registerRoutes(httplib::Server& server) {
         } catch (const std::exception&) {
             logSecurityEvent(req, res, "storage_failure", "error");
             sendJson(res, 503, errorJson("session revocation temporarily unavailable"));
+        }
+    });
+
+    server.Get("/api/public/diagrams", [this](const httplib::Request& req,
+                                                  httplib::Response& res) {
+        const long limit = clampQueryParam(
+            req, "limit", kDefaultPublicListLimit, 1, kMaxPublicListLimit);
+        const long offset = clampQueryParam(req, "offset", 0, 0, kMaxListOffset);
+        try {
+            auto diagrams = storage_.listPublicDiagrams(limit, offset);
+            for (auto& diagram : diagrams) {
+                diagram["visibility"] = "public";
+                diagram["public_url"] = cfg_.baseUrl + "/p/" +
+                    diagram.value("slug", "");
+            }
+            const auto total = storage_.countPublicDiagrams();
+            sendJson(res, 200, {
+                {"diagrams", diagrams},
+                {"total", total},
+                {"limit", limit},
+                {"offset", offset},
+                {"has_more", offset + static_cast<long>(diagrams.size()) < total}
+            });
+        } catch (const std::exception&) {
+            logSecurityEvent(req, res, "storage_failure", "error");
+            sendJson(res, 503, errorJson("public catalog temporarily unavailable"));
+        }
+    });
+
+    server.Get(R"(/api/public/diagrams/slug/([A-Za-z0-9-]+))", [this](
+        const httplib::Request& req, httplib::Response& res) {
+        const auto slug = req.matches[1].str();
+        if (!safeSlug(slug)) {
+            sendJson(res, 404, errorJson("public diagram not found"));
+            return;
+        }
+        try {
+            const auto diagram = storage_.getPublicDiagramBySlug(slug);
+            if (!diagram.has_value()) {
+                sendJson(res, 404, errorJson("public diagram not found"));
+                return;
+            }
+            sendJson(res, 200, publicDiagramResponse(*diagram));
+        } catch (const std::exception&) {
+            logSecurityEvent(req, res, "storage_failure", "error");
+            sendJson(res, 503, errorJson("public diagram temporarily unavailable"));
         }
     });
 
@@ -1991,12 +2101,19 @@ void Routes::registerRoutes(httplib::Server& server) {
             } else if (actionName == "set_expiry") {
                 action = ShareAction::SetExpiry;
                 outcome = "expiry_updated";
+            } else if (actionName == "publish") {
+                action = ShareAction::Publish;
+                outcome = "published";
+            } else if (actionName == "unpublish") {
+                action = ShareAction::Unpublish;
+                outcome = "unpublished";
             } else {
                 throw std::invalid_argument("unknown sharing action");
             }
             const auto expiryProvided = body.contains("expires_in");
-            if (action == ShareAction::Disable && expiryProvided) {
-                throw std::invalid_argument("disable does not accept an expiry");
+            if ((action == ShareAction::Disable || action == ShareAction::Publish ||
+                 action == ShareAction::Unpublish) && expiryProvided) {
+                throw std::invalid_argument(actionName + " does not accept an expiry");
             }
             if (action == ShareAction::SetExpiry && !expiryProvided) {
                 throw std::invalid_argument("set_expiry requires expires_in");

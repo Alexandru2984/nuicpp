@@ -247,8 +247,10 @@ High risk remain open.
 - Remove the transitional `ngs_session` HTTPS read fallback after the
   `__Host-ngs_session` release has been live for at least seven days; retain the
   plain-HTTP name only for local development and tests.
-- Add an explicitly indexed `public` visibility distinct from the implemented
-  private and unlisted-link states.
+- Public visibility is now explicitly indexed and distinct from private and
+  unlisted-link states. Publication is owner/CSRF/ETag gated, excludes password
+  protection, renders an escaped responsive gallery and SEO page, rotates on
+  unpublish, disappears on expiry/trash and has live/alert regressions.
 - User accounts with email verification or OIDC and passkeys/WebAuthn; convert a
   guest workspace into an account without data loss. Retain TOTP as a fallback
   after phishing-resistant administrator authentication exists.

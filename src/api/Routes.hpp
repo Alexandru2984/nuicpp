@@ -58,6 +58,7 @@ private:
     bool ensureGuestOwner(const httplib::Request& req, httplib::Response& res,
                           std::string& ownerHash);
     nlohmann::json diagramResponse(const httplib::Request& req, const Diagram& diagram);
+    nlohmann::json publicDiagramResponse(const Diagram& diagram) const;
     void sendDiagramJson(const httplib::Request& req, httplib::Response& res,
                          int status, const Diagram& diagram);
     void sendCreationResult(const httplib::Request& req, httplib::Response& res,

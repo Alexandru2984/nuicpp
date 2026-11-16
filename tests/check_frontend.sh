@@ -122,6 +122,9 @@ grep -Fq 'data-trust-zone' public/editor.js
 grep -Fq '<h1>NuiGraph Studio</h1>' src/ui/NuiApp.cpp
 grep -Fq 'name="totp" autocomplete="one-time-code" inputmode="numeric"' src/ui/NuiApp.cpp
 grep -Fq 'href="/admin/sessions"' src/ui/NuiApp.cpp
+grep -Fq 'href="/gallery"' src/ui/NuiApp.cpp
+grep -Fq 'href = "/gallery"' nui-frontend/frontend/source/frontend/main_page.cpp
+grep -Fq '.gallery-grid' public/styles.css
 grep -Fq 'detail.textContent = value' public/admin-sessions.js
 grep -Fq 'h1{}("NuiGraph Studio")' nui-frontend/frontend/source/frontend/main_page.cpp
 grep -Fq 'schema.org/SoftwareApplication' public/nui/index.html
@@ -130,6 +133,12 @@ grep -Fq 'Share link lifetime' public/editor.js
 grep -Fq 'Optional share password' public/editor.js
 grep -Fq 'remove_password' public/editor.js
 grep -Fq 'share_password_protected' public/editor.js
+grep -Fq 'Publish to gallery' public/editor.js
+grep -Fq 'action === "unpublish"' public/editor.js
+# This is a literal JavaScript template expression, not shell interpolation.
+# shellcheck disable=SC2016
+grep -Fq '/api/public/diagrams/slug/${slug}' public/editor.js
+grep -Fq 'state.current.public_url' public/editor.js
 grep -Fq '<h1>Protected diagram</h1>' src/ui/NuiApp.cpp
 grep -Fq 'name="password" autocomplete="current-password" required minlength="10" maxlength="128"' src/ui/NuiApp.cpp
 grep -Fq 'share-password verifiers' src/ui/NuiApp.cpp

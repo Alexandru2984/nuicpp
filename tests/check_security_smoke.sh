@@ -491,6 +491,8 @@ for series in \
   'nuigraph_security_events_total{event="sharing_change",outcome="expiry_updated"}' \
   'nuigraph_security_events_total{event="sharing_change",outcome="password_updated"}' \
   'nuigraph_security_events_total{event="sharing_change",outcome="password_removed"}' \
+  'nuigraph_security_events_total{event="sharing_change",outcome="published"}' \
+  'nuigraph_security_events_total{event="sharing_change",outcome="unpublished"}' \
   'nuigraph_security_events_total{event="share_password",outcome="required"}' \
   'nuigraph_security_events_total{event="share_password",outcome="unlocked"}' \
   'nuigraph_security_events_total{event="share_password",outcome="failed"}' \
@@ -658,6 +660,8 @@ if not any(location and location.endswith("/docs") for location in locations):
     raise SystemExit("sitemap is missing the documentation URL")
 if not any(location and location.endswith("/privacy") for location in locations):
     raise SystemExit("sitemap is missing the privacy notice URL")
+if not any(location and location.endswith("/gallery") for location in locations):
+    raise SystemExit("sitemap is missing the public gallery URL")
 PY
 
 openapi_headers="$(curl --noproxy '*' -sS -D - -o /dev/null "http://127.0.0.1:${PORT}/openapi.json")"

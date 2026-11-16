@@ -18,7 +18,7 @@ struct SecurityEventLabel {
     const char* outcome;
 };
 
-constexpr std::array<SecurityEventLabel, 41> kSecurityEvents = {{
+constexpr std::array<SecurityEventLabel, 43> kSecurityEvents = {{
     {"csrf_rejected", "blocked"},
     {"fetch_metadata_rejected", "blocked"},
     {"origin_rejected", "blocked"},
@@ -46,6 +46,8 @@ constexpr std::array<SecurityEventLabel, 41> kSecurityEvents = {{
     {"sharing_change", "expiry_updated"},
     {"sharing_change", "password_updated"},
     {"sharing_change", "password_removed"},
+    {"sharing_change", "published"},
+    {"sharing_change", "unpublished"},
     {"share_password", "required"},
     {"share_password", "unlocked"},
     {"share_password", "failed"},
@@ -84,7 +86,10 @@ std::size_t statusIndex(int status) {
 
 Metrics::Metrics()
     : startTimeSeconds_(static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::seconds>(
-          std::chrono::system_clock::now().time_since_epoch()).count())) {}
+          std::chrono::system_clock::now().time_since_epoch()).count())) {
+    static_assert(kSecurityEvents.size() == kSecurityEventCount,
+                  "every security event must have its own counter");
+}
 
 void Metrics::observeHttp(const std::string& method, int status, double seconds) {
     const auto requestIndex = methodIndex(method) * kStatusCount + statusIndex(status);

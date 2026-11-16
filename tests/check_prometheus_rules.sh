@@ -21,6 +21,7 @@ for alert in \
   NuiGraphIdempotencyMisuseSpike \
   NuiGraphBlockedShareViewSpike \
   NuiGraphSharePasswordAttack \
+  NuiGraphPublicPublishSpike \
   NuiGraphRateLimitStorageFailure \
   NuiGraphDiagramCapacityHigh \
   NuiGraphTrashBacklogHigh \
